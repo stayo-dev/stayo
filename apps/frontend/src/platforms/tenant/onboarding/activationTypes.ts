@@ -7,7 +7,7 @@
  * definition instead of redeclaring it.
  */
 
-export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
+export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'GUARDIAN' | 'ACTIVATE';
 
 export type RuleCategory = {
   id: string;
@@ -25,6 +25,10 @@ export type ActivationContext = {
     blocked_steps: ActivationStep[];
     /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
+    /** ADR-213 — whether this tenancy is asked for a guardian at all. */
+    guardian_required?: boolean;
+    /** Name, relation and number all on record. Verification does not gate it. */
+    guardian_completed?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
@@ -33,7 +37,15 @@ export type ActivationContext = {
     activation_completed: boolean;
   };
   current_step: ActivationStep;
-  verification_status?: { guardian_verified?: boolean; emergency_verified?: boolean };
+  verification_status?: {
+    guardian_verified?: boolean;
+    emergency_verified?: boolean;
+    /** ADR-212 — all four computed server-side so the screen never decides policy. */
+    guardian_policy?: 'MANDATORY' | 'OPTIONAL';
+    guardian_state?: 'NOT_APPLICABLE' | 'VERIFIED' | 'PENDING_UNCHASED' | 'PENDING_GRACE' | 'PENDING_OVERDUE';
+    guardian_deadline_at?: string | null;
+    guardian_chased?: boolean;
+  };
   profile: { name?: string; email?: string; phone?: string };
   /**
    * The number the invitation was addressed to, and whether the backend can

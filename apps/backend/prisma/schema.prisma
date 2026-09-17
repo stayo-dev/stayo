@@ -976,6 +976,22 @@ model users {
 model PhoneVerificationOtp {
   id              String    @id @default(uuid()) @db.Uuid
   phone           String
+  /// ADR-212. Which tenancy this verification was taken for.
+  ///
+  /// The onboarding check used to be `{ phone, purpose, status }` with no
+  /// tenant link and no time window, so any number ever verified for any
+  /// tenant read as verified for every tenant. Harmless while verification was
+  /// an unconditional gate everyone passed on the spot; not harmless once the
+  /// product renders a "Verified" badge an owner decides from.
+  ///
+  /// NULL on rows predating ADR-212 — deliberately not backfilled, because
+  /// there is no honest way to attribute a historical OTP row to a tenancy.
+  /// The read path accepts NULL as legacy rather than regressing a guardian who
+  /// really did verify. `guardian-access.ts` keeps its phone-wide 90-day
+  /// lookup: it asks whether a handset is a verified guardian at all, which is
+  /// a different question and would be wrong to scope per tenant.
+  tenant_id       String?   @db.Uuid
+  tenants         tenants?  @relation(fields: [tenant_id], references: [id], onDelete: SetNull)
   otp_hash        String
   purpose         String
   status          String    @default("PENDING")
@@ -994,6 +1010,7 @@ model PhoneVerificationOtp {
   @@index([status])
   @@index([meta_message_id])
   @@index([request_ip, created_at])
+  @@index([tenant_id, purpose, status])
   @@map("phone_verification_otps")
 }
 
@@ -1893,6 +1910,24 @@ model tenants {
   guardian_name                     String?
   guardian_phone                    String?
   guardian_relation                 String?
+  /// ADR-212. When the tenant chose to verify their guardian later, which is
+  /// what starts the 7-day grace clock in a MANDATORY hostel. NULL means never
+  /// deferred — which is not the same as verified, and not the same as refused.
+  guardian_verification_deferred_at     DateTime? @db.Timestamptz(6)
+  /// ADR-212. NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO.
+  /// A plain string rather than a Prisma enum, matching this schema's existing
+  /// convention for descriptive statuses; the set is enforced by
+  /// `isGuardianDeferralReason` at the service boundary.
+  guardian_verification_deferred_reason String?
+  /// ADR-212. When to ask again. Set to `deferred_at + 7 days` on the first
+  /// deferral and pushed forward 3 days by each "Not now", so the wall's
+  /// back-off is a date rather than a counter — a counter incremented only on
+  /// dismissal cannot gate the very prompt that produces dismissals.
+  guardian_verification_next_prompt_at  DateTime? @db.Timestamptz(6)
+  /// ADR-212. How many times the tenant has dismissed the overdue wall. Kept
+  /// for reporting and for any future escalation rule; it does not gate the
+  /// prompt itself.
+  guardian_verification_prompt_count    Int       @default(0)
   personal_email                    String?
   college_name                      String?
   roll_number                       String?
@@ -1960,6 +1995,7 @@ model tenants {
   renewal_offers                    RenewalOffer[]
   renewal_decisions                 RenewalDecision[]
   tenant_notes                      tenant_notes[]
+  phone_verifications               PhoneVerificationOtp[]
   owner_attestations                tenant_owner_attestations[]
   change_requests                   change_requests[]
   renewal_timeline_events           RenewalTimelineEvent[]

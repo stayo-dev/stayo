@@ -1571,3 +1571,52 @@ Built on [[Decisions#ADR-195|ADR-195]]; reads the occupancy engine from [[Decisi
 **Not built:** per-weekday ratios (Sunday really is different), ingredient and cost forecasting, per-tenant meal skips, Away Today.
 
 **Not yet exercised:** no kitchen has logged a single meal, so every hostel is still in the learning state and no ratio exists anywhere.
+
+## A dedicated Guardian step in onboarding (2026-09-17)
+
+See [[Decisions#ADR-213|ADR-213]]. The activation sequence is now
+`ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE`.
+
+**Identity belongs to the tenant.** It had been carrying two unrelated subjects behind one submit
+button — the tenant's own record and their guardian's — so a complaint about a missing profile
+photo could surface while someone was trying to reach their parent, and a parent who was not
+answering sat inside a screen full of fields that had nothing to do with them.
+
+**Guardian is its own screen**, and asks for name, **relation** and number. Relation is new: it was
+previously captured only when a guardian co-signed the agreement, so 1 of 9 production tenancies
+had one, and an owner looking at a number could not tell a mother from an uncle from a family
+friend. It is a fixed list rather than free text, with Other carrying its own field.
+
+**It is skipped for anyone not asked for a guardian** — a working professional who volunteered no
+number never sees the step, and no dead pip appears on the journey track. Applicability is
+recomputed rather than cached, because `profile_type` is chosen on the step before.
+
+**Verification still does not gate it.** Completion is the three fields on record, exactly as
+[[Decisions#ADR-212|ADR-212]] intended — the trap when something gets its own screen is that a
+screen feels like it ought to be passed.
+
+## Guardian verification as a policy, not a gate (2026-09-16)
+
+See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Business-Rules]].
+
+**The problem it solves.** Guardian phone verification was an unconditional gate. A tenant standing at a reception desk whose parent was asleep, at work, travelling or simply not answering could not finish onboarding at all — the hostel's real remedy was to send them away and try again another day. The verification was never the problem; making a *present* tenant relay a six-digit code from an *absent* third party was.
+
+### Owner-facing
+
+- **Add Hostel → Onboarding rules.** The builder's last step (formerly "Agreement") now carries two questions: does this hostel use a tenant agreement, and must a guardian's number be verified? Both are hostel-wide, both are changed later from the same Configuration area, and **neither has a silent default** — the step blocks until each is answered.
+- **Configuration › Guardian verification.** A near-clone of the agreement-requirement page, including its "what this means" consequence list, so an owner moving between the two meets one explanation rather than two. Its hub row is never flagged as needing attention: both answers are legitimate choices.
+- **Tenant record chips.** "Guardian Unverified" used to fire on a *missing* number — the only thing it could mean when everyone was verified before activation. Now split into **No Guardian Number** and **Guardian Not Verified** (amber, and suppressed entirely in a hostel that has chosen not to chase).
+
+### Tenant-facing
+
+- **Three options, in deliberate order.** Ask the guardian (primary button — one tap for them, nothing relayed), enter the code (secondary — works when they are together), and "they can't confirm right now" (a plain text link). Hiding the third would recreate the old dead end; making it a button would make it the path of least resistance.
+- **Skipping costs one honest question** — *what's in the way?* — from a fixed set, and is answered with a date: "No problem, we'll ask again on 23 Sep." A bounded obligation is easier to carry than an open-ended one, and it is what actually happens.
+- **In the dashboard**, a card sits with the other finish-setting-up items (so verification reads as the last thing in a nearly-complete set, not as a separate alarm), and an overdue deferral raises a sheet whose "Not now" is immediate, unstyled and always present. The sheet shows on the first occasion and every third entry thereafter.
+- **Copy leads with what the guardian gains** — they can see the rent, pay it, and be reached in an emergency — not with what the hostel requires.
+
+### Guardian-facing
+
+- **`stayo_guardian_verify_request`** with a single `[Yes, I confirm]` quick reply. A request is stored as a `PENDING` `ParentVerify` row whose code is never sent to anybody, so every existing reader of the OTP trail sees the resulting proof unchanged. A parent of two residents gets a picker, never a guess. A tap with nothing outstanding is answered warmly, not as an error.
+- **Falls back to the OTP relay** whenever the template is not configured — Meta approval has a lead time, and the fallback is the path every tenant uses today.
+
+**Not exercised.** Nothing here has been run against a database or a browser; the migration is unapplied and the WhatsApp round trip has never been performed. See [[Decisions#ADR-212|ADR-212]].

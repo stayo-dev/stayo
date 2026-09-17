@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import { ArrowLeft, ArrowRight, Check } from 'lucide-react';
 import { StayoLoader } from '@shared/ui/brand';
@@ -8,8 +8,14 @@ import { useHostelBuilder, type BuilderStage } from '../useHostelBuilder';
 import { builderJourney, continueBlocker } from '../builderJourney';
 import { primaryFloorAction, primaryFloorLabel } from '../floorStrip';
 import { defaultFloorName } from '../hostelBuilder';
-import { isAgreementSettled, type AgreementChoice } from '../agreementSetup';
-import { useAgreementSetupState, useSaveAgreementDecision } from '../useAgreementSetup';
+import {
+  guardianChoiceFromPolicy,
+  guardianPolicyValue,
+  isAgreementSettled,
+  type AgreementChoice,
+  type GuardianChoice,
+} from '../agreementSetup';
+import { useAgreementSetupState, useSaveAgreementDecision, useSaveGuardianPolicy } from '../useAgreementSetup';
 import { useQuery } from '@tanstack/react-query';
 import { configApi } from '@features/owner-more/api/configApi';
 import { NameStep } from '../steps/NameStep';
@@ -53,6 +59,10 @@ export function HostelBuilderPage() {
     Array.from({ length: 3 }, (_, i) => defaultFloorName(i)),
   );
   const [agreementChoice, setAgreementChoice] = useState<AgreementChoice>(null);
+  // ADR-212. Seeded from the hostel's stored policy on a resumed build so the
+  // owner is not asked twice, and left null on a fresh one so the question is
+  // actually answered rather than defaulted into.
+  const [guardianChoice, setGuardianChoice] = useState<GuardianChoice>(null);
   const [signatureBlob, setSignatureBlob] = useState<Blob | null>(null);
   /** Set when the owner accepts the signature they already have on another hostel. */
   const [reusedSignatureUrl, setReusedSignatureUrl] = useState<string | null>(null);
@@ -68,11 +78,21 @@ export function HostelBuilderPage() {
 
   const agreementState = useAgreementSetupState(builder.hostelId || null);
   const saveAgreement = useSaveAgreementDecision(builder.hostelId);
+  const saveGuardianPolicy = useSaveGuardianPolicy(builder.hostelId);
   const agreementSettled = isAgreementSettled({
     agreementRequired: agreementState.agreementRequired,
     signatureConfigured: agreementState.signatureConfigured,
   });
   const hasSignature = Boolean(signatureBlob) || Boolean(reusedSignatureUrl) || agreementState.signatureConfigured;
+
+  // Seed the guardian answer from what this hostel already has, once the policy
+  // arrives. A resumed build should not re-ask a question that was answered;
+  // a fresh one has nothing stored and stays unanswered, which is what makes
+  // the step block until the owner actually chooses. ADR-212.
+  useEffect(() => {
+    const stored = guardianChoiceFromPolicy(agreementState.guardianVerification);
+    if (stored) setGuardianChoice((current) => current ?? stored);
+  }, [agreementState.guardianVerification]);
 
   const {
     stage,
@@ -145,6 +165,15 @@ export function HostelBuilderPage() {
         return;
       }
       if (stage === 'agreement') {
+        // ADR-212. Saved first and on its own request: it is a different
+        // policy field from the agreement one, and the agreement branch below
+        // can involve a template publish and a signature upload that this
+        // setting has no reason to be held behind.
+        if (guardianChoice) {
+          await saveGuardianPolicy.mutateAsync({
+            tenant_rules: { guardian_verification: guardianPolicyValue(guardianChoice) },
+          });
+        }
         if (agreementChoice === 'no') {
           await saveAgreement.mutateAsync({ choice: 'no' });
         } else if (agreementChoice === 'yes' && reusedSignatureUrl) {
@@ -219,6 +248,7 @@ export function HostelBuilderPage() {
     floorBlocker: blocker,
     agreementChoice,
     hasSignature,
+    guardianChoice,
   });
   const canContinue = whyBlocked === null;
 
@@ -360,6 +390,8 @@ export function HostelBuilderPage() {
             <AgreementDecisionStep
               choice={agreementChoice}
               onChoiceChange={setAgreementChoice}
+              guardianChoice={guardianChoice}
+              onGuardianChoiceChange={setGuardianChoice}
               hasSignature={hasSignature}
               existingSignatureUrl={agreementState.signatureUrl}
               onSignatureChange={(blob) => {

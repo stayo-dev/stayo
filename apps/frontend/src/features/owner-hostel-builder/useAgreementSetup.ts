@@ -29,6 +29,12 @@ export function useAgreementSetupState(hostelId: string | null) {
   return {
     isLoading: policyQuery.isLoading || templateQuery.isLoading,
     agreementRequired,
+    /**
+     * Raw, not coerced (ADR-212). The builder needs to tell "never set" from
+     * "set to MANDATORY" so it can ask on a fresh hostel and stay quiet on a
+     * resumed one — a coerced boolean loses exactly that distinction.
+     */
+    guardianVerification: policyQuery.data?.policy?.tenant_rules?.guardian_verification ?? null,
     signatureConfigured: Boolean(signatureUrl),
     signatureUrl,
     hasActiveTemplate: Boolean(templateQuery.data?.active),
@@ -89,4 +95,24 @@ export function useAgreementSetup(hostelId: string | null) {
   const state = useAgreementSetupState(hostelId);
   const save = useSaveAgreementDecision(hostelId ?? '');
   return useMemo(() => ({ ...state, save }), [state, save]);
+}
+
+/**
+ * Writes the hostel's guardian-verification policy from the builder (ADR-212).
+ *
+ * Separate from `useSaveAgreementDecision` rather than folded into it: that
+ * mutation orchestrates a publish-then-sign sequence whose partial failures are
+ * meaningful, and adding an unrelated field to it would make "which half
+ * failed?" harder to answer for no gain.
+ */
+export function useSaveGuardianPolicy(hostelId: string) {
+  const qc = useQueryClient();
+
+  return useMutation({
+    mutationFn: (patch: { tenant_rules: { guardian_verification: 'MANDATORY' | 'OPTIONAL' } }) =>
+      ownerService.updateHostelPolicy(hostelId, patch),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: policyKey(hostelId) });
+    },
+  });
 }

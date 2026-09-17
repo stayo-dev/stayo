@@ -26,6 +26,17 @@ export const COMMANDS = {
   PLAN: "PLAN",
   RECEIPT: "RECEIPT",
   HELP: "HELP",
+  /**
+   * Confirming that you really are a named resident's guardian (ADR-212).
+   *
+   * Deliberately absent from `PUBLISHED_COMMANDS` and from `VOCABULARY`: it is
+   * not a word anyone types. It exists so a *tapped* choice — the quick reply
+   * on `stayo_guardian_verify_request`, or a row in the picker a parent of two
+   * residents gets — can name its resident in the payload
+   * (`CC:CONFIRM:<tenantId>`) and travel the same decode path as every other
+   * tap, rather than needing ambient state to remember what was offered.
+   */
+  CONFIRM: "CONFIRM",
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];

@@ -15,27 +15,33 @@ import { PANEL_INK } from './skyTheme';
  * picked a gender on the Identity step, and hands them a different carried
  * item at each stage of the journey.
  */
-export type ActivationVisualStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE' | 'MOVE_IN';
+export type ActivationVisualStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'GUARDIAN' | 'ACTIVATE' | 'MOVE_IN';
 
 type NodeSpec = { id: Exclude<ActivationVisualStep, 'RULES'>; label: string; paths: string[] };
 
 const ALL_NODES: NodeSpec[] = [
   { id: 'ACCOUNT', label: 'Welcome', paths: ['M3 11l9-8 9 8', 'M5 10v10h14V10'] },
   { id: 'PROFILE', label: 'Identity', paths: ['M12 8m-4 0a4 4 0 1 0 8 0a4 4 0 1 0 -8 0', 'M4.5 20c0-4 3.8-6 7.5-6s7.5 2 7.5 6'] },
+  { id: 'GUARDIAN', label: 'Guardian', paths: ['M12 3l7 3v6c0 4.4-3 8.2-7 9-4-.8-7-4.6-7-9V6z', 'M9.5 12l1.8 1.8L15 10'] },
   { id: 'AGREEMENT', label: 'Agreement', paths: ['M7 3h7l4 4v14H7z', 'M14 3v4h4M10 12h5M10 16h5'] },
   { id: 'ACTIVATE', label: 'Account', paths: ['M5 10h14v10H5z', 'M8 10V7a4 4 0 0 1 8 0v3'] },
   { id: 'MOVE_IN', label: 'Move In', paths: ['M4 21h16', 'M6 21V6a2 2 0 0 1 2-2h6a2 2 0 0 1 2 2v15', 'M13 12h.5'] },
 ];
 
 /**
- * Hostels that do not require a signed agreement (`agreement_required`
- * false, ADR-059) never reach RULES or AGREEMENT — drop that node so the
- * track doesn't show a pip that can never light up.
+ * Drop the nodes this tenancy will never reach, so the track never shows a pip
+ * that cannot light up: AGREEMENT for a hostel that does not require one
+ * (ADR-059), and GUARDIAN for a tenant who is not asked for one (ADR-213).
  */
-const nodesFor = (agreementRequired: boolean): NodeSpec[] => (agreementRequired ? ALL_NODES : ALL_NODES.filter((n) => n.id !== 'AGREEMENT'));
+const nodesFor = (agreementRequired: boolean, guardianRequired = true): NodeSpec[] =>
+  ALL_NODES.filter((n) => {
+    if (!agreementRequired && n.id === 'AGREEMENT') return false;
+    if (!guardianRequired && n.id === 'GUARDIAN') return false;
+    return true;
+  });
 
-function nodeIndex(step: ActivationVisualStep, agreementRequired = true): number {
-  const nodes = nodesFor(agreementRequired);
+function nodeIndex(step: ActivationVisualStep, agreementRequired = true, guardianRequired = true): number {
+  const nodes = nodesFor(agreementRequired, guardianRequired);
   const key = step === 'RULES' ? 'AGREEMENT' : step;
   const idx = nodes.findIndex((n) => n.id === key);
   return idx === -1 ? 0 : idx;
@@ -111,6 +117,7 @@ interface ActivationProgressProps {
   completedSteps: Set<string>;
   onStepClick: (step: ActivationVisualStep) => void;
   agreementRequired?: boolean;
+  guardianRequired?: boolean;
   /** True once the flow has been idle long enough — swaps the walking avatar for the dozing one. */
   bored?: boolean;
   /** Gender picked on the Identity step; re-skins the avatar per the design's `avatarLook()`. */
@@ -123,16 +130,17 @@ export function ActivationProgress({
   completedSteps,
   onStepClick,
   agreementRequired = true,
+  guardianRequired = true,
   bored = false,
   gender = '',
 }: ActivationProgressProps) {
-  const nodes = nodesFor(agreementRequired);
-  const activeIdx = nodeIndex(activeStep, agreementRequired);
-  const reachedIdx = nodeIndex(currentStep, agreementRequired);
+  const nodes = nodesFor(agreementRequired, guardianRequired);
+  const activeIdx = nodeIndex(activeStep, agreementRequired, guardianRequired);
+  const reachedIdx = nodeIndex(currentStep, agreementRequired, guardianRequired);
   const remaining = nodes.length - 1 - activeIdx;
   const look = avatarLook(gender, activeIdx);
 
-  const isDone = (id: ActivationVisualStep) => (id === 'AGREEMENT' ? completedSteps.has('AGREEMENT') : completedSteps.has(id)) || nodeIndex(id, agreementRequired) < activeIdx;
+  const isDone = (id: ActivationVisualStep) => (id === 'AGREEMENT' ? completedSteps.has('AGREEMENT') : completedSteps.has(id)) || nodeIndex(id, agreementRequired, guardianRequired) < activeIdx;
   const isActive = (id: ActivationVisualStep) => (id === 'AGREEMENT' ? activeStep === 'RULES' || activeStep === 'AGREEMENT' : activeStep === id);
 
   return (
@@ -163,7 +171,7 @@ export function ActivationProgress({
           {nodes.map((node) => {
             const done = isDone(node.id);
             const active = isActive(node.id);
-            const clickable = nodeIndex(node.id, agreementRequired) <= reachedIdx;
+            const clickable = nodeIndex(node.id, agreementRequired, guardianRequired) <= reachedIdx;
 
             return (
               <button

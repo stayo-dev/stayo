@@ -162,6 +162,8 @@ export interface HostelPolicy {
     allow_profile_edits: boolean; profile_photo_required: boolean; invite_expiry_hours: number;
     /** Whether tenants must accept rules and sign before activation (ADR-059). */
     agreement_required?: boolean;
+    /** ADR-212. Absent means MANDATORY — see `readGuardianVerificationPolicy`. */
+    guardian_verification?: 'MANDATORY' | 'OPTIONAL';
   };
   automation: {
     auto_generate_rent: boolean; auto_apply_late_fees: boolean;

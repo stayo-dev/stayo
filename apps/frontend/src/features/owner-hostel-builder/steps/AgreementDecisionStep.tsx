@@ -1,12 +1,12 @@
 import type { ReactNode } from 'react';
-import { Check, FileText, ShieldOff } from 'lucide-react';
+import { BellRing, Check, FileText, ShieldOff, UserCheck } from 'lucide-react';
 import { SignaturePad } from '@shared/ui/inputs';
 import { eyebrow, h1, sub } from '@features/owner-onboarding/components/stepStyles';
-import type { AgreementChoice } from '../agreementSetup';
+import type { AgreementChoice, GuardianChoice } from '../agreementSetup';
 
 /**
- * The Add Hostel builder's last question — one decision, made once, for the
- * whole hostel.
+ * The Add Hostel builder's last step — the rules this hostel's onboarding
+ * follows, decided once, for the whole hostel.
  *
  * This is deliberately the *only* place a StayO owner is asked about a tenant
  * agreement during setup: not per room (rooms just belong to the hostel and
@@ -20,6 +20,15 @@ import type { AgreementChoice } from '../agreementSetup';
  * text on purpose — an owner who later revisits that settings page should
  * recognise the same framing, not a different explanation for the same
  * switch.
+ *
+ * ADR-212 added the second question, about guardian verification, rather than a
+ * sixth step in a five-step builder. The two belong together: both answer *what
+ * does this hostel demand of a tenant before they move in*, both are
+ * hostel-wide, and both are changed afterwards from the same Configuration
+ * area. Neither has a silent default — an unanswered guardian question would
+ * quietly mean "chase every tenant's parent for ever", which is a decision
+ * about how this hostel treats its residents and should be made rather than
+ * inherited.
  */
 
 const CONSEQUENCES: Record<'yes' | 'no', { title: string; points: string[] }> = {
@@ -37,6 +46,26 @@ const CONSEQUENCES: Record<'yes' | 'no', { title: string; points: string[] }> = 
       'The rules and agreement steps are skipped during onboarding.',
       'Rent, dues, deposits and move-out settlement are unaffected.',
       'You can turn this on later from this hostel’s Settings tab.',
+    ],
+  },
+};
+
+/** ADR-212. Same shape and same voice as CONSEQUENCES above. */
+const GUARDIAN_CONSEQUENCES: Record<'mandatory' | 'optional', { title: string; points: string[] }> = {
+  mandatory: {
+    title: 'Unverified numbers are chased until they are confirmed',
+    points: [
+      'The guardian confirms with one tap on WhatsApp — nothing to read out or type.',
+      'A tenant who cannot do it right then gets a week, and is reminded after that.',
+      'Nobody is stopped from moving in while it is outstanding.',
+    ],
+  },
+  optional: {
+    title: 'The number is recorded, and nobody is chased',
+    points: [
+      'Onboarding still asks, and a tenant can still confirm whenever they like.',
+      'No deadline, no reminders, no prompts afterwards.',
+      'Their record shows "Not verified" as a plain fact.',
     ],
   },
 };
@@ -89,6 +118,8 @@ export function AgreementDecisionStep({
   onSignatureChange,
   reusableSignature,
   onReuseSignature,
+  guardianChoice,
+  onGuardianChoiceChange,
 }: {
   choice: AgreementChoice;
   onChoiceChange: (choice: AgreementChoice) => void;
@@ -98,17 +129,24 @@ export function AgreementDecisionStep({
   /** A signature this owner already captured on another hostel, if any. */
   reusableSignature: { url: string; from_hostel_name: string | null } | null;
   onReuseSignature: (url: string) => void;
+  guardianChoice: GuardianChoice;
+  onGuardianChoiceChange: (choice: GuardianChoice) => void;
 }) {
   const consequence = choice ? CONSEQUENCES[choice] : null;
+  const guardianConsequence = guardianChoice ? GUARDIAN_CONSEQUENCES[guardianChoice] : null;
 
   return (
     <div>
       <div className={eyebrow}>ONE LAST THING</div>
-      <h1 className={h1}>Does this hostel use a tenant agreement?</h1>
+      <h1 className={h1}>How does onboarding work here?</h1>
       <p className={sub}>
-        This is a hostel-wide setting — it applies to every room and every tenant here, not one at a
-        time.
+        Two hostel-wide settings — they apply to every room and every tenant here, not one at a time.
+        Both can be changed later from Configuration.
       </p>
+
+      <div className="mb-2.5 font-display text-[13px] font-bold text-foreground">
+        Does this hostel use a tenant agreement?
+      </div>
 
       <div className="flex max-w-[460px] flex-col gap-2.5">
         <ChoiceCard
@@ -204,6 +242,49 @@ export function AgreementDecisionStep({
           )}
         </div>
       )}
+
+      <div className="mt-8 border-t border-border/60 pt-6">
+        <div className="mb-1 font-display text-[13px] font-bold text-foreground">
+          Must a parent or guardian's number be verified?
+        </div>
+        <p className="mb-2.5 max-w-[460px] text-[12.5px] leading-relaxed text-muted-foreground">
+          Either way the number is collected, and either way a tenant can move in without it being
+          confirmed yet. What you are choosing is whether Stayo keeps asking.
+        </p>
+
+        <div className="flex max-w-[460px] flex-col gap-2.5">
+          <ChoiceCard
+            active={guardianChoice === 'mandatory'}
+            icon={<BellRing className="h-4.5 w-4.5" strokeWidth={2} />}
+            title="Yes, keep asking until it is verified"
+            description="A week's grace, then reminders until the guardian confirms."
+            onSelect={() => onGuardianChoiceChange('mandatory')}
+          />
+          <ChoiceCard
+            active={guardianChoice === 'optional'}
+            icon={<UserCheck className="h-4.5 w-4.5" strokeWidth={2} />}
+            title="No, just record whether it is verified"
+            description="Asked once during onboarding, never chased afterwards."
+            onSelect={() => onGuardianChoiceChange('optional')}
+          />
+        </div>
+
+        {guardianConsequence && (
+          <div className="mt-4 max-w-[460px] rounded-xl border border-border bg-muted/40 px-3.5 py-3">
+            <div className="font-display text-[12.5px] font-bold text-foreground">
+              {guardianConsequence.title}
+            </div>
+            <ul className="mt-1.5 flex flex-col gap-1">
+              {guardianConsequence.points.map((point) => (
+                <li key={point} className="flex gap-2 text-[11.5px] leading-relaxed text-muted-foreground">
+                  <span aria-hidden className="mt-[7px] h-1 w-1 flex-none rounded-full bg-muted-foreground/60" />
+                  <span>{point}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { identityIssues, passwordIssues, agreementIssues, summarise, type IdentityState } from './stepIssues';
+import {
+  identityIssues,
+  guardianIssues,
+  passwordIssues,
+  agreementIssues,
+  summarise,
+  type IdentityState,
+  type GuardianState,
+} from './stepIssues';
 
 /**
  * What the tenant is still missing, in the order it appears on screen.
@@ -21,9 +29,6 @@ const base: IdentityState = {
   gender: 'Male',
   dateOfBirth: '2004-03-12',
   profileType: 'STUDENT',
-  guardianName: 'Ramesh Kumar',
-  guardianPhone: '9988776655',
-  guardianVerified: true,
   photoUploaded: true,
   docItems: [
     { doc_type: 'AADHAAR', document_status: 'PENDING' },
@@ -43,13 +48,12 @@ describe('identityIssues', () => {
       photoUploaded: false,
       gender: '',
       dateOfBirth: '',
-      guardianName: '',
-      guardianPhone: '',
-      guardianVerified: false,
       docItems: [],
     }).map((i) => i.field);
 
-    expect(fields).toEqual(['photo', 'phone', 'gender', 'date_of_birth', 'guardian_name', 'guardian_phone', 'doc:AADHAAR', 'doc:COLLEGE_ID']);
+    // The order is the order on screen — the UI walks this list to decide where
+    // to scroll, so it is a contract, not an incidental.
+    expect(fields).toEqual(['photo', 'phone', 'gender', 'date_of_birth', 'doc:AADHAAR', 'doc:COLLEGE_ID']);
   });
 
   it('asks for the code only once a code has been sent', () => {
@@ -72,12 +76,11 @@ describe('identityIssues', () => {
     expect(identityIssues({ ...base, emailVerifiedAs: null, emailRequirement: { required: false, email: null, verified_email: null } })).toEqual([]);
   });
 
-  it('asks a working professional for a guardian only if they started entering one', () => {
-    const pro = { ...base, profileType: 'WORKING_PROFESSIONAL', guardianName: '', guardianPhone: '', guardianVerified: false, docItems: [{ doc_type: 'AADHAAR', document_status: 'PENDING' }, { doc_type: 'WORK_ID', document_status: 'PENDING' }] };
-    expect(identityIssues(pro)).toEqual([]);
-    // Half a guardian is no use to anyone: start one, and both the name and a
-    // usable number are asked for.
-    expect(identityIssues({ ...pro, guardianPhone: '99887' }).map((i) => i.field)).toEqual(['guardian_name', 'guardian_phone']);
+  it('says nothing about a guardian — that screen owns its own rules now', () => {
+    // ADR-213. Leaving them here is what made Continue on Identity report
+    // things left to do and then scroll to controls that were not rendered.
+    const fields = identityIssues({ ...base, photoUploaded: false, gender: '' }).map((i) => i.field);
+    expect(fields.some((f) => f.startsWith('guardian'))).toBe(false);
   });
 
   it('treats a rejected document as still outstanding, and says why', () => {
@@ -91,7 +94,7 @@ describe('identityIssues', () => {
   });
 
   it('never says "invalid" — every message names the field and the action', () => {
-    const all = identityIssues({ ...base, phone: '', photoUploaded: false, gender: '', dateOfBirth: '', guardianName: '', guardianVerified: false, docItems: [] });
+    const all = identityIssues({ ...base, phone: '', photoUploaded: false, gender: '', dateOfBirth: '', docItems: [] });
     for (const issue of all) {
       expect(issue.message).not.toMatch(/invalid/i);
       expect(issue.message.length).toBeGreaterThan(10);
@@ -141,5 +144,60 @@ describe('summarise — the line above the action bar', () => {
 
   it('says nothing when nothing is outstanding', () => {
     expect(summarise([])).toBe('');
+  });
+});
+
+describe('guardianIssues', () => {
+  const guardian: GuardianState = {
+    name: 'Ramesh Kumar',
+    relation: 'Father',
+    phone: '9988776655',
+    verified: true,
+    deferralReason: null,
+  };
+
+  it('finds nothing wrong with a complete, verified guardian', () => {
+    expect(guardianIssues(guardian)).toEqual([]);
+  });
+
+  it('asks for all three fields, in the order they appear on screen', () => {
+    const fields = guardianIssues({ ...guardian, name: '', relation: '', phone: '' }).map((i) => i.field);
+    expect(fields).toEqual(['guardian_name', 'guardian_relation', 'guardian_phone']);
+  });
+
+  it('asks for the relationship, which the old flow never collected', () => {
+    const [issue] = guardianIssues({ ...guardian, relation: '' });
+    expect(issue).toMatchObject({ field: 'guardian_relation' });
+    expect(issue.message).toMatch(/related/i);
+  });
+
+  it('asks for a usable number before it asks about verifying one', () => {
+    const [issue] = guardianIssues({ ...guardian, phone: '99887', verified: false });
+    expect(issue.field).toBe('guardian_phone');
+    expect(issue.message).toMatch(/10-digit/);
+  });
+
+  it('names all three ways out when the number is unverified', () => {
+    // "Verify this number" is true and useless to someone whose parent is not
+    // picking up — the case this step exists to handle.
+    const [issue] = guardianIssues({ ...guardian, verified: false });
+    expect(issue.message).toMatch(/confirm/i);
+    expect(issue.message).toMatch(/code/i);
+    expect(issue.message).toMatch(/can.t right now/i);
+  });
+
+  it('stops asking once the tenant has said they cannot verify now', () => {
+    // ADR-212 made deferral a legitimate way through; guidance that kept
+    // asking would be demanding something the product already accepted.
+    expect(guardianIssues({ ...guardian, verified: false, deferralReason: 'NO_WHATSAPP' })).toEqual([]);
+  });
+
+  it('never says "invalid" — every message names the field and the action', () => {
+    const all = guardianIssues({ name: '', relation: '', phone: '', verified: false, deferralReason: null });
+    for (const issue of all) {
+      expect(issue.message).not.toMatch(/invalid/i);
+      expect(issue.message.length).toBeGreaterThan(10);
+      expect(issue.label.length).toBeGreaterThan(2);
+    }
   });
 });

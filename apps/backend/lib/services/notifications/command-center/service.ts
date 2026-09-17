@@ -66,6 +66,15 @@ import {
   formatReceiptDelivery,
   formatReceiptUnavailable,
 } from "./receipt";
+import { isGuardianConfirmReply } from "../providers/whatsapp/guardian-verify-request-template-contract";
+import {
+  confirmGuardianRequest,
+  listPendingGuardianRequests,
+} from "./guardian-verify-request";
+import {
+  guardianConfirmReply,
+  resolveGuardianConfirmation,
+} from "./guardian-confirm-resolution";
 import {
   challengeMessage,
   extractOtp,
@@ -113,6 +122,15 @@ export class CommandCenterService {
     // only from someone we are actually challenging.
     if (looksLikeOtp(body) && identity.guardianResidents.length > 0) {
       return this.completeGuardianVerification(phone, body, identity);
+    }
+
+    // The [Yes, I confirm] quick reply on `stayo_guardian_verify_request`.
+    // Arrives as text — a template button is the reader saying that word — and
+    // must be caught before `resolveCommand`, which has no vocabulary entry for
+    // it by design, and before the guardian gate in `dispatch`, which is the
+    // very thing this tap exists to satisfy.
+    if (isGuardianConfirmReply(body) && identity.guardianResidents.length > 0) {
+      return this.completeGuardianWardConfirmation(phone, identity, null);
     }
 
     const command = resolveCommand(body);
@@ -174,6 +192,14 @@ export class CommandCenterService {
 
     // The guardian gate sits before resident resolution, so a guardian of two
     // children is verified once rather than once per child.
+    // A tapped row from the which-ward picker. It has to run ahead of the gate
+    // below: this reader is unverified by definition, and challenging them for
+    // a code here would answer "yes, that is my child" with "prove it first" —
+    // reintroducing the relay ADR-212 removed, at the last possible moment.
+    if (command === COMMANDS.CONFIRM) {
+      return this.completeGuardianWardConfirmation(phone, identity, tenantId);
+    }
+
     if (audience === "GUARDIAN") {
       const verified = await isGuardianVerified(phone);
       if (!verified) {
@@ -609,6 +635,90 @@ export class CommandCenterService {
     });
 
     return { handled: true, command, outcome: "GUARDIAN_CHALLENGED" };
+  }
+
+  /**
+   * A guardian confirming the resident they were named for (ADR-212).
+   *
+   * `tenantId` is set when the tap already named one — a row from the picker
+   * below. It is null when the tap was the template's own quick reply, which is
+   * identical for every recipient and therefore names nobody; in that case the
+   * tenancy is inferred from what is actually outstanding for this handset, and
+   * "more than one" is asked about rather than guessed.
+   */
+  private async completeGuardianWardConfirmation(
+    phone: string,
+    identity: SenderIdentity,
+    tenantId: string | null
+  ): Promise<CommandCenterResult> {
+    const pending = await listPendingGuardianRequests(phone);
+
+    // A picker row names its resident, but the id travelled through the
+    // reader's handset — so it is narrowed against this phone's own
+    // outstanding requests rather than trusted. Same rule `dispatch` applies to
+    // every other payload id.
+    const scoped = tenantId ? pending.filter((request) => request.tenantId === tenantId) : pending;
+    const resolution = resolveGuardianConfirmation(scoped);
+
+    if (resolution.kind === "ASK_WHICH") {
+      try {
+        await this.provider.sendListMessage(
+          phone,
+          guardianConfirmReply(resolution),
+          [
+            {
+              title: "Residents",
+              rows: resolution.requests.map((request) => ({
+                id: encodePayload(COMMANDS.CONFIRM, request.tenantId),
+                title: request.tenantName,
+                description: request.hostelName,
+              })),
+            },
+          ],
+          "Choose resident"
+        );
+      } catch (error: any) {
+        // Same fallback rule as the resident picker: an interactive message is
+        // a nicety, and failing to send one must not leave the reader stuck.
+        logger.warn("command_center.guardian_confirm_picker_failed", {
+          error: error?.message || String(error),
+        });
+        await this.provider.sendTextMessage(phone, guardianConfirmReply(resolution));
+      }
+      return { handled: true, command: COMMANDS.CONFIRM, outcome: "GUARDIAN_CONFIRM_AMBIGUOUS" };
+    }
+
+    if (resolution.kind === "NOTHING_PENDING") {
+      await this.provider.sendTextMessage(phone, guardianConfirmReply(resolution));
+      return { handled: true, command: COMMANDS.CONFIRM, outcome: "GUARDIAN_CONFIRM_NOTHING_PENDING" };
+    }
+
+    const confirmed = await confirmGuardianRequest(resolution.request.requestId);
+    if (!confirmed) {
+      // Lost a race with another tap. The verification exists either way, so
+      // this reads as done rather than as a failure.
+      await this.provider.sendTextMessage(phone, guardianConfirmReply(resolution));
+      return {
+        handled: true,
+        command: COMMANDS.CONFIRM,
+        tenantId: resolution.request.tenantId,
+        outcome: "GUARDIAN_CONFIRM_ALREADY_DONE",
+      };
+    }
+
+    await this.provider.sendTextMessage(phone, guardianConfirmReply(resolution));
+
+    logger.info("command_center.guardian_confirmed", {
+      tenant_id: resolution.request.tenantId,
+      request_id: resolution.request.requestId,
+    });
+
+    return {
+      handled: true,
+      command: COMMANDS.CONFIRM,
+      tenantId: resolution.request.tenantId,
+      outcome: "GUARDIAN_CONFIRMED",
+    };
   }
 
   private async completeGuardianVerification(

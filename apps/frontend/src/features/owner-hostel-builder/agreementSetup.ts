@@ -47,3 +47,55 @@ export function agreementStepBlocker(choice: AgreementChoice, hasSignature: bool
   if (choice === 'yes' && !hasSignature) return 'Draw your signature to continue';
   return null;
 }
+
+/**
+ * The second question on the same step: is a parent/guardian's number chased
+ * until it is verified, or simply recorded?
+ *
+ * It lives beside the agreement question rather than on a step of its own
+ * because they are the same question in different clothes — *what does this
+ * hostel demand of a tenant before they move in* — and a five-step builder
+ * does not need a sixth screen to hold one toggle.
+ *
+ * Neither answer blocks a tenant from activating (see ADR-212); what the
+ * owner is choosing is whether the product chases the gap afterwards.
+ */
+export type GuardianChoice = 'mandatory' | 'optional' | null;
+
+/**
+ * Why the builder's primary button cannot be pressed on this step, or null.
+ *
+ * The guardian question has no default answer on purpose, for the same reason
+ * the agreement one does not: leaving it unset is not neutral. It would quietly
+ * mean "chase every tenant's parent forever", which is a real decision about
+ * how this hostel treats its residents, and it should be made rather than
+ * inherited.
+ */
+export function onboardingRulesStepBlocker(
+  agreementChoice: AgreementChoice,
+  hasSignature: boolean,
+  guardianChoice: GuardianChoice,
+): string | null {
+  const agreementBlocker = agreementStepBlocker(agreementChoice, hasSignature);
+  if (agreementBlocker) return agreementBlocker;
+  if (guardianChoice === null) return 'Choose how guardian numbers are verified';
+  return null;
+}
+
+/**
+ * Whether this hostel's guardian question has been answered at all.
+ *
+ * Unlike `isAgreementSettled`, an untouched default *does* count as settled
+ * here — MANDATORY is what every hostel got before the setting existed, so a
+ * hostel that already has tenants is not in an ambiguous state, it is in the
+ * strict one. Only a brand-new build is asked.
+ */
+export function guardianChoiceFromPolicy(stored: unknown): GuardianChoice {
+  if (stored === undefined || stored === null) return null;
+  return String(stored).toUpperCase() === 'OPTIONAL' ? 'optional' : 'mandatory';
+}
+
+/** The API value for a chosen option. */
+export function guardianPolicyValue(choice: Exclude<GuardianChoice, null>): 'MANDATORY' | 'OPTIONAL' {
+  return choice === 'optional' ? 'OPTIONAL' : 'MANDATORY';
+}

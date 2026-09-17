@@ -11,6 +11,14 @@ function safeNormalizeWhatsApp(val: string | null | undefined): string {
     return "";
   }
 }
+import { isGuardianPhoneVerifiedForTenant } from "./guardian-verification-store";
+import {
+  guardianDeadline,
+  isGuardianDeferralReason,
+  readGuardianVerificationPolicy,
+  resolveGuardianVerification,
+  type GuardianVerificationPolicy,
+} from "./guardian-verification";
 import { getTenantOperationalContext } from "../../../lib/hostel-context";
 import { allocationReconciliationService } from "../../../lib/services/allocation-reconciliation-service";
 import { eventLog } from "../../../lib/services/event-log-service";
@@ -30,7 +38,6 @@ import {
   buildOnboardingAgreementLifecycle,
 } from "./agreement-lifecycle-completeness";
 
-type ActivationStep = "ACCOUNT" | "RULES" | "AGREEMENT" | "PROFILE" | "ACTIVATE";
 /**
  * Either proof an activation request can carry. A bare string stays acceptable
  * so that every existing caller — and the onboarding test suite that pins the
@@ -93,6 +100,10 @@ import {
   isAgreementRequired,
   nextActivationStep,
   requiredActivationSteps,
+  // Imported rather than redeclared: this file carried its own copy of the
+  // union, which silently went stale the moment GUARDIAN was added and let
+  // `step === "GUARDIAN"` typecheck as an impossible comparison.
+  type ActivationStep,
 } from "./agreement-requirement";
 import { requiredKycDocTypes, recomputeDocumentVerified } from "./kyc-status";
 import { latestOwnerMessage } from "./document-thread";
@@ -298,6 +309,18 @@ export class ActivationWorkflowService {
    * read would silently fall back to "required" and make the setting look broken
    * on some paths but not others.
    */
+  /**
+   * Whether this tenancy is asked for a parent/guardian at all (ADR-213).
+   *
+   * Students always are. A working professional is not — but one who has
+   * volunteered a number still gets the step, because a number on file that
+   * nobody has verified is exactly the state the step exists to resolve.
+   */
+  private guardianApplies(tenant: any): boolean {
+    const isStudent = String(tenant.profile_type || "STUDENT").toUpperCase() === "STUDENT";
+    return isStudent || Boolean(tenant.phone_2 || tenant.guardian_phone);
+  }
+
   private computeState(profile: any, tenant: any, ruleVersion: any, agreementRequired: boolean, invitation?: any | null) {
     const latestAcceptance = (tenant.rule_acceptances || []).find((a: any) => a.rule_version_id === ruleVersion.id);
     // See activation-account-state for why this tests `profile_id` and not
@@ -315,6 +338,25 @@ export class ActivationWorkflowService {
     if (!tenant.photo_url) missingTier1.push("photo_url");
 
     const profileCompleted = missingTier1.length === 0;
+
+    /**
+     * The guardian step is done when all three fields are on record (ADR-213).
+     * Verification deliberately does **not** gate it — ADR-212 made an
+     * unverified guardian a state the product carries rather than a door that
+     * will not open, and re-introducing it here as a step gate would undo that
+     * in a new place.
+     *
+     * `guardian_relation` is part of the test, which is new: it used to be
+     * collected only if a guardian co-signed the agreement, so most tenancies
+     * simply never had one. A tenant mid-onboarding when this shipped will be
+     * asked for the missing piece; nobody already activated is sent back.
+     */
+    const guardianRequired = this.guardianApplies(tenant);
+    const guardianCompleted = !guardianRequired || Boolean(
+      (tenant.guardian_name || "").trim() &&
+      (tenant.phone_2 || tenant.guardian_phone) &&
+      (tenant.guardian_relation || "").trim()
+    );
     const rulesAccepted = Boolean(latestAcceptance);
     const agreementSigned = (tenant.agreements || []).some((a: any) => isSignedAgreementStatus(a.status));
     const requiredDocumentTypes = this.requiredDocumentTypes(tenant.profile_type);
@@ -336,22 +378,35 @@ export class ActivationWorkflowService {
     // `rules_accepted` / `agreement_signed` booleans below stay truthful — a
     // skipped ceremony is reported as not done, not faked as complete — while
     // the sequence and progress only count applicable steps.
-    const completion = { accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted, activationCompleted };
-    const applicableSteps = requiredActivationSteps(agreementRequired);
-    const completedSteps = completedApplicableSteps(completion, agreementRequired);
-    const currentStep = nextActivationStep(completion, agreementRequired);
+    const completion = {
+      accountSetupCompleted,
+      rulesAccepted,
+      agreementSigned,
+      profileCompleted,
+      guardianCompleted,
+      activationCompleted,
+    };
+    const applicability = { agreementRequired, guardianRequired };
+    const applicableSteps = requiredActivationSteps(applicability);
+    const completedSteps = completedApplicableSteps(completion, applicability);
+    const currentStep = nextActivationStep(completion, applicability);
 
     return {
       account_setup_completed: accountSetupCompleted,
       rules_accepted: rulesAccepted,
       agreement_signed: agreementSigned,
       profile_completed: profileCompleted,
+      guardian_completed: guardianCompleted,
+      guardian_required: guardianRequired,
       documents_uploaded: documentsUploaded,
       activation_completed: activationCompleted,
       current_step: currentStep,
       completed_steps: completedSteps,
       agreement_required: agreementRequired,
-      blocked_steps: this.blockedSteps({ accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted }, agreementRequired),
+      blocked_steps: this.blockedSteps(
+        { accountSetupCompleted, rulesAccepted, agreementSigned, profileCompleted, guardianCompleted },
+        applicability,
+      ),
       missing_fields: {
         tier_1_required: missingTier1,
         tier_2_recommended: this.recommendedMissingFields(tenant),
@@ -375,17 +430,26 @@ export class ActivationWorkflowService {
   }
 
   private blockedSteps(
-    flags: { accountSetupCompleted: boolean; rulesAccepted: boolean; agreementSigned: boolean; profileCompleted: boolean },
-    agreementRequired: boolean,
+    flags: {
+      accountSetupCompleted: boolean;
+      rulesAccepted: boolean;
+      agreementSigned: boolean;
+      profileCompleted: boolean;
+      guardianCompleted: boolean;
+    },
+    applicability: { agreementRequired: boolean; guardianRequired: boolean },
   ) {
+    const { agreementRequired, guardianRequired } = applicability;
     const blocked: ActivationStep[] = [];
-    if (!flags.accountSetupCompleted) blocked.push("RULES", "PROFILE", "AGREEMENT", "ACTIVATE");
-    else if (agreementRequired && !flags.rulesAccepted) blocked.push("PROFILE", "AGREEMENT", "ACTIVATE");
-    else if (!flags.profileCompleted) blocked.push("AGREEMENT", "ACTIVATE");
+    if (!flags.accountSetupCompleted) blocked.push("RULES", "PROFILE", "GUARDIAN", "AGREEMENT", "ACTIVATE");
+    else if (agreementRequired && !flags.rulesAccepted) blocked.push("PROFILE", "GUARDIAN", "AGREEMENT", "ACTIVATE");
+    else if (!flags.profileCompleted) blocked.push("GUARDIAN", "AGREEMENT", "ACTIVATE");
+    else if (guardianRequired && !flags.guardianCompleted) blocked.push("AGREEMENT", "ACTIVATE");
     else if (agreementRequired && !flags.agreementSigned) blocked.push("ACTIVATE");
-    // The ceremony steps themselves are unreachable when not required, so they
-    // are reported blocked rather than presented as available.
+    // Steps that do not apply are unreachable, so they are reported blocked
+    // rather than presented as available.
     if (!agreementRequired) blocked.push("RULES", "AGREEMENT");
+    if (!guardianRequired) blocked.push("GUARDIAN");
     return Array.from(new Set(blocked));
   }
 
@@ -625,16 +689,11 @@ export class ActivationWorkflowService {
 
     const gPhone = safeNormalizeWhatsApp(tenant.phone_2 || tenant.guardian_phone);
     const ePhone = safeNormalizeWhatsApp(tenant.phone_3 || tenant.emergency_contact);
+    const guardianPolicy = await this.resolveGuardianVerificationPolicy(tenant.hostel_id);
 
-    const guardianVerifiedRecord = gPhone
-      ? await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: gPhone,
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      })
-      : null;
+    const guardianVerified = gPhone
+      ? await isGuardianPhoneVerifiedForTenant(tenant.id, gPhone)
+      : false;
 
     const emergencyVerifiedRecord = ePhone
       ? await prisma.phoneVerificationOtp.findFirst({
@@ -646,11 +705,31 @@ export class ActivationWorkflowService {
       })
       : null;
 
+    /**
+     * ADR-212. The screen never decides the policy, the deadline or whether a
+     * wall is due — it renders what this says. The rule and the validation that
+     * enforces it come from one pure module either way, so the Identity screen
+     * and `saveProfile` cannot drift apart.
+     */
+    const guardianStatus = resolveGuardianVerification({
+      policy: guardianPolicy,
+      hasGuardianPhone: Boolean(gPhone),
+      verified: guardianVerified,
+      guardianRequired: String(tenant.profile_type || "STUDENT").toUpperCase() === "STUDENT",
+      deferredAt: tenant.guardian_verification_deferred_at || null,
+      nextPromptAt: tenant.guardian_verification_next_prompt_at || null,
+      now: new Date(),
+    });
+
     return {
       token_status: "VALID",
       verification_status: {
-        guardian_verified: guardianVerifiedRecord ? true : false,
+        guardian_verified: guardianVerified,
         emergency_verified: emergencyVerifiedRecord ? true : false,
+        guardian_policy: guardianPolicy,
+        guardian_state: guardianStatus.state,
+        guardian_deadline_at: guardianStatus.deadlineAt,
+        guardian_chased: guardianStatus.chased,
       },
       activation_state: state,
       activation_financial_status: activationFinancialStatus,
@@ -831,7 +910,7 @@ export class ActivationWorkflowService {
   }
 
   async mutate(ref: ActivationCredential, step: ActivationStep, data: any, context: { ip: string; userAgent: string }) {
-    if (!["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"].includes(step)) {
+    if (!["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "GUARDIAN", "ACTIVATE"].includes(step)) {
       throw new Error("VALIDATION_ERROR: Unsupported activation step");
     }
     const resolved = await this.resolveSubject(ref);
@@ -894,6 +973,9 @@ export class ActivationWorkflowService {
     if (step === "PROFILE") {
       await this.saveProfile(profile, tenant, data);
     }
+    if (step === "GUARDIAN") {
+      await this.saveGuardian(tenant, data);
+    }
     if (step === "ACTIVATE") {
       await this.activate(profile, tenant, data, invitation);
       const requiredDocumentTypes = this.requiredDocumentTypes(tenant.profile_type);
@@ -942,9 +1024,18 @@ export class ActivationWorkflowService {
     // A hostel that does not require an agreement has no rules/agreement steps
     // to gate on, and attempting them is itself invalid.
     const agreementRequired = state.agreement_required !== false;
+    const guardianRequired = state.guardian_required !== false;
 
     if (!agreementRequired && (step === "RULES" || step === "AGREEMENT")) {
       throw new Error("INVALID_TRANSITION: This hostel does not require a tenant agreement");
+    }
+    if (!guardianRequired && step === "GUARDIAN") {
+      throw new Error("INVALID_TRANSITION: This tenancy is not asked for a parent or guardian");
+    }
+    // Identity first: the guardian screen prefills from the tenant's own record
+    // and its copy names them, so it has nothing to work with beforehand.
+    if (step === "GUARDIAN" && !state.profile_completed) {
+      throw new Error("INVALID_TRANSITION: Complete your profile before adding a guardian");
     }
 
     if (step === "RULES" && !state.account_setup_completed) {
@@ -964,10 +1055,18 @@ export class ActivationWorkflowService {
     if (agreementRequired && step === "AGREEMENT" && !state.profile_completed) {
       throw new Error("INVALID_TRANSITION: Complete your profile before signing agreement");
     }
+    // ADR-213: and the guardian precedes the agreement, because a guardian may
+    // co-sign it — `signAgreement` reads the relation this step collects.
+    if (agreementRequired && guardianRequired && step === "AGREEMENT" && !state.guardian_completed) {
+      throw new Error("INVALID_TRANSITION: Add your parent or guardian before signing agreement");
+    }
     if (step === "ACTIVATE") {
       if (!state.account_setup_completed) throw new Error("INVALID_TRANSITION: Account setup is incomplete");
       if (agreementRequired && !state.rules_accepted) throw new Error("INVALID_TRANSITION: Rules must be accepted before activation");
       if (!state.profile_completed) throw new Error("INVALID_TRANSITION: Required profile fields are incomplete");
+      if (guardianRequired && !state.guardian_completed) {
+        throw new Error("INVALID_TRANSITION: Parent or guardian details are incomplete");
+      }
       if (agreementRequired && !state.agreement_signed) throw new Error("INVALID_TRANSITION: Agreement must be signed before activation");
     }
   }
@@ -984,6 +1083,22 @@ export class ActivationWorkflowService {
       select: { preferences_config: true },
     });
     return isAgreementRequired(hostel?.preferences_config);
+  }
+
+  /**
+   * The hostel's guardian-verification policy (ADR-212). Deliberately mirrors
+   * `resolveAgreementRequired` above, down to selecting only
+   * `preferences_config` — this schema's `hostels` reads are explicit about
+   * their columns, and a `select`-less read here would ask for every column the
+   * model declares, which is how one field addition took production down on
+   * 2026-08-22.
+   */
+  private async resolveGuardianVerificationPolicy(hostelId: string): Promise<GuardianVerificationPolicy> {
+    const hostel = await prisma.hostels.findUnique({
+      where: { id: hostelId },
+      select: { preferences_config: true },
+    });
+    return readGuardianVerificationPolicy(hostel?.preferences_config);
   }
 
   private async signAgreement(profile: any, tenant: any, data: any, context: { ip: string; userAgent: string }, invitation?: any) {
@@ -1378,64 +1493,31 @@ export class ActivationWorkflowService {
       }).value ||
       tenant.gender;
     const dob = validDateOfBirth(data?.date_of_birth || tenant.date_of_birth);
-    const guardianPhone = data?.guardian_phone || data?.phone_2
-      ? normalizeIndianPhone(data?.guardian_phone || data?.phone_2)
-      : null;
     const emergencyPhone = data?.phone_3 || data?.emergency_phone || data?.emergency_contact
       ? normalizeIndianPhone(data?.phone_3 || data?.emergency_phone || data?.emergency_contact)
       : null;
     if (!phone) throw new Error("VALIDATION_ERROR: Valid primary phone is required");
-    if (guardianPhone === null && (data?.guardian_phone || data?.phone_2)) throw new Error("VALIDATION_ERROR: Valid guardian phone is required");
     // Emergency contact is no longer collected on the Identity screen (ADR-070
     // amendment) — optional here, same as guardian phone: only validated for
     // format if one was actually provided, never required.
     if (emergencyPhone === null && (data?.phone_3 || data?.emergency_phone || data?.emergency_contact)) {
       throw new Error("VALIDATION_ERROR: Valid emergency contact phone is required");
     }
-    assertUniqueActivationPhones({ primary: phone, guardian: guardianPhone, emergency: emergencyPhone });
-    await assertGuardianPhoneNotTenant(guardianPhone, tenant.id);
+    // The guardian's number is compared against these two on the GUARDIAN step
+    // instead, where it is entered — the tenancy's stored primary and emergency
+    // numbers are what it has to be distinct from.
+    assertUniqueActivationPhones({ primary: phone, emergency: emergencyPhone });
     if (!["Male", "Female", "Other", "Prefer not to say"].includes(gender)) throw new Error("VALIDATION_ERROR: Gender is required");
     if (!dob) throw new Error("VALIDATION_ERROR: Valid date of birth is required");
     if (!tenant.photo_url && !data?.photo_url) throw new Error("VALIDATION_ERROR: Profile photo is required");
 
     const profileType = data?.profile_type ? String(data.profile_type).toUpperCase() : tenant.profile_type || "STUDENT";
 
-    if (profileType === "STUDENT") {
-      if (!data?.guardian_name?.trim()) throw new Error("VALIDATION_ERROR: Parent/Guardian name is required for students");
-      if (!guardianPhone) throw new Error("VALIDATION_ERROR: Parent/Guardian phone number is required for students");
-      // guardian_relation is intentionally not required here (ADR-070's Identity
-      // screen collects name+phone only, matching the design source) — it's
-      // filled in later if a guardian co-signs the residency agreement
-      // (`signAgreement()` writes it back), and stays null otherwise.
-    }
-
-    const currentGuardianPhone = tenant.phone_2 || tenant.guardian_phone;
-    const isGuardianVerified = guardianPhone
-      ? await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: safeNormalizeWhatsApp(guardianPhone),
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      })
-      : null;
-
-    if (guardianPhone && !isGuardianVerified) {
-      const guardianOtp = data?.guardian_otp ? String(data.guardian_otp).trim() : "";
-      if (!guardianOtp) {
-        throw new Error("VALIDATION_ERROR: Verification code is required to verify the parent/guardian mobile number");
-      }
-      try {
-        await authOtpService.verifyPhoneOtp({
-          phone: guardianPhone,
-          otp: guardianOtp,
-          purpose: "ParentVerify",
-          requestIp: null,
-        });
-      } catch (otpErr: any) {
-        throw new Error(`VALIDATION_ERROR: Parent/Guardian mobile verification failed: ${otpErr.message || "Invalid or expired code"}`);
-      }
-    }
+    // ADR-213: the guardian is no longer this screen's business. Identity is
+    // the tenant's own record; who vouches for them is the step after. A
+    // STUDENT is still required to give a guardian before activation — that is
+    // now enforced by `saveGuardian` and by `assertTransition`, where the
+    // requirement belongs, rather than buried in a profile-type branch here.
 
     // Emergency phone is collected but OTP verification is not required during onboarding.
     // This removes friction without reducing operational safety — emergency contacts are informational.
@@ -1457,11 +1539,8 @@ export class ActivationWorkflowService {
         where: { id: tenant.id },
         data: compactObject({
           phone_1: phone,
-          phone_2: guardianPhone || undefined,
+
           phone_3: emergencyPhone || undefined,
-          guardian_name: data?.guardian_name || undefined,
-          guardian_phone: guardianPhone || undefined,
-          guardian_relation: data?.guardian_relation || undefined,
           gender,
           date_of_birth: dob,
           profile_type: ["STUDENT", "WORKING_PROFESSIONAL"].includes(profileType) ? profileType : "STUDENT",
@@ -1480,13 +1559,6 @@ export class ActivationWorkflowService {
           onboarding_last_activity_at: new Date(),
         }),
       });
-      await tx.agreement.updateMany({
-        where: { tenant_id: tenant.id },
-        data: compactObject({
-          guardian_signature_name: data?.guardian_name || undefined,
-          guardian_relation: data?.guardian_relation || undefined,
-        }),
-      });
       // profile_type is written just above; keep document_verified honest
       // against the type's required documents (never inferred here — this only
       // recomputes from existing rows, and onboarding never blocks on it).
@@ -1494,24 +1566,149 @@ export class ActivationWorkflowService {
     });
     await eventLog.log("profile_completed", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id }, tenant.id);
 
-    // The guardian's number has just been proved (`ParentVerify`, above) and
-    // written. Tell the guardian what that number can now do — until this, the
-    // verification produced a database row and total silence, and the first
-    // message a guardian ever received was a rent reminder weeks later.
-    //
-    // After the transaction, deliberately: the send reads `guardian_name`,
-    // `guardian_phone` and the hostel back from the committed row rather than
-    // re-deriving them here, so it cannot describe a tenancy that rolled back.
-    // Non-blocking — onboarding never fails because WhatsApp did.
-    if (guardianPhone) {
+  }
+
+  /**
+   * The GUARDIAN step (ADR-213) — who vouches for this tenant.
+   *
+   * ## Why this is its own step
+   *
+   * The Identity screen used to carry two unrelated subjects: the tenant's own
+   * record, and their guardian's. They read as one long form but answer
+   * different questions of different people, and the guardian half is the half
+   * that can stall — it is the only part of onboarding that depends on somebody
+   * who is not in the room. Giving it its own step means the tenant's identity
+   * is *saved and done* before anything that depends on a third party begins,
+   * rather than one screen being un-submittable because a parent is not
+   * answering.
+   *
+   * ## What it demands
+   *
+   * Name, relation and number — all three. Relation is new: it used to be
+   * collected only when a guardian co-signed the agreement, so most tenancies
+   * simply never had one, and an owner looking at a number could not tell a
+   * mother from an uncle from a family friend.
+   *
+   * Verification is **not** demanded. ADR-212 made an unverified guardian a
+   * state the product carries rather than a door that will not open, and
+   * re-imposing it here as a step gate would undo that in a new place. A code,
+   * when supplied, is still checked as strictly as ever — a *wrong* code fails
+   * hard, because accepting bad proof is worse than having none.
+   */
+  private async saveGuardian(tenant: any, data: any) {
+    const name = String(data?.guardian_name || "").trim();
+    const relation = String(data?.guardian_relation || "").trim();
+    const rawPhone = data?.guardian_phone || data?.phone_2;
+    const guardianPhone = rawPhone ? normalizeIndianPhone(rawPhone) : null;
+
+    if (!name) throw new Error("VALIDATION_ERROR: Parent/Guardian name is required");
+    if (!relation) throw new Error("VALIDATION_ERROR: Relationship to the tenant is required");
+    if (!rawPhone) throw new Error("VALIDATION_ERROR: Parent/Guardian phone number is required");
+    if (!guardianPhone) throw new Error("VALIDATION_ERROR: Valid guardian phone is required");
+
+    // Compared against what is already on the tenancy rather than against
+    // co-submitted fields: the primary and emergency numbers were saved on the
+    // previous step, so they are the record this has to be distinct from.
+    assertUniqueActivationPhones({
+      primary: tenant.phone_1 || tenant.profiles?.phone || null,
+      guardian: guardianPhone,
+      emergency: tenant.phone_3 || null,
+    });
+    await assertGuardianPhoneNotTenant(guardianPhone, tenant.id);
+
+    const alreadyVerified = await isGuardianPhoneVerifiedForTenant(tenant.id, guardianPhone);
+
+    /**
+     * A supplied code is checked; a missing one is a deferral, recorded with a
+     * date and a reason so it can be chased rather than forgotten (ADR-212).
+     */
+    let deferral: { deferredAt: Date; nextPromptAt: Date; reason: string | null } | null = null;
+
+    if (!alreadyVerified) {
+      const otp = data?.guardian_otp ? String(data.guardian_otp).trim() : "";
+      if (otp) {
+        try {
+          await authOtpService.verifyPhoneOtp({
+            phone: guardianPhone,
+            otp,
+            purpose: "ParentVerify",
+            requestIp: null,
+            tenantId: tenant.id,
+          });
+        } catch (otpErr: any) {
+          throw new Error(
+            `VALIDATION_ERROR: Parent/Guardian mobile verification failed: ${otpErr.message || "Invalid or expired code"}`,
+          );
+        }
+      } else {
+        const reason = isGuardianDeferralReason(data?.guardian_verification_deferred_reason)
+          ? String(data.guardian_verification_deferred_reason)
+          : null;
+        // Both dates are kept, not recomputed, on a re-save: the clock measures
+        // how long the tenant has had, and a tenant who has already dismissed
+        // the wall once has a nearer date than `deferredAt + 7` that editing
+        // this screen must not push back out.
+        const deferredAt = tenant.guardian_verification_deferred_at || new Date();
+        deferral = {
+          deferredAt,
+          nextPromptAt: tenant.guardian_verification_next_prompt_at || guardianDeadline(deferredAt)!,
+          reason: reason ?? tenant.guardian_verification_deferred_reason ?? null,
+        };
+      }
+    }
+
+    await prisma.$transaction(async (tx: any) => {
+      await tx.tenants.update({
+        where: { id: tenant.id },
+        data: compactObject({
+          phone_2: guardianPhone,
+          guardian_name: name,
+          guardian_phone: guardianPhone,
+          guardian_relation: relation,
+          onboarding_last_activity_at: new Date(),
+          // `compactObject` drops `undefined`, so a tenant who verified on this
+          // save leaves the deferral columns untouched rather than nulling
+          // them — the record of having deferred is worth keeping once the
+          // clock has stopped mattering.
+          guardian_verification_deferred_at: deferral?.deferredAt ?? undefined,
+          guardian_verification_next_prompt_at: deferral?.nextPromptAt ?? undefined,
+          guardian_verification_deferred_reason: deferral?.reason ?? undefined,
+        }),
+      });
+      // Carried onto the agreement so a co-signing guardian's name and relation
+      // are already filled in when they reach it — which is the reason this
+      // step sits before AGREEMENT rather than after.
+      await tx.agreement.updateMany({
+        where: { tenant_id: tenant.id },
+        data: { guardian_signature_name: name, guardian_relation: relation },
+      });
+    });
+
+    await eventLog.log(
+      "guardian_saved",
+      tenant.owner_id || null,
+      { tenant_id: tenant.id, hostel_id: tenant.hostel_id, verified: alreadyVerified || !deferral },
+      tenant.id,
+    );
+
+    /**
+     * Tell the guardian what their number can now do — but only once it is
+     * actually proved (ADR-212). The template says "Guardian Access Activated"
+     * and invites the reader to tap [Help]; sending that to someone who has
+     * confirmed nothing would announce access that does not exist, to a person
+     * who may not know they were named at all.
+     *
+     * After the transaction, deliberately: the send reads the guardian and the
+     * hostel back from the committed row, so it cannot describe a tenancy that
+     * rolled back. Non-blocking — onboarding never fails because WhatsApp did.
+     */
+    if (!deferral) {
       try {
         const { sendGuardianActivation } = await import(
           "@/lib/services/notifications/command-center/guardian-activation"
         );
         await sendGuardianActivation(tenant.id);
       } catch (error: any) {
-        // `sendGuardianActivation` already swallows its own failures; this
-        // catch only covers the dynamic import itself.
         console.error("Guardian activation notice failed:", error);
       }
     }
@@ -1601,25 +1798,22 @@ export class ActivationWorkflowService {
       throw new Error("VALIDATION_ERROR: Required activation steps are incomplete");
     }
 
-    // Explicitly enforce OTP verification on the backend before finalizing activation
-    const isStudent = String(tenantNow.profile_type || "STUDENT").toUpperCase() === "STUDENT";
-    const hasGuardian = Boolean(tenantNow.phone_2 || tenantNow.guardian_phone);
-    if (isStudent || hasGuardian) {
-      const gPhone = safeNormalizeWhatsApp(tenantNow.phone_2 || tenantNow.guardian_phone);
-      if (!gPhone) {
-        throw new Error("VALIDATION_ERROR: Parent/Guardian phone number is required");
-      }
-      const gVerified = await prisma.phoneVerificationOtp.findFirst({
-        where: {
-          phone: gPhone,
-          purpose: "ParentVerify",
-          status: "VERIFIED",
-        },
-      });
-      if (!gVerified) {
-        throw new Error("VALIDATION_ERROR: Parent/Guardian phone number must be verified via OTP");
-      }
-    }
+    /**
+     * ADR-212 removed a second, independent guardian-OTP gate that stood here.
+     *
+     * It re-read the OTP trail and threw
+     * "Parent/Guardian phone number must be verified via OTP" for any STUDENT,
+     * or anyone who had entered a guardian number at all — duplicating a check
+     * `saveProfile` had already made, and making an unreachable parent the last
+     * thing standing between a tenant and their own account.
+     *
+     * A STUDENT is still required to *give* a guardian number (`saveProfile`
+     * enforces that, and still does). What no longer happens is blocking
+     * activation on a third party confirming it. An unverified guardian is now
+     * a state the product carries and chases — a badge, a dated deferral, and a
+     * skippable wall in a MANDATORY hostel — rather than a door that will not
+     * open.
+     */
 
     // Emergency contact is no longer collected on the Identity screen
     // (ADR-070 amendment) — informational only, never required to activate.

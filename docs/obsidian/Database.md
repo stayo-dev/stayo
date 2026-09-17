@@ -93,6 +93,7 @@ The fourth onboarding field, the security deposit, needed no column — it goes 
 
 **`preferences_config` keys added 2026-08-09** (both JSON-only, no migration):
 - `tenant_rules.agreement_required` — boolean, default `true`. Whether tenants must accept rules and sign before activation ([[Decisions#ADR-059|ADR-059]]). Absent/null reads as `true`.
+- `tenant_rules.guardian_verification` — `'MANDATORY' | 'OPTIONAL'`, default `MANDATORY`. Whether an unverified parent/guardian number is *chased* or merely *recorded* ([[Decisions#ADR-212|ADR-212]]). Absent/null reads as `MANDATORY` — every hostel predating the field was verifying unconditionally, so an absent flag must not read as "stop asking". Neither value blocks activation, and both still collect the number. Coerced on read (`readGuardianVerificationPolicy` / `guardianVerificationPolicy`) but validated **strictly on the patch** in `hostelPolicyService`, because `mergePolicy` ends by re-normalising and would otherwise turn a caller's typo into a silent `MANDATORY`.
 - `billing.deposit.calculation_mode` — `FLAT` | `MONTHS_OF_RENT`. Newly *written* by the UI; the field and its flat mirror `billing_defaults.deposit_calculation_mode` already existed and were already read by `resolveTenantInviteDefaults` ([[Decisions#ADR-060|ADR-060]]). See [[Business-Rules]] for how the amount resolves.
 
 **`preferences_config.meal_timings` key added 2026-08-19** ([[Decisions#ADR-083|ADR-083]], JSON-only, no migration): `{ BREAKFAST: {start, end, enabled}, LUNCH: {...}, SNACKS: {...}, DINNER: {...} }`, `start`/`end` as `"HH:mm"` 24h strings. Permanent per-hostel serving-window config, deliberately separate from `food_schedule_meals` (which still carries only a dish name per day/meal-type, never a time). Absent/malformed reads normalize per-meal to `DEFAULT_MEAL_TIMINGS` (07:00–09:00 / 12:30–14:00 / 17:00–18:00 / 19:00–21:00) via `lib/services/food/meal-timings.ts`'s `normalizeMealTimings` — a hostel that has never configured this has the same experience as one that has, just with the defaults. Written only via `PATCH /api/hostels/[id]/meal-timings` (read-modify-write against the whole blob, same discipline as `billing_defaults` above). See [[APIs]], [[Business-Rules]], [[Food]].
@@ -825,3 +826,25 @@ Also missing: migrations **075** (payout promise date + payer attribution — co
 **Reliability of this audit.** Objects with lowercase names are reliable. The run compared table/index names case-sensitively, so mixed-case Prisma names (e.g. `RenewalOffer`, `Agreement_*_idx`) may be reported missing when present — those are excluded above. A re-run with the fix was blocked, so treat mixed-case findings as **Unknown / needs clarification**. Each unique guard can fail to build if production already holds duplicates; check before applying (see [[TODO]]).
 
 See [[TODO]], [[Business-Rules]], [[Decisions#ADR-198|ADR-198]] (082), [[Bugs]].
+
+### Guardian verification columns (2026-09-16, [[Decisions#ADR-212|ADR-212]])
+
+Migration `prisma/migrations/20260916120000_guardian_verification_policy`. **Apply before deploying the code that declares these** — both tables are read by `include:`-only queries in this codebase, and Prisma requests every declared scalar on a `select`-less read. That exact mistake with `hostels.navigation` 500'd every public listing page on 2026-08-22.
+
+**On `tenants`** — deferral state only. There is deliberately **no `guardian_verified` boolean**: verification proof stays in the `phone_verification_otps` audit trail, which is the stance `guardian-access.ts` already documents ("one record of what happened and no second thing to keep in sync with it"). What the trail cannot hold is the promise a tenant made when they deferred.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `guardian_verification_deferred_at` | `timestamptz(6)?` | When the tenant chose to verify later. Starts the fixed 7-day clock in a MANDATORY hostel. NULL = never deferred, which is **not** the same as verified. |
+| `guardian_verification_deferred_reason` | `text?` | `NOT_REACHABLE_NOW \| TRAVELLING \| NO_WHATSAPP \| PREFER_NOT_TO`. A plain string, not a Prisma enum, matching this schema's convention for descriptive statuses; the set is enforced by `isGuardianDeferralReason` at the service boundary. |
+| `guardian_verification_next_prompt_at` | `timestamptz(6)?` | When to ask again. `deferred_at + 7 days` on the first deferral, pushed forward 3 days by each dismissal. The back-off is a **date**, not a counter — see [[Bugs]] for why the counter version could only fire once. |
+| `guardian_verification_prompt_count` | `int` default `0` | How many times the tenant has dismissed the overdue wall. Reporting only; it gates nothing. |
+
+**On `phone_verification_otps`** — `tenant_id uuid?` (FK → `tenants.id`, `ON DELETE SET NULL`, plus index `(tenant_id, purpose, status)`).
+
+- **Why:** the onboarding check was `{ phone, purpose: 'ParentVerify', status: 'VERIFIED' }` — phone-scoped, global, no time window — so any number verified once read as verified for every tenant, for ever. Tolerable while the answer only decided whether to ask for a code about to be typed anyway; not tolerable once a "Verified" badge depends on it.
+- **Deliberately not backfilled.** Nothing in the trail records which tenancy a historical code was sent for. Backfilling by phone would reproduce the exact assumption being removed, dressed as data. `tenant_id IS NULL` is accepted as legacy on the read path; the population stops growing the day this ships.
+- **`ON DELETE SET NULL`, not `CASCADE`** — the trail is an audit record of what was sent to a real handset, and deleting a tenancy must not erase the evidence.
+- The index is **not** partial on `tenant_id IS NOT NULL`, even though every lookup lands there: Prisma cannot express a partial index, and a declared index that does not match the applied one is drift nobody notices until it matters.
+
+**Applied to production 2026-09-17** and verified against `information_schema`. Migrations here are applied with `npm run db:apply -- <file>` (`apps/backend/scripts/apply-sql.ts`) — `prisma migrate deploy` is unusable against this project and `prisma db execute` cannot reach the pooler. Never assume a migration has run; the runner's `--dry-run` tells you, and several older migrations are still outstanding.

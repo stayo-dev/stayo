@@ -42,20 +42,12 @@ export type IdentityState = {
   gender: string;
   dateOfBirth: string;
   profileType: string;
-  guardianName: string;
-  guardianPhone: string;
-  guardianVerified: boolean;
   photoUploaded: boolean;
   docItems: OnboardingDocItem[];
 };
 
-function isStudent(profileType: string): boolean {
-  return String(profileType || 'STUDENT').toUpperCase() === 'STUDENT';
-}
-
 export function identityIssues(state: IdentityState, today: Date = new Date()): Issue[] {
   const issues: Issue[] = [];
-  const student = isStudent(state.profileType);
 
   if (!state.photoUploaded) {
     issues.push({ field: 'photo', label: 'Profile photo', message: 'Add a photo of yourself — tap the circle to take one.' });
@@ -93,21 +85,6 @@ export function identityIssues(state: IdentityState, today: Date = new Date()): 
     issues.push({ field: 'date_of_birth', label: 'Date of birth', message: `${dob.message}.` });
   }
 
-  // A working professional need not name a guardian — but once they start
-  // entering one, the half-filled pair has to be completed and verified.
-  const guardianStarted = Boolean(state.guardianName.trim() || phoneDigits(state.guardianPhone));
-  if (student || guardianStarted) {
-    if (!state.guardianName.trim()) {
-      issues.push({ field: 'guardian_name', label: "Guardian's name", message: "Add your parent or guardian's full name." });
-    }
-    const guardianDigits = phoneDigits(state.guardianPhone);
-    if (guardianDigits.length !== 10) {
-      issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: "Enter your parent or guardian's 10-digit mobile number." });
-    } else if (!state.guardianVerified) {
-      issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: 'Verify this number with the code we send to it.' });
-    }
-  }
-
   for (const docType of requiredKycDocTypes(state.profileType)) {
     const item = state.docItems.find((d) => String(d.doc_type).toUpperCase() === docType);
     const status = String(item?.document_status || 'MISSING').toUpperCase();
@@ -117,6 +94,58 @@ export function identityIssues(state: IdentityState, today: Date = new Date()): 
     } else if (!isDocUploaded(item)) {
       issues.push({ field: `doc:${docType}`, label: kycDocLabel(docType), message: `Upload a photo of your ${kycDocLabel(docType)}.` });
     }
+  }
+
+  return issues;
+}
+
+/**
+ * The GUARDIAN step's own rules (ADR-213).
+ *
+ * These used to live inside `identityIssues`, and were left there when the
+ * screens were split — so pressing Continue on Identity reported things left to
+ * do and then tried to scroll to controls that were no longer rendered. The
+ * tenant saw a count they could not act on. Guidance has to move with the
+ * fields it describes; that is the whole contract between this module and the
+ * anchors.
+ */
+export type GuardianState = {
+  name: string;
+  relation: string;
+  phone: string;
+  verified: boolean;
+  /**
+   * Set when the tenant has said their guardian cannot confirm right now.
+   * Satisfies the step exactly as verification does — ADR-212 made deferral a
+   * legitimate way through, and guidance that kept asking anyway would be
+   * telling them to do something the product has already accepted they cannot.
+   */
+  deferralReason: string | null;
+};
+
+export function guardianIssues(state: GuardianState): Issue[] {
+  const issues: Issue[] = [];
+
+  if (!state.name.trim()) {
+    issues.push({ field: 'guardian_name', label: "Guardian's name", message: "Add your parent or guardian's full name." });
+  }
+
+  if (!state.relation.trim()) {
+    issues.push({ field: 'guardian_relation', label: 'Relationship', message: 'Choose how they are related to you.' });
+  }
+
+  const digits = phoneDigits(state.phone);
+  if (digits.length !== 10) {
+    issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: "Enter your parent or guardian's 10-digit mobile number." });
+  } else if (!state.verified && !state.deferralReason) {
+    // Names all three ways out, in the order the screen offers them. "Verify
+    // this number" was true and useless to someone whose parent is not picking
+    // up — which is the case this step exists to handle.
+    issues.push({
+      field: 'guardian_phone',
+      label: "Guardian's mobile",
+      message: 'Ask them to confirm on WhatsApp, enter the code they were sent, or tell us they can’t right now.',
+    });
   }
 
   return issues;

@@ -5,6 +5,13 @@ import { applyDueDayChangeInTx } from "@/src/services/payments/due-day-change-se
 
 export type MaintenanceType = "MONTHLY" | "ONE_TIME" | "NONE";
 export type RentCycle = "MONTHLY";
+export type GuardianVerificationPolicy = "MANDATORY" | "OPTIONAL";
+
+export const GUARDIAN_VERIFICATION_POLICIES: readonly GuardianVerificationPolicy[] = [
+  "MANDATORY",
+  "OPTIONAL",
+] as const;
+
 export type PaymentFrequencySetting = "MONTHLY" | "QUARTERLY" | "HALF_YEARLY" | "ACADEMIC_YEARLY" | "CUSTOM_INSTALLMENTS";
 
 export type HostelPolicy = {
@@ -129,6 +136,21 @@ export type HostelPolicy = {
      * rent changes, obligations and renewals are keyed to. See ADR-059.
      */
     agreement_required: boolean;
+    /**
+     * Whether an unverified parent/guardian number is *chased* or merely
+     * *recorded*. Defaults to MANDATORY, which is what every hostel got
+     * unconditionally before this field existed — an absent flag must never
+     * silently stop asking.
+     *
+     * Neither value blocks activation: a tenant standing at the desk whose
+     * parent is asleep can always defer and come back to it
+     * (`activation-workflow-service`). What MANDATORY buys is a 7-day clock
+     * and a skippable wall afterwards; OPTIONAL records the state, shows a
+     * neutral badge, and chases nobody. The number itself is collected either
+     * way, so the emergency contact and the guardian WhatsApp channel survive
+     * in both. See ADR-212.
+     */
+    guardian_verification: GuardianVerificationPolicy;
   };
 
   room_rules: {
@@ -226,6 +248,22 @@ function asArray(value: unknown): any[] {
 
 function bool(value: unknown, fallback: boolean) {
   return value === undefined || value === null ? fallback : Boolean(value);
+}
+
+/**
+ * Coerces a stored `tenant_rules.guardian_verification` to a known value.
+ *
+ * Unrecognised input resolves to MANDATORY rather than throwing: this runs on
+ * the **read** path for every hostel, and a policy row that somehow holds
+ * junk should still render a working settings screen showing the strict
+ * default, not 500 the owner's Configuration tab. The write path validates
+ * strictly (see `validatePolicy`), so junk cannot get in through the API.
+ */
+function guardianVerificationPolicy(value: unknown): GuardianVerificationPolicy {
+  const normalized = String(value ?? "").toUpperCase();
+  return (GUARDIAN_VERIFICATION_POLICIES as readonly string[]).includes(normalized)
+    ? (normalized as GuardianVerificationPolicy)
+    : "MANDATORY";
 }
 
 function num(value: unknown, fallback: number) {
@@ -447,6 +485,9 @@ export function normalizeHostelPolicy(hostel: any): HostelPolicy {
       // requiring a signed agreement — an absent flag must never silently
       // relax a legal step.
       agreement_required: bool(tenantRules.agreement_required, true),
+      // Same reasoning as agreement_required directly above: absent means the
+      // pre-existing behaviour, which was to demand verification of everyone.
+      guardian_verification: guardianVerificationPolicy(tenantRules.guardian_verification),
     },
 
     room_rules: {
@@ -715,7 +756,26 @@ function deepMerge<T extends Record<string, any>>(base: T, patch: Record<string,
   return output as T;
 }
 
+/**
+ * Rejects an unrecognised `guardian_verification` before it reaches the merge.
+ *
+ * It has to happen here rather than in `validateHostelPolicyForWrite`, because
+ * `mergePolicy` ends by running the merged config back through
+ * `normalizeHostelPolicy`, which coerces anything unrecognised to MANDATORY.
+ * By the time a validator sees the policy, a typo is indistinguishable from an
+ * absent field — so a caller sending "OPTIONALL" would silently get the strict
+ * setting and no error. Checking the patch keeps that distinction.
+ */
+function assertGuardianVerificationPatch(patch: Record<string, any>) {
+  const value = asObject(patch.tenant_rules).guardian_verification;
+  if (value === undefined || value === null) return;
+  if (!(GUARDIAN_VERIFICATION_POLICIES as readonly string[]).includes(String(value).toUpperCase())) {
+    throw new Error("VALIDATION: Guardian verification must be MANDATORY or OPTIONAL");
+  }
+}
+
 function mergePolicy(current: HostelPolicy, patch: Record<string, any>): HostelPolicy {
+  assertGuardianVerificationPatch(patch);
   validateAllowedDomains(patch);
   const automationPatch = asObject(patch.automation);
   const receiptsPatch = asObject(patch.receipts);

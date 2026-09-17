@@ -243,7 +243,7 @@ Added 2026-08-27 ([[Decisions#ADR-127|ADR-127]], [[Decisions#ADR-128|ADR-128]]).
 ### Guardian access on WhatsApp
 
 1. **Recognition ≠ authorisation.** A phone matching `tenants.guardian_phone` resolves to role `GUARDIAN`, but the **first financial request** triggers a six-digit OTP to that handset (`authOtpService`, purpose `GUARDIAN_ACCESS`). Verification lasts **90 days**, read back from the `phone_verification_otps` row (`status = 'VERIFIED'`), not from a separate table.
-   - **Two purposes count**: `GUARDIAN_ACCESS` and `ParentVerify`. The second is the onboarding verification a tenant completes when adding their guardian — a code sent to that handset and entered back, which activation already refuses to proceed without. Recognising only the first would send a second code to a number verified minutes earlier, the moment the guardian taps [Help] on the activation notice below. The distinction is real and deliberate: `ParentVerify` proves the number was reachable and cooperated, `GUARDIAN_ACCESS` proves the person holding it *now* asked for access. Both expire into the same 90-day window, after which the stronger challenge is issued.
+   - **Two purposes count**: `GUARDIAN_ACCESS` and `ParentVerify`. The second is the onboarding verification a tenant completes when adding their guardian — a code sent to that handset and entered back, which activation used to refuse to proceed without (**changed 2026-09-16 by [[Decisions#ADR-212|ADR-212]]** — activation no longer blocks on it; see "Guardian verification" below). Recognising only the first would send a second code to a number verified minutes earlier, the moment the guardian taps [Help] on the activation notice below. The distinction is real and deliberate: `ParentVerify` proves the number was reachable and cooperated, `GUARDIAN_ACCESS` proves the person holding it *now* asked for access. Both expire into the same 90-day window, after which the stronger challenge is issued.
 2. **`GUARDIAN_ACCESS` never degrades.** It is excluded from `SKIPPABLE_OTP_PURPOSES`. When WhatsApp OTP delivery is unavailable the guardian is refused and pointed at the hostel — the check is not waived. Same rule as `PASSWORD_RESET`.
 3. **Scope: money and stay basics.** Dues, instalment progress, payment links, receipts, room, hostel, agreement dates. **Not** move-out requests, documents or KYC — enforced by the command set containing no reader for them, not by copy.
 4. **Person, not possession.** Guardians are addressed in the third person ("Aarav's rent"), residents in the second ("your rent"). A phone holding both relationships is judged **per resident**.
@@ -1119,3 +1119,38 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Reassigning a hostel never deletes assignment history.** `manager_hostel_assignments` rows are closed (`unassigned_at` set), never removed — so activity a manager performed while assigned stays attributable to them even after the hostel moves to someone else. A DB-level partial unique index enforces at most one *active* assignment per hostel.
 - **Manager (and admin) activity is recorded by the service layer, never by the frontend.** `recordManagerActivity` (`src/services/managers/manager-activity.ts`) is called from inside mutation services/routes — e.g. the hostel address-correction route — not from UI button handlers, so activity cannot be skipped by calling the API directly and bypassing a "log this" button. It reuses the existing generic `activity_logs` writer (`ActivityService`) rather than a second audit table, and follows the established `metadata.hostel_id` convention so the same expression index the owner-facing activity feed already uses (`migrations/082_activity_logs_hostel_index.sql`) also serves the Super Admin's manager-activity feed.
 - **Onboarding progress is derived, not stored.** No per-hostel step-tracking table exists or is planned to be added; a hostel's setup checklist is meant to be computed from existing signals (verification/listing status, rooms, documents, etc.) the same way `ownerHealth.ts` derives owner health — see [[Features]] for what is and isn't built yet.
+
+## The activation sequence
+
+`ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE` ([[Decisions#ADR-213|ADR-213]]), server-enforced by `assertTransition` — the order is not a UI convention.
+
+Two steps are exempt-able, independently:
+
+- **RULES + AGREEMENT** drop out when `tenant_rules.agreement_required` is false ([[Decisions#ADR-059|ADR-059]]).
+- **GUARDIAN** drops out when the tenancy is not asked for one: `guardianRequired` is true for a STUDENT, and for anyone who has volunteered a guardian number. A number on file that nobody has verified is exactly the state the step exists to resolve.
+
+Applicability is **recomputed on every read, never cached** — `profile_type` is chosen *on* the PROFILE step, so a tenancy legitimately grows a step partway through onboarding.
+
+`GUARDIAN` requires name, relation and number. Relation is a fixed list (Father/Mother/Guardian/Brother/Sister/Spouse/Other). Verification is deliberately **not** part of completion — see below.
+
+## Guardian verification
+
+Added 2026-09-16 ([[Decisions#ADR-212|ADR-212]]). **Files:** `src/services/tenants/guardian-verification.ts` (pure decisions), `guardian-verification-store.ts` (reads/writes), `lib/services/notifications/command-center/guardian-verify-request.ts` + `guardian-confirm-resolution.ts`.
+
+1. **A guardian number is always collected; whether the gap is *chased* is the owner's choice.** `tenant_rules.guardian_verification` is `MANDATORY` (the default, and what every hostel got unconditionally before this) or `OPTIONAL`. Both collect the number, both ask during onboarding, both let a tenant defer. Only MANDATORY sets a clock and reminds.
+
+2. **Nothing blocks activation.** Two gates used to: `saveProfile()` and, independently, `activate()`. Both are gone. A STUDENT must still *give* a guardian name and number — that is unchanged. A verification code that is supplied and wrong is still a hard failure; only its **absence** is now a deferral.
+
+3. **A deferral is dated.** `tenants.guardian_verification_deferred_at` starts a **fixed 7-day** window (`GUARDIAN_GRACE_DAYS`, deliberately not owner-configurable). A re-save keeps the original timestamp — the clock measures how long the tenant has had, not how recently they edited their address. `guardian_verification_deferred_reason` holds one of `NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO`.
+
+4. **The five states** (`resolveGuardianVerification`): `NOT_APPLICABLE` (no number, none required), `VERIFIED`, `PENDING_UNCHASED` (OPTIONAL hostel — terminal unless someone acts), `PENDING_GRACE`, `PENDING_OVERDUE`. An OPTIONAL hostel never computes a deadline **even if a deferral timestamp is on the row** from a period when it was MANDATORY: relaxing the policy must actually relax it, not leave a clock ticking invisibly.
+
+5. **The wall backs off.** `shouldShowGuardianWall` returns true the first time it comes due, then on every third dashboard entry (`guardian_verification_prompt_count`). It never denies entry — "Not now" is immediate and always present.
+
+6. **Proof is scoped to the tenancy.** `isGuardianPhoneVerifiedForTenant(tenantId, phone)` matches a `VERIFIED` `ParentVerify` row with `tenant_id = <this tenancy>` **or** `tenant_id IS NULL` (pre-ADR-212 rows, accepted as legacy and deliberately not backfilled). The old check matched on phone alone across all tenancies with no expiry. Note `guardian-access.isGuardianVerified` **keeps** its phone-wide 90-day lookup — it asks whether a handset is a verified guardian at all, which would be wrong to scope per tenant.
+
+7. **The guardian can confirm without a code.** A request writes a `PENDING` `ParentVerify` row whose `otp_hash` is of a value nobody is ever sent, and the `[Yes, I confirm]` quick reply on `stayo_guardian_verify_request` flips it to `VERIFIED`. One handset with several outstanding requests gets a picker (`resolveGuardianConfirmation` → `ASK_WHICH`), never a guess. A tap with nothing outstanding is answered as "nothing to confirm", not as an error.
+
+8. **`sendGuardianActivation` now requires proof, not intent.** It used to fire whenever a guardian number was entered; it announced access that did not exist to someone who may not have known they were named.
+
+Related: [[Decisions#ADR-212|ADR-212]], [[Database]], [[APIs]], [[Features]]
