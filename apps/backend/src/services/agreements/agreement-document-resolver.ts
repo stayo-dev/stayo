@@ -68,10 +68,17 @@ export function agreementDocumentInputFromRenderData(
     signatures: {
       tenantName: data.tenantSignatureName ?? null,
       tenantSignatureUrl: data.tenantSignatureUrl ?? null,
+      tenantSignedAt: data.tenantSignedAt ?? null,
+      tenantIp: data.tenantIp ?? null,
+      tenantUserAgent: data.tenantUserAgent ?? null,
       guardianName: data.guardianSignatureName ?? null,
       guardianSignatureUrl: data.guardianSignatureUrl ?? null,
       guardianRelation: data.guardianRelation ?? null,
+      guardianSignedAt: data.guardianSignedAt ?? null,
+      guardianIp: data.guardianIp ?? null,
+      guardianUserAgent: data.guardianUserAgent ?? null,
       ownerSignatureUrl: data.ownerSignatureUrl ?? null,
+      ownerSignedAt: data.ownerSignedAt ?? null,
     },
   };
 }

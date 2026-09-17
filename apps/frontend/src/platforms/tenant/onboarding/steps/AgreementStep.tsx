@@ -367,6 +367,24 @@ export function AgreementStep({
         facts={facts}
       />
 
+      {/*
+        No legal notice sits here, deliberately (ADR-217).
+
+        The line removed with the stub read: "Valid under the IT Act. Digital
+        signatures and IP details collected during onboarding are legally
+        binding." A signature captured as a drawn or photographed PNG is an
+        *electronic* signature; a "digital signature" under IT Act s.3 means an
+        asymmetric-crypto signature affixed with a Digital Signature
+        Certificate, which is not what this flow produces. The sentence claimed
+        a legal character the artifact does not have, and asserting
+        enforceability to the person being asked to sign is the wrong place to
+        be approximately right.
+
+        Saying nothing is the deliberate choice: the agreement itself carries
+        the platform attestation and the execution statement, both composed
+        server-side, and neither overstates what happened. Do not reinstate a
+        notice here without legal review.
+      */}
       {!rulesAccepted && (
         <div className="mt-3 rounded-[13px] border border-border bg-card p-4">
           <div className="text-[11.5px] font-extrabold uppercase tracking-[0.04em] text-foreground">
