@@ -5,6 +5,7 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { prisma } from "@/lib/db";
+import { normalizeAgreementTerms } from "@/src/services/agreements/agreement-terms";
 import { eventSystem } from "@/lib/events";
 import {
   getActiveTemplateAndSyncRuleVersion,
@@ -138,23 +139,17 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
         }
       }
 
-      // Validate terms_and_conditions (optional — backward compat)
-      if (rules_content.terms_and_conditions) {
-        if (!Array.isArray(rules_content.terms_and_conditions)) {
-          return apiError("terms_and_conditions must be an array", "VALIDATION_ERROR", 400);
-        }
-        for (const term of rules_content.terms_and_conditions) {
-          if (!term || typeof term !== "object") {
-            return apiError("Invalid term format", "VALIDATION_ERROR", 400);
-          }
-          if (!term.id || typeof term.id !== "string" || !term.id.trim()) {
-            return apiError("Term ID is required", "VALIDATION_ERROR", 400);
-          }
-          if (!term.content || typeof term.content !== "string" || !term.content.trim()) {
-            return apiError("Term content is required", "VALIDATION_ERROR", 400);
-          }
-        }
-      }
+      // The commercial terms: owners write the body, the headings are fixed.
+      //
+      // Normalised rather than validated. This used to check `id` and
+      // `content` per term and nothing else, so a client could rename a term,
+      // invent one, or drop the notice period and have it persist. It also
+      // rejected outright, which meant a malformed payload cost an owner their
+      // editing session. `normalizeAgreementTerms` returns the canonical five,
+      // in canonical order, with canonical titles and the owner's wording.
+      rules_content.terms_and_conditions = normalizeAgreementTerms(
+        rules_content.terms_and_conditions,
+      );
     }
 
     if (action === "publish" && !owner_name) {
