@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-17**: **Onboarding gains a dedicated Guardian step; Identity is the tenant's own record again** ([[Decisions#ADR-213|ADR-213]], [[Features]], [[APIs]], [[Business-Rules]]).
+  - **Changed:** the activation sequence is now `ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE`. The Identity screen carried two unrelated subjects — the tenant and their guardian — behind one submit button, so an unrelated complaint could surface while a tenant was trying to reach their parent.
+  - **Added:** `GUARDIAN` collects name, **relation** and number. Relation is newly required (previously captured only when a guardian co-signed the agreement — 1 of 9 production tenancies had one) and is a fixed list with an Other field.
+  - **Changed:** `requiredActivationSteps` now takes `{ agreementRequired, guardianRequired }`; the two exemptions compose. `guardianRequired` is true for a STUDENT or anyone who volunteered a guardian number, so a working professional never sees the step and gets no dead pip on the journey track.
+  - **Unchanged on purpose:** verification still does not gate the step — `guardian_completed` is the three fields on record. Re-imposing it would undo [[Decisions#ADR-212|ADR-212]] in a new place.
+  - **Fixed:** `activation-workflow-service.ts` carried its own duplicate `ActivationStep` union, which went stale the moment a step was added and made `step === "GUARDIAN"` typecheck as an impossible comparison. It now imports the canonical type.
+  - **Fixed:** the two long-standing failures in `tests/agreement-requirement.test.ts`, which asserted the pre-[[Decisions#ADR-070|ADR-070]] step order. **The backend pure suite is green for the first time: 2251/2251.**
+  - **Refactor:** `PhoneField` and `OtpBlock` extracted from `WelcomeIdentityStep` into `steps/phoneFields.tsx`, shared by both screens rather than copied.
+  - **Not verified:** no browser. `GuardianStep` has never been rendered — this app's suite is node-only — and nobody has walked the six-step flow end to end.
+
 - **2026-09-16**: **Guardian verification becomes a hostel policy — an unverified guardian no longer blocks a tenant** ([[Decisions#ADR-212|ADR-212]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).
   - **Changed:** both hard gates are gone. `saveProfile()` accepts a dated deferral with a reason instead of demanding a `ParentVerify` OTP, and `activate()`'s independent re-check (`Parent/Guardian phone number must be verified via OTP`) is deleted. A code that is supplied and *wrong* still fails hard. A STUDENT must still give a guardian number.
   - **Added (policy):** `tenant_rules.guardian_verification: 'MANDATORY' | 'OPTIONAL'`, default MANDATORY so no existing hostel relaxes silently. Both values collect the number and allow deferral; MANDATORY adds a 7-day clock and a backing-off wall, OPTIONAL chases nobody. Set in the Add Hostel builder's renamed **Onboarding rules** step and at Configuration › Guardian verification.

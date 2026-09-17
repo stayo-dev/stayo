@@ -1109,6 +1109,19 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
 
+## The activation sequence
+
+`ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE` ([[Decisions#ADR-213|ADR-213]]), server-enforced by `assertTransition` — the order is not a UI convention.
+
+Two steps are exempt-able, independently:
+
+- **RULES + AGREEMENT** drop out when `tenant_rules.agreement_required` is false ([[Decisions#ADR-059|ADR-059]]).
+- **GUARDIAN** drops out when the tenancy is not asked for one: `guardianRequired` is true for a STUDENT, and for anyone who has volunteered a guardian number. A number on file that nobody has verified is exactly the state the step exists to resolve.
+
+Applicability is **recomputed on every read, never cached** — `profile_type` is chosen *on* the PROFILE step, so a tenancy legitimately grows a step partway through onboarding.
+
+`GUARDIAN` requires name, relation and number. Relation is a fixed list (Father/Mother/Guardian/Brother/Sister/Spouse/Other). Verification is deliberately **not** part of completion — see below.
+
 ## Guardian verification
 
 Added 2026-09-16 ([[Decisions#ADR-212|ADR-212]]). **Files:** `src/services/tenants/guardian-verification.ts` (pure decisions), `guardian-verification-store.ts` (reads/writes), `lib/services/notifications/command-center/guardian-verify-request.ts` + `guardian-confirm-resolution.ts`.

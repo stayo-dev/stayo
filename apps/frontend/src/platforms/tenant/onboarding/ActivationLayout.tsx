@@ -12,6 +12,7 @@ interface ActivationLayoutProps {
   onStepClick: (step: ActivationVisualStep) => void;
   /** From `activation_state.agreement_required` — hides the Agreement stage when false. */
   agreementRequired?: boolean;
+  guardianRequired?: boolean;
   /** Dual-brand header (Stayo icon × hostel badge), ADR-070. */
   hostelName?: string;
   hostelLogoUrl?: string;
@@ -87,6 +88,7 @@ export function ActivationLayout({
   completedSteps,
   onStepClick,
   agreementRequired,
+  guardianRequired,
   hostelName,
   hostelLogoUrl,
   gender,
@@ -207,6 +209,7 @@ export function ActivationLayout({
                 completedSteps={completedSteps}
                 onStepClick={onStepClick}
                 agreementRequired={agreementRequired}
+                guardianRequired={guardianRequired}
                 bored={bored}
                 gender={gender}
               />

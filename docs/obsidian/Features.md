@@ -1560,6 +1560,29 @@ Built on [[Decisions#ADR-195|ADR-195]]; reads the occupancy engine from [[Decisi
 
 **Not yet exercised:** no kitchen has logged a single meal, so every hostel is still in the learning state and no ratio exists anywhere.
 
+## A dedicated Guardian step in onboarding (2026-09-17)
+
+See [[Decisions#ADR-213|ADR-213]]. The activation sequence is now
+`ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE`.
+
+**Identity belongs to the tenant.** It had been carrying two unrelated subjects behind one submit
+button — the tenant's own record and their guardian's — so a complaint about a missing profile
+photo could surface while someone was trying to reach their parent, and a parent who was not
+answering sat inside a screen full of fields that had nothing to do with them.
+
+**Guardian is its own screen**, and asks for name, **relation** and number. Relation is new: it was
+previously captured only when a guardian co-signed the agreement, so 1 of 9 production tenancies
+had one, and an owner looking at a number could not tell a mother from an uncle from a family
+friend. It is a fixed list rather than free text, with Other carrying its own field.
+
+**It is skipped for anyone not asked for a guardian** — a working professional who volunteered no
+number never sees the step, and no dead pip appears on the journey track. Applicability is
+recomputed rather than cached, because `profile_type` is chosen on the step before.
+
+**Verification still does not gate it.** Completion is the three fields on record, exactly as
+[[Decisions#ADR-212|ADR-212]] intended — the trap when something gets its own screen is that a
+screen feels like it ought to be passed.
+
 ## Guardian verification as a policy, not a gate (2026-09-16)
 
 See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Business-Rules]].

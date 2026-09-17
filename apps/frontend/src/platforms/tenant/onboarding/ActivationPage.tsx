@@ -11,6 +11,7 @@ import { ActivationLayout } from './ActivationLayout';
 import type { ActivationVisualStep } from './ActivationProgress';
 import { ActivationIntroScreen } from './ActivationIntroScreen';
 import { AgreementStep } from './steps/AgreementStep';
+import { GuardianStep } from './steps/GuardianStep';
 import { WelcomeIdentityStep, type ProfileDraft } from './steps/WelcomeIdentityStep';
 import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
@@ -580,20 +581,27 @@ export function ActivationPage() {
     }
   };
 
-  const submitProfile = async (): Promise<boolean> => {
-    if (isStudent) {
-      if (!profile.guardian_name?.trim()) {
-        setError('Parent/Guardian name is required.');
-        return false;
-      }
-      if (!profile.guardian_phone) {
-        setError('Parent/Guardian phone number is required.');
-        return false;
-      }
+  /**
+   * The GUARDIAN step (ADR-213). Validates the three fields this screen owns,
+   * then sends them plus whatever verification evidence exists — a code if one
+   * was entered, a deferral reason if the tenant said they could not.
+   */
+  const submitGuardian = async (): Promise<boolean> => {
+    if (!profile.guardian_name?.trim()) {
+      setError('Parent/Guardian name is required.');
+      return false;
     }
-    const invalidMessage = invalidPhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone }, ['primary', 'guardian']);
-    if (invalidMessage) {
-      setError(invalidMessage);
+    if (!profile.guardian_relation?.trim()) {
+      setError('Tell us how they are related to you.');
+      return false;
+    }
+    if (!profile.guardian_phone) {
+      setError('Parent/Guardian phone number is required.');
+      return false;
+    }
+    const invalidGuardian = invalidPhoneMessage({ guardian: profile.guardian_phone }, ['guardian']);
+    if (invalidGuardian) {
+      setError(invalidGuardian);
       return false;
     }
     const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone });
@@ -610,10 +618,39 @@ export function ActivationPage() {
      * The message names the way out rather than only the obstacle. "Verify
      * first" was true and useless to someone whose parent was not answering.
      */
-    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified && !guardianDeferralReason) {
-      setError(
-        'Verify the parent/guardian number, or tell us why it can’t be confirmed right now.',
-      );
+    if (!isGuardianPhoneVerified && !guardianDeferralReason) {
+      setError('Verify the parent/guardian number, or tell us why it can’t be confirmed right now.');
+      return false;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      return await submitStep('GUARDIAN', {
+        guardian_name: profile.guardian_name,
+        guardian_relation: profile.guardian_relation,
+        guardian_phone: profile.guardian_phone,
+        guardian_otp: guardianOtp,
+        // Sent only when the tenant actually chose to defer — the backend reads
+        // its absence as "no deferral this time", which is what stops a later
+        // save re-stamping a clock that already started.
+        ...(guardianDeferralReason ? { guardian_verification_deferred_reason: guardianDeferralReason } : {}),
+      });
+    } catch (err: any) {
+      setError(toErrorLine(resolveError(err, 'activation')));
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitProfile = async (): Promise<boolean> => {
+    // ADR-213: the guardian moved to its own step, so this screen validates the
+    // tenant's own record and nothing else. The primary number is still checked
+    // here; the guardian number is checked where it is now entered.
+    const invalidMessage = invalidPhoneMessage({ primary: profile.phone }, ['primary']);
+    if (invalidMessage) {
+      setError(invalidMessage);
       return false;
     }
     if (!profilePhotoFile && !profilePhotoPreview) {
@@ -636,15 +673,7 @@ export function ActivationPage() {
         const uploadRes = await tenantService.uploadActivationPhoto(token, profilePhotoFile);
         if (uploadRes?.photo_url) photoUrl = uploadRes.photo_url;
       }
-      const saved = await submitStep('PROFILE', {
-        ...profile,
-        photo_url: photoUrl,
-        guardian_otp: guardianOtp,
-        // ADR-212. Sent only when the tenant actually chose to defer — the
-        // backend reads its absence as "no deferral this time", which is what
-        // keeps a later save from re-stamping a clock that already started.
-        ...(guardianDeferralReason ? { guardian_verification_deferred_reason: guardianDeferralReason } : {}),
-      });
+      const saved = await submitStep('PROFILE', { ...profile, photo_url: photoUrl });
       if (saved) {
         clearProfileDraft(draftKey);
         setProfileDraftStatus('idle');
@@ -735,6 +764,7 @@ export function ActivationPage() {
       completedSteps={new Set(activationResult ? ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'] : ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
       agreementRequired={ctx.activation_state?.agreement_required !== false}
+      guardianRequired={ctx.activation_state?.guardian_required !== false}
       hostelName={ctx.hostel.name || 'Stayo'}
       hostelLogoUrl={ctx.hostel.logo_url}
       gender={profile.gender}
@@ -767,23 +797,6 @@ export function ActivationPage() {
             onDocUpload={handleDocUpload}
             profile={profile}
             setProfile={setProfile}
-            isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
-            setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
-            guardianOtp={guardianOtp}
-            setGuardianOtp={setGuardianOtp}
-            guardianOtpSent={guardianOtpSent}
-            guardianOtpSending={guardianOtpSending}
-            guardianOtpCountdown={guardianOtpCountdown}
-            guardianOtpVerifying={guardianOtpVerifying}
-            onAskGuardianToConfirm={handleAskGuardianToConfirm}
-            askingGuardian={askingGuardian}
-            guardianRequestSent={guardianRequestSent}
-            guardianChased={guardianChased}
-            guardianDeadline={guardianDeadline}
-            guardianDeferralReason={guardianDeferralReason}
-            onGuardianDeferralReasonChange={setGuardianDeferralReason}
-            onSendGuardianOtp={handleSendGuardianOtp}
-            onVerifyGuardianOtp={handleVerifyGuardianOtp}
             profileDraftStatus={profileDraftStatus}
             profilePhotoPreview={profilePhotoPreview}
             profilePhotoFile={profilePhotoFile}
@@ -799,6 +812,39 @@ export function ActivationPage() {
             localPhase={welcomeLocalPhase}
             setLocalPhase={setWelcomeLocalPhase}
           />
+          </Guidance>
+        )}
+
+        {!activationResult && activeStep === 'GUARDIAN' && (
+          <Guidance issues={[]}>
+            <GuardianStep
+              draft={{
+                guardian_name: profile.guardian_name || '',
+                guardian_relation: profile.guardian_relation || '',
+                guardian_phone: profile.guardian_phone || '',
+              }}
+              setDraft={(next) => setProfile({ ...profile, ...next })}
+              tenantName={ctx?.profile?.name || ''}
+              isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
+              setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
+              guardianOtp={guardianOtp}
+              setGuardianOtp={setGuardianOtp}
+              guardianOtpSent={guardianOtpSent}
+              guardianOtpSending={guardianOtpSending}
+              guardianOtpCountdown={guardianOtpCountdown}
+              guardianOtpVerifying={guardianOtpVerifying}
+              onSendGuardianOtp={handleSendGuardianOtp}
+              onVerifyGuardianOtp={handleVerifyGuardianOtp}
+              onAskGuardianToConfirm={handleAskGuardianToConfirm}
+              askingGuardian={askingGuardian}
+              guardianRequestSent={guardianRequestSent}
+              guardianChased={guardianChased}
+              guardianDeadline={guardianDeadline}
+              guardianDeferralReason={guardianDeferralReason}
+              onGuardianDeferralReasonChange={setGuardianDeferralReason}
+              submitting={submitting}
+              onSubmit={submitGuardian}
+            />
           </Guidance>
         )}
 

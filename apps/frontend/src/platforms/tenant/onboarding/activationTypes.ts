@@ -7,7 +7,7 @@
  * definition instead of redeclaring it.
  */
 
-export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
+export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'GUARDIAN' | 'ACTIVATE';
 
 export type RuleCategory = {
   id: string;
@@ -25,6 +25,10 @@ export type ActivationContext = {
     blocked_steps: ActivationStep[];
     /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
+    /** ADR-213 — whether this tenancy is asked for a guardian at all. */
+    guardian_required?: boolean;
+    /** Name, relation and number all on record. Verification does not gate it. */
+    guardian_completed?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
