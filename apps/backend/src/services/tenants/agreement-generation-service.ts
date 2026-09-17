@@ -6,50 +6,22 @@ import QRCode from "qrcode";
 import {
   rupees,
   executionStatement,
-  numberClauses,
   pageFooter,
   placeFromAddress,
   platformAttestation,
   preamble,
-  standardLegalClauses,
 } from "@/src/services/agreements/agreement-boilerplate";
+import { buildAgreementDocument, pdfTermsList } from "../agreements/agreement-document";
+import { agreementDocumentInputFromRenderData } from "../agreements/agreement-document-resolver";
 import { prisma } from "../../../lib/db";
 import { imagekit } from "../../../lib/imagekit";
 import axios from "axios";
 
-const IST_TIMEZONE = "Asia/Kolkata";
+// Re-exported from their new home so existing importers are unaffected; the
+// definitions moved to break an import cycle with the document resolver.
+export { formatAgreementDate, formatAgreementDateTime } from "../agreements/agreement-dates";
+import { formatAgreementDate } from "../agreements/agreement-dates";
 
-export function formatAgreementDate(dateInput: Date | string | null | undefined): string {
-  if (!dateInput) return "N/A";
-  const date = new Date(dateInput);
-  if (isNaN(date.getTime())) return "N/A";
-
-  const formatted = date.toLocaleDateString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    timeZone: IST_TIMEZONE,
-  });
-  return formatted.replace(/\//g, "-");
-}
-
-export function formatAgreementDateTime(dateInput: Date | string | null | undefined): string {
-  if (!dateInput) return "N/A";
-  const date = new Date(dateInput);
-  if (isNaN(date.getTime())) return "N/A";
-
-  const formatted = date.toLocaleString("en-IN", {
-    day: "2-digit",
-    month: "2-digit",
-    year: "numeric",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-    timeZone: IST_TIMEZONE,
-  });
-  return `${formatted.replace(/\//g, "-")} IST`;
-}
 
 export function sanitizeIp(ip: string | null | undefined): string {
   if (!ip || ip === "unknown") return "N/A";
@@ -640,13 +612,29 @@ export class AgreementGenerationService {
     });
     currentY -= 20;
 
-    // The hostel's own terms lead; the structural clauses every contract needs
-    // follow. `numberClauses` also strips a title the stored content repeats —
-    // the source of "4. Notice Period: Notice Period: Either party…".
-    const termsList = numberClauses([
-      ...(data.termsAndConditions || DEFAULT_TERMS_AND_CONDITIONS),
-      ...standardLegalClauses(legalContext),
-    ]);
+    // The clause list is decided by the composer, not here. The renderer owns
+    // *how* the document is drawn; *what* it says is one shared model, which is
+    // what stops the reader and the PDF drifting apart — they are now provably
+    // the same document, and `contentHash` is what proves it.
+    //
+    // The `|| DEFAULT_TERMS_AND_CONDITIONS` fallback is preserved: this method
+    // is also called with mock data by the template preview route, where
+    // `termsAndConditions` is absent and the defaults are what should print.
+    const composedDocument = buildAgreementDocument(
+      agreementDocumentInputFromRenderData(
+        { ...data, termsAndConditions: data.termsAndConditions || DEFAULT_TERMS_AND_CONDITIONS },
+        {
+          reference: agreementReference,
+          versionNumber: 1,
+          status: "SIGNED",
+          verificationUrl,
+        },
+      ),
+    );
+
+    // `pdfTermsList` renumbers from 1, because this presentation keeps the
+    // hostel's rules in their own section below rather than inline.
+    const termsList = pdfTermsList(composedDocument);
 
     termsList.forEach((term) => {
       const termWrapped = wrapText(`${term.number}. ${term.title}: ${term.body}`, contentWidth, fontRegular, 9);
@@ -665,7 +653,14 @@ export class AgreementGenerationService {
     });
 
     // 4. Hostel Rules & Regulations Section
-    if (data.hostelRules && data.hostelRules.categories) {
+    //
+    // Filtered through the same predicate the composer uses. This loop used to
+    // iterate the stored categories raw, so a section the owner had switched
+    // off still printed on the document their tenant signed.
+    const enabledRuleCategories = (data.hostelRules?.categories ?? []).filter(
+      (category: any) => category?.enabled !== false,
+    );
+    if (enabledRuleCategories.length > 0) {
       checkPageBreak(80);
       currentY -= 10;
       page.drawText(sanitizeText("HOSTEL RULES & REGULATIONS"), {
@@ -692,7 +687,7 @@ export class AgreementGenerationService {
       });
       currentY -= 10;
 
-      data.hostelRules.categories.forEach((cat: any) => {
+      enabledRuleCategories.forEach((cat: any) => {
         // Category Title
         const catTitleWrapped = wrapText(cat.title || "", contentWidth, fontBold, 10);
         checkPageBreak(catTitleWrapped.length * 14 + 10);
