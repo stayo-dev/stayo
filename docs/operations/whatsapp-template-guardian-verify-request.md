@@ -1,14 +1,15 @@
 # Template: `guardian_invitation`
 
-> **Status, 2026-09-16:** submitted and **PENDING** Meta review, as `guardian_invitation` —
+> **Status, 2026-09-17: APPROVED and live.** Nothing to configure — the name is hardcoded and the
+> feature is on. Submitted 2026-09-16 as `guardian_invitation` —
 > *not* the `stayo_guardian_verify_request` this document originally proposed. Meta does not allow
 > renaming a template, so the code's default was changed to match reality rather than the
 > convention. What is actually live differs from the draft below in three ways, all harmless:
 > **no header**, **no footer**, and a **12-hour** delivery validity. The body variables and the
 > quick-reply text are exactly as specified, which is all the code depends on.
 >
-> A PENDING template **cannot be sent**, so the feature stays on the OTP fallback until it is
-> APPROVED *and* `WHATSAPP_GUARDIAN_VERIFY_TEMPLATE` is set.
+> It is APPROVED, so sends go out now. The OTP relay remains as the fallback if Meta ever pauses
+> or disables the template (`132015`/`132016`), which the code detects at send time.
 
 
 The message that removes the code relay from guardian verification (ADR-212, `docs/obsidian/Decisions.md`).
