@@ -2813,3 +2813,17 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 **Not verified.** No DB-backed test run against a real database for the restored models; the fix relies on schema/type validation and a diff-against-parent comparison, not an end-to-end exercise of host-profile, stay-status, or meal-forecast flows.
 
 **See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
+
+## 2026-09-17 — Owner acquisition funnel showed all zeros (fixed)
+
+**Symptom.** Reported by the owner. Platform admin's Overview page — the "Owner acquisition funnel" card (Leads captured / In review / Approved & invited / Account activated / Live on Stayo, plus "Lead → owner conversion") — rendered every stage as `0` and the conversion rate as `—`, despite `platform_leads` holding real rows.
+
+**Root cause.** [[Decisions#ADR-211|ADR-211]] added `platform_leads.source` and `platform_leads.plan_code` to `prisma/schema.prisma` and wrote `migrations/084_lead_source_tracking.sql`, but — as ADR-211's own "Not verified" section flagged — the migration was never applied to the real database. `apps/backend/app/api/platform-admin/leads/route.ts`'s `prisma.platform_leads.findMany(...)` selects all columns (no `select` clause), so every call started throwing `column t1.source does not exist`. The route's catch block turned that into an API error response instead of a 500 with a clear signal; the frontend (`apps/frontend/src/platforms/admin/pages/OverviewPage.tsx`) then saw `leads.data` as `undefined`, defaulted `counts` to `{}`, and `buildFunnel({})` ([[Frontend]] `overviewModel.ts`) rendered every stage as zero. Same failure mode hit `LeadsPage.tsx`'s leads query and likely other full-row `platform_leads` reads.
+
+**Fix.** Applied `migrations/084_lead_source_tracking.sql` to the live database (Supabase project `qgfyfbdccjnibdhhvnsr`) — additive, nullable, `IF NOT EXISTS` columns, no code change needed. Confirmed `source`/`plan_code` now exist on `platform_leads`.
+
+**Lesson.** This repo applies migrations by hand (Supabase SQL editor/psql), and an ADR's own "Not verified: migration not applied" note is a real, load-bearing warning, not boilerplate — the gap between "Prisma client regenerated" and "migration applied to the real DB" is invisible until a query touches the new column, and here it silently zeroed a metrics widget rather than 500ing loudly. Worth checking for other un-applied migrations flagged the same way across [[Decisions]] (several exist as of this writing, e.g. migrations 064–068, 079).
+
+**Not verified in a browser.** The fix was verified by schema inspection (`information_schema.columns`) after applying the migration, not by reloading the actual Overview page.
+
+**See:** [[Decisions#ADR-211|ADR-211]], [[APIs]], [[Frontend]], [[Changelog]]
