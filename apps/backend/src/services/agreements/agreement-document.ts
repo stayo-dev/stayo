@@ -25,6 +25,7 @@ import {
   standardLegalClauses,
 } from "./agreement-boilerplate";
 import { interpolateText } from "../../utils/default-rules";
+import { createHash } from "crypto";
 
 export type SignaturePanel = {
   role: "tenant" | "guardian" | "owner";
@@ -114,6 +115,44 @@ function isEnabled(category: RuleCategoryInput): boolean {
   return category.enabled !== false;
 }
 
+/**
+ * A digest of what the parties agreed to.
+ *
+ * Deliberately narrow: text and order only. `generatedAt` is excluded because
+ * the same agreement rendered twice must hash the same, and the signature
+ * images are excluded because they are applied *after* the content is agreed —
+ * including either would make the digest fail on every second render and the
+ * guarantee would be worthless.
+ *
+ * What it buys: the HTML a tenant reads and the PDF generated afterwards both
+ * derive from one model, and if they ever stop doing so this stops matching
+ * instead of quietly shipping a different document.
+ */
+export function hashAgreementDocument(blocks: DocBlock[]): string {
+  const normalised = blocks.map((block) => {
+    switch (block.kind) {
+      case "title":
+        return ["title", block.text, block.subtitle ?? ""];
+      case "preamble":
+      case "execution":
+        return [block.kind, block.text];
+      case "facts":
+        return ["facts", ...block.rows.map((r) => `${r.label}=${r.value}`)];
+      case "section":
+        return [
+          "section", block.band, block.origin, String(block.number), block.title,
+          ...block.clauses.map((c) => `${c.number}|${c.text}`),
+        ];
+      case "signatures":
+        // Roles and their order, never the images or the names filled in later.
+        return ["signatures", ...block.panels.map((p) => p.role)];
+      case "attestation":
+        return ["attestation", block.text];
+    }
+  });
+  return createHash("sha256").update(JSON.stringify(normalised)).digest("hex");
+}
+
 export function buildAgreementDocument(input: AgreementDocumentInput): AgreementDocument {
   const placeOfExecution = placeFromAddress(input.hostelAddress);
   const legalContext = {
@@ -199,7 +238,7 @@ export function buildAgreementDocument(input: AgreementDocumentInput): Agreement
 
   return {
     reference: input.reference,
-    contentHash: "",
+    contentHash: hashAgreementDocument(blocks),
     blocks,
     meta: {
       hostelName: input.hostelName,
