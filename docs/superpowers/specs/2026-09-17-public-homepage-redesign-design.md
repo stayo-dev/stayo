@@ -153,7 +153,7 @@ shell exists; a themed page has no such excuse.)
 | # | Section | Content | Notes |
 |---|---|---|---|
 | 1 | **PublicHeader** (sticky) | Stayo mark + wordmark · Browse hostels · How it works · **List your hostel** · Log in | The owner door on every public page. Present in the mobile menu at the *top*, not buried. |
-| 2 | **Hero** | "Hostel living, sorted." · sub: verified hostels, real photos, no brokers · live-in-city chip · CTA *See hostels in <city>* | Real hostel footage behind it (§6). No search box (decision 4). |
+| 2 | **Hero** | "Hostel living, sorted." · sub: verified hostels, real photos, no brokers · live-in-city chip · CTA *See hostels in <city>* | Lead listing's own photography, or brand-only when supply is zero (§6). No search box (decision 4). |
 | 3 | **Featured hostels** | 1-3 editorial-scale cards: real photos, `starting_price`, `vacant_beds`, `sharing`, `food_included`, verified badge | Data from the existing public browse endpoint. Layout adapts to count (§5). |
 | 4 | **Coverage request** | "Not in your area yet? Tell us which campus you're near." Area/campus input, optional contact | The engine. Everyone gets an action even when Stayo cannot serve them. |
 | 5 | **Trust** | **Stayo earns nothing from your rent** · verified before listed · digital agreement · payments through licensed rails | Written for parents as much as students. |
@@ -224,26 +224,41 @@ listing shape is created.
 
 Routing: `PublicRoutes.tsx` maps `/` → `HomePage`; `WelcomePage` is unmounted per decision 12.
 
-## 6. Media and performance
+## 6. Imagery
 
-`apps/frontend/public/` already ships real footage of a real hostel — room, dining, common area,
-building — in desktop and mobile cuts with poster frames (`SAH_*`, 13 files). **Nothing in
-`src/` references any of them** (verified by grep). This is the hero, and because it is real it
-satisfies ADR-073's no-invented-content rule. The hostel it depicts should be credited and
-linked, which also makes it the natural first featured listing.
+**There is no static hero media, by design.** The `SAH_*` assets previously sitting in
+`apps/frontend/public/` were previous-project content — a single hostel's own marketing site —
+and are deleted in this branch: 13 files, 25 MB, referenced by nothing in `apps/frontend/src`
+and shipped in every frontend deploy.
 
-Rules:
+> **Do not delete the backend's copy.** An identical 25 MB set lives in `apps/backend/public/`
+> and is *live* — see open question 2.
 
-- The `.webp` poster (21-49 KB) renders as a real `<img>` and is the LCP candidate.
-- `<video muted playsinline preload="none" poster=…>`; the `_mobile` cut is selected under
-  640px via `matchMedia`.
-- Playback starts only after `loadeddata`, and only when `prefers-reduced-motion` is
-  `no-preference` and `navigator.connection?.saveData !== true`. Otherwise: poster only.
-- **`SAH_Room_desktop.mp4` is 7.9 MB and must be re-encoded before it goes near a hero**
-  (target ≲1.5 MB, 720p). `SAH_Common_desktop.mp4` at 5.1 MB is the interim choice.
-- **`SAH_Room_desktop.mp4`, `SAH_Room_mobile.mp4` and `SAH_Room_poster.webp` exist locally but
-  are not on `origin/main`** — confirm they are committed rather than lost before depending on
-  them.
+All listing imagery comes from real listings, via the existing Discover browse endpoint's
+`DiscoverCard.photos` (ImageKit-hosted). The homepage therefore cannot display a hostel
+photograph that is not a real hostel's photograph, which upholds
+[[Decisions#ADR-073|ADR-073]]'s no-invented-content rule at the level of the image rather than
+just the copy.
+
+Hero treatment follows supply:
+
+- **≥1 discoverable hostel** — the hero carries the lead listing's own photography, credited and
+  linked to that listing. It is simultaneously the hero and the first featured listing, which is
+  the honest version of a hero at this stage: this is not a stock image of hostel life, it is
+  the hostel you can actually book.
+- **0 discoverable hostels** — no photographic fallback and no stock imagery. The hero reverts to
+  brand-only: the graph-paper ground `/owners` already uses, the Stayo mark, the footprint trail
+  and the warm gradient. The coverage request becomes the hero's primary action, which is
+  exactly right — with no supply, collecting demand *is* the page's only useful job.
+
+Performance rules, now applied to remote images rather than bundled video:
+
+- The hero image is a real `<img>` and the LCP candidate, with `width`/`height` set so layout is
+  reserved and CLS stays at zero.
+- Sizes are requested through ImageKit transform parameters (width + format) rather than
+  shipping originals; a narrower width is requested under 640px.
+- **No autoplaying video on `/` in phase 1.** If listing video exists later it inherits the same
+  `prefers-reduced-motion` and `navigator.connection?.saveData` guards.
 
 ## 7. Data and API
 
@@ -340,9 +355,14 @@ layer.
    blocked. Every count-dependent branch in §4 is written to handle 0, 1-3 and 4+ without
    knowing which, so this does not block implementation, but the copy should be reviewed against
    reality before launch.
-2. **Whether the `SAH_*` hostel has consented** to its footage fronting the homepage. It is real
-   footage of a real hostel; using it as the hero is a different thing from using it on that
-   hostel's own listing. Confirm before launch.
+2. **The previous project is still live on the API host.** `apps/backend/app/page.tsx` renders a
+   Sanity-backed, ISR-cached (`revalidate = 3600`) marketing site for a single hostel —
+   `NEXT_PUBLIC_PRIMARY_VISIT_SLUG`, defaulting to `sah-1-ea89eed3` — wired to real availability
+   through `admissionsService.getPublicHostel()`, with ~30 components under
+   `apps/backend/components/landing/` and the matching 25 MB of `SAH_*` media in
+   `apps/backend/public/`. It is deliberately untouched here and **must not be deleted along
+   with the frontend copies**, but it is publicly reachable and deserves its own decision: keep,
+   redirect to `/`, or retire.
 3. **`MarketingFooter` links only to `/company`, `/contact`, `/legal/privacy` and
    `/legal/terms`.** There is no refunds/cancellation-policy route, which a payment aggregator's
    onboarding review typically requires to be reachable from the homepage. Out of scope for this
