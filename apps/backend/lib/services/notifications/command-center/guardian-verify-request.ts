@@ -31,7 +31,7 @@ import {
   buildGuardianVerifyRequestPayload,
   guardianVerifyRequestTemplateLanguage,
   guardianVerifyRequestTemplateName,
-  isGuardianVerifyRequestConfigured,
+  isTemplateUnavailable,
   GUARDIAN_VERIFY_REQUEST_TEMPLATE,
 } from "../providers/whatsapp/guardian-verify-request-template-contract";
 import { normalizeWhatsAppPhone } from "../providers/whatsapp";
@@ -54,7 +54,7 @@ export type GuardianVerifyRequestResult = {
     | "GUARDIAN_SAME_AS_RESIDENT"
     | "ALREADY_VERIFIED"
     | "GUARDIAN_PHONE_NOT_SAVED"
-    | "TEMPLATE_NOT_CONFIGURED"
+    | "TEMPLATE_NOT_AVAILABLE"
     | "SEND_FAILED";
 };
 
@@ -80,6 +80,22 @@ function sameHandset(a: string, b: string): boolean {
   const left = String(a || "").replace(/\D/g, "").slice(-10);
   const right = String(b || "").replace(/\D/g, "").slice(-10);
   return left.length === 10 && left === right;
+}
+
+/**
+ * Close out a request that was written but never actually delivered.
+ *
+ * Without this, a failed send leaves a PENDING row that `listPendingGuardianRequests`
+ * would happily offer up — so a guardian could confirm a request that never
+ * reached them.
+ */
+async function retirePendingRequest(requestId: string, reason: string): Promise<void> {
+  await prisma.phoneVerificationOtp
+    .updateMany({
+      where: { id: requestId, status: "PENDING" },
+      data: { status: "EXPIRED", failure_reason: reason },
+    })
+    .catch(() => undefined);
 }
 
 export async function sendGuardianVerifyRequest(
@@ -144,13 +160,6 @@ export async function sendGuardianVerifyRequest(
     });
     if (alreadyVerified) return { sent: false, fallbackToOtp: false, reason: "ALREADY_VERIFIED" };
 
-    // Checked before the row is written, so a template that Meta has not
-    // approved yet leaves no orphaned PENDING request behind to confuse the
-    // reply handler.
-    if (!isGuardianVerifyRequestConfigured()) {
-      return { sent: false, fallbackToOtp: true, reason: "TEMPLATE_NOT_CONFIGURED" };
-    }
-
     const expiresAt = new Date(Date.now() + GUARDIAN_VERIFY_REQUEST_TEMPLATE.validityHours * 60 * 60 * 1000);
 
     // Supersede any earlier outstanding request for this pair. `verifyPhoneOtp`
@@ -181,25 +190,46 @@ export async function sendGuardianVerifyRequest(
       select: { id: true },
     });
 
-    const result = await whatsAppTemplateDeliveryService.send({
-      phone: guardianPhone,
-      templateName: guardianVerifyRequestTemplateName(),
-      languageCode: guardianVerifyRequestTemplateLanguage(),
-      bodyParameters: buildGuardianVerifyRequestPayload({
-        guardianName: tenant.guardian_name,
-        tenantName: tenant.profiles?.name,
-        hostelName: tenant.hostels?.name,
-      }),
-      // Keyed on the request, not the pair: unlike the activation announcement,
-      // asking again is a legitimate thing for a tenant to do when the first
-      // ask went unanswered.
-      idempotencyKey: `guardian_verify_request:${pending.id}`,
-      tenantId: tenant.id,
-      hostelId: tenant.hostel_id,
-      ownerId: tenant.owner_id || undefined,
-    });
+    let result: { skipped: boolean; providerMessageId?: string | null };
+    try {
+      result = await whatsAppTemplateDeliveryService.send({
+        phone: guardianPhone,
+        templateName: guardianVerifyRequestTemplateName(),
+        languageCode: guardianVerifyRequestTemplateLanguage(),
+        bodyParameters: buildGuardianVerifyRequestPayload({
+          guardianName: tenant.guardian_name,
+          tenantName: tenant.profiles?.name,
+          hostelName: tenant.hostels?.name,
+        }),
+        // Keyed on the request, not the pair: unlike the activation
+        // announcement, asking again is a legitimate thing for a tenant to do
+        // when the first ask went unanswered.
+        idempotencyKey: `guardian_verify_request:${pending.id}`,
+        tenantId: tenant.id,
+        hostelId: tenant.hostel_id,
+        ownerId: tenant.owner_id || undefined,
+      });
+    } catch (sendError: any) {
+      // The request row already exists, and an unsent request must never be
+      // confirmable: a guardian who later types "Yes, I confirm" for unrelated
+      // reasons would otherwise verify a number nobody ever asked them about.
+      await retirePendingRequest(pending.id, `send failed: ${sendError?.providerCode || sendError?.code || "unknown"}`);
+
+      if (isTemplateUnavailable(sendError)) {
+        // Approval is pending, or the template was paused or disabled. This is
+        // the normal state before Meta approves, and the OTP relay is what
+        // every tenant uses today — so it is a fallback, not a failure.
+        logger.info("guardian_verify_request.template_unavailable", {
+          tenant_id: tenant.id,
+          provider_code: sendError?.providerCode || null,
+        });
+        return { sent: false, fallbackToOtp: true, reason: "TEMPLATE_NOT_AVAILABLE" };
+      }
+      throw sendError;
+    }
 
     if (result.skipped) {
+      await retirePendingRequest(pending.id, "delivery skipped as a duplicate");
       return { sent: false, fallbackToOtp: true, reason: "SEND_FAILED" };
     }
 

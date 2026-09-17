@@ -3,7 +3,7 @@ import {
   buildGuardianVerifyRequestPayload,
   guardianVerifyRequestTemplateName,
   guardianVerifyRequestTemplateLanguage,
-  isGuardianVerifyRequestConfigured,
+  isTemplateUnavailable,
   isGuardianConfirmReply,
   GUARDIAN_VERIFY_REQUEST_TEMPLATE,
 } from "@/lib/services/notifications/providers/whatsapp/guardian-verify-request-template-contract";
@@ -39,10 +39,32 @@ describe("guardian verify-request template contract", () => {
     expect(guardianVerifyRequestTemplateLanguage()).toBe("en_US");
   });
 
-  it("reports itself unconfigured until a template name is set, so the caller can fall back", () => {
-    expect(isGuardianVerifyRequestConfigured()).toBe(false);
-    process.env[GUARDIAN_VERIFY_REQUEST_TEMPLATE.envVar] = "guardian_invitation";
-    expect(isGuardianVerifyRequestConfigured()).toBe(true);
+  it("works with no environment variable set at all", () => {
+    // The name is code, not configuration (ADR-196). Nothing has to be added in
+    // Vercel for this template to be usable — the env var is only an override
+    // for pointing at, say, a `_v2` during a copy revision.
+    delete process.env[GUARDIAN_VERIFY_REQUEST_TEMPLATE.envVar];
+    expect(guardianVerifyRequestTemplateName()).toBe("guardian_invitation");
+  });
+
+  describe("isTemplateUnavailable", () => {
+    it("treats a template Meta has not approved as a reason to fall back", () => {
+      // 132001 is what a PENDING or rejected template returns, and is the
+      // normal state until approval lands.
+      expect(isTemplateUnavailable({ providerCode: "132001" })).toBe(true);
+      expect(isTemplateUnavailable({ providerCode: "132015" })).toBe(true);
+      expect(isTemplateUnavailable({ providerCode: "132016" })).toBe(true);
+    });
+
+    it("does NOT treat a transient failure as unavailability", () => {
+      // Falling back on a network blip or a rate limit would push every tenant
+      // onto the code relay the first time WhatsApp had a bad minute, and never
+      // put them back — a transient fault turned into a silent permanent one.
+      expect(isTemplateUnavailable({ providerCode: "131026" })).toBe(false);
+      expect(isTemplateUnavailable({ code: "WHATSAPP_SEND_FAILED" })).toBe(false);
+      expect(isTemplateUnavailable({})).toBe(false);
+      expect(isTemplateUnavailable(undefined)).toBe(false);
+    });
   });
 
   it("recognises the static quick reply Meta actually echoes back", () => {

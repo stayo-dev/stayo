@@ -59,6 +59,11 @@
 import { tenantDisplayName } from "./guardian-activation-template-contract";
 
 export const GUARDIAN_VERIFY_REQUEST_TEMPLATE = {
+  /**
+   * An **override**, not a switch. Nothing needs to be set for this template to
+   * work; the name below is the real one. Exists only so a name can be changed
+   * without a deploy — e.g. pointing at a `_v2` during a copy revision.
+   */
   envVar: "WHATSAPP_GUARDIAN_VERIFY_TEMPLATE",
   languageEnvVar: "WHATSAPP_GUARDIAN_VERIFY_LANGUAGE",
   /**
@@ -104,16 +109,46 @@ export function guardianVerifyRequestTemplateLanguage(): string {
 }
 
 /**
- * Whether this template has been configured for this environment at all.
+ * Meta error codes meaning "this template cannot be sent, and retrying with the
+ * same arguments will not help".
  *
- * Meta must approve a template before it can be sent to a handset that has not
- * messaged us first, and that approval has a lead time measured in days. Rather
- * than hold the whole feature behind it, the caller checks this and falls back
- * to the OTP relay — which is exactly what tenants do today, so the fallback is
- * a known-working path, not a degraded guess.
+ * ## Why this replaced an environment flag
+ *
+ * This used to be `isGuardianVerifyRequestConfigured()`, which returned true
+ * only if `WHATSAPP_GUARDIAN_VERIFY_TEMPLATE` was set — so the feature stayed
+ * dark until someone remembered to add a variable in Vercel, and it contradicted
+ * [ADR-196]: a template's name and parameter vector are *code, not
+ * configuration*. The other six templates in this directory already treat their
+ * env var as an optional override over a hardcoded default, and in practice the
+ * five that are set in `.env` hold values byte-identical to those defaults —
+ * configuration that configures nothing, with drift as the only possible
+ * outcome.
+ *
+ * The honest question was never "is a variable set", it is "did Meta accept the
+ * send". Asking that directly makes approval self-healing: while
+ * `guardian_invitation` is PENDING, sends fail with 132001 and the caller quietly
+ * uses the OTP relay; the moment Meta approves it, the next send succeeds. No
+ * variable, no deploy, nothing to remember.
  */
-export function isGuardianVerifyRequestConfigured(): boolean {
-  return Boolean(process.env[GUARDIAN_VERIFY_REQUEST_TEMPLATE.envVar]);
+const TEMPLATE_UNAVAILABLE_CODES = new Set([
+  "132001", // name/translation does not exist — what a PENDING or rejected template returns
+  "132015", // paused for quality
+  "132016", // disabled
+  "132005", // hydrated text too long — a content bug, but not one a retry fixes
+]);
+
+/**
+ * Should this send failure fall back to the OTP relay rather than surface as an
+ * error?
+ *
+ * Deliberately narrow. A network blip or a rate limit is *not* template
+ * unavailability, and treating it as such would silently push every tenant back
+ * onto the code relay the first time WhatsApp had a bad minute — turning a
+ * transient failure into an invisible permanent regression.
+ */
+export function isTemplateUnavailable(error: unknown): boolean {
+  const code = (error as any)?.providerCode ?? (error as any)?.code;
+  return TEMPLATE_UNAVAILABLE_CODES.has(String(code));
 }
 
 export type GuardianVerifyRequestInput = {

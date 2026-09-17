@@ -71,17 +71,23 @@ Yes, I confirm
    (`Yes, I confirm` → `yesiconfirm`). Changing the wording breaks the second path; a URL or
    call button breaks both.
 
-## After approval
+## After approval — nothing to do
 
-Set both, in Vercel and in the root `.env`:
+**No environment variable is required.** The template name is hardcoded
+(`guardian_invitation`), per ADR-196: a template's name and parameter vector are code, not
+configuration.
 
-```
-WHATSAPP_GUARDIAN_VERIFY_TEMPLATE=guardian_invitation
-WHATSAPP_GUARDIAN_VERIFY_LANGUAGE=en
-```
+While the template is PENDING, Meta rejects sends with error `132001` and the code falls back
+to the OTP relay — the path every tenant uses today. The moment Meta approves it, the next send
+succeeds. **No variable to set, no deploy, nothing to remember.**
 
-`isGuardianVerifyRequestConfigured()` keys off the **first** var being set, so leaving it unset is
-the supported way to keep the feature on the OTP path.
+`WHATSAPP_GUARDIAN_VERIFY_TEMPLATE` still exists as an *override*, for pointing at a `_v2`
+during a copy revision without a deploy. Leaving it unset is the normal case.
+
+Note that the fallback is deliberately narrow: only `132001` (name/translation missing),
+`132015` (paused) and `132016` (disabled) count. A network blip or a rate limit is **not**
+treated as unavailability — doing so would push every tenant onto the code relay the first time
+WhatsApp had a bad minute, and never put them back.
 
 ## Creating it via the API instead
 
