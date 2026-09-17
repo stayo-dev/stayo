@@ -20,7 +20,7 @@
 - **A signed agreement is never re-composed against the current template.** It renders from its own `rules_snapshot` / `content_snapshot`.
 - **Variable tokens written by new code are `{{VAR}}`** (double brace). The reader accepts both formats.
 - **Branch off `dev`, after pulling `main`. Never commit to `main`.**
-- **Migration and ADR numbers are chosen after pulling**, not from this checkout. `migrations/` here tops out at `082` but `083` is recorded as applied on prod, and ADR numbers have collided before. Last known ADR: **213**.
+- **Migration number is `085`. ADR numbers are `214`, `215`, `216`.** Resolved 2026-09-17 by checking `main` *and* `dev`: `dev` tops out at migration `083`/ADR-209, but `main` already has migration `084` and ADR-213. Numbering from `dev` alone would have duplicated a migration and four ADRs.
 - **Do not touch `SignatureSheet`.** Draw-or-upload with client-side background removal (ADR-140) is correct and stays.
 - **Do not touch renewals.** Out of scope.
 
