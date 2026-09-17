@@ -141,6 +141,38 @@ function SignatureBlock({ panel }: { panel: SignaturePanel }) {
       {panel.relation && (
         <div className="mt-0.5 text-[11px] text-muted-foreground">{panel.relation}</div>
       )}
+
+      {/*
+        The audit stamp, shown rather than hidden.
+
+        An electronic signature is worth what its trail is worth, and the person
+        signing is entitled to see exactly what is being recorded about them --
+        the moment in IST, the address the request came from, and the device and
+        browser used. These are the same values the PDF prints.
+
+        Only rendered once there is a signature: a date and an IP under an
+        unsigned panel would describe an event that never happened.
+      */}
+      {panel.signedAt && (
+        <dl className="mt-2 border-t border-border/60 pt-2 text-[10.5px] leading-[1.5] text-muted-foreground">
+          <div className="flex gap-1.5">
+            <dt className="flex-none font-semibold">Signed</dt>
+            <dd className="min-w-0 break-words">{panel.signedAt}</dd>
+          </div>
+          {panel.device && (
+            <div className="mt-0.5 flex gap-1.5">
+              <dt className="flex-none font-semibold">Device</dt>
+              <dd className="min-w-0 break-words">{panel.device}</dd>
+            </div>
+          )}
+          {panel.ip && (
+            <div className="mt-0.5 flex gap-1.5">
+              <dt className="flex-none font-semibold">IP</dt>
+              <dd className="min-w-0 break-words">{panel.ip}</dd>
+            </div>
+          )}
+        </dl>
+      )}
     </div>
   );
 }

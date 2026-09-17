@@ -25,6 +25,8 @@ import {
   standardLegalClauses,
 } from "./agreement-boilerplate";
 import { interpolateText } from "../../utils/default-rules";
+import { describeDevice, sanitizeIp } from "./agreement-signature-audit";
+import { formatAgreementDateTime } from "./agreement-dates";
 import { createHash } from "crypto";
 
 export type SignaturePanel = {
@@ -32,6 +34,19 @@ export type SignaturePanel = {
   name: string | null;
   signatureUrl: string | null;
   relation: string | null;
+  /**
+   * The audit stamp, identical to what the PDF prints.
+   *
+   * An electronic signature is only worth what its trail is worth, so who
+   * signed, from where, on what device and at what moment must read the same on
+   * the copy the tenant reads and the copy that is filed. All IST, because
+   * every party to these agreements is in India and a UTC timestamp on a
+   * tenancy contract invites the wrong reading.
+   */
+  signedAt: string | null;
+  ip: string | null;
+  device: string | null;
+  userAgent: string | null;
 };
 
 export type RuleCategoryInput = {
@@ -89,10 +104,17 @@ export type AgreementDocumentInput = {
   signatures: {
     tenantName: string | null;
     tenantSignatureUrl: string | null;
+    tenantSignedAt: Date | string | null;
+    tenantIp: string | null;
+    tenantUserAgent: string | null;
     guardianName: string | null;
     guardianSignatureUrl: string | null;
     guardianRelation: string | null;
+    guardianSignedAt: Date | string | null;
+    guardianIp: string | null;
+    guardianUserAgent: string | null;
     ownerSignatureUrl: string | null;
+    ownerSignedAt: Date | string | null;
   };
 };
 
@@ -109,6 +131,27 @@ export type AgreementDocument = {
     status: string;
   };
 };
+
+function signaturePanel(
+  role: SignaturePanel["role"],
+  name: string | null,
+  signatureUrl: string | null,
+  relation: string | null,
+  audit: { signedAt: Date | string | null; ip: string | null; userAgent: string | null },
+): SignaturePanel {
+  return {
+    role,
+    name,
+    signatureUrl,
+    relation,
+    // Only stamped once there is a signature to stamp: an unsigned panel
+    // showing a date and an IP would describe an event that never happened.
+    signedAt: signatureUrl && audit.signedAt ? formatAgreementDateTime(audit.signedAt) : null,
+    ip: signatureUrl && audit.ip ? sanitizeIp(audit.ip) : null,
+    device: signatureUrl && audit.userAgent ? describeDevice(audit.userAgent) : null,
+    userAgent: signatureUrl ? (audit.userAgent ?? null) : null,
+  };
+}
 
 /** Absent means included: sections predate the flag. */
 function isEnabled(category: RuleCategoryInput): boolean {
@@ -228,9 +271,24 @@ export function buildAgreementDocument(input: AgreementDocumentInput): Agreement
     {
       kind: "signatures",
       panels: [
-        { role: "tenant", name: input.signatures.tenantName, signatureUrl: input.signatures.tenantSignatureUrl, relation: null },
-        { role: "guardian", name: input.signatures.guardianName, signatureUrl: input.signatures.guardianSignatureUrl, relation: input.signatures.guardianRelation },
-        { role: "owner", name: input.ownerName, signatureUrl: input.signatures.ownerSignatureUrl, relation: null },
+        signaturePanel("tenant", input.signatures.tenantName, input.signatures.tenantSignatureUrl, null, {
+          signedAt: input.signatures.tenantSignedAt,
+          ip: input.signatures.tenantIp,
+          userAgent: input.signatures.tenantUserAgent,
+        }),
+        signaturePanel("guardian", input.signatures.guardianName, input.signatures.guardianSignatureUrl, input.signatures.guardianRelation, {
+          signedAt: input.signatures.guardianSignedAt,
+          ip: input.signatures.guardianIp,
+          userAgent: input.signatures.guardianUserAgent,
+        }),
+        // The owner signs by applying their stored stamp, not from a browser,
+        // so there is no device or address to record for them. Printing "N/A"
+        // would imply one was expected and lost.
+        signaturePanel("owner", input.ownerName, input.signatures.ownerSignatureUrl, null, {
+          signedAt: input.signatures.ownerSignedAt,
+          ip: null,
+          userAgent: null,
+        }),
       ],
     },
     { kind: "attestation", text: platformAttestation(input.verificationUrl), verificationUrl: input.verificationUrl },

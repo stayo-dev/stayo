@@ -23,67 +23,11 @@ export { formatAgreementDate, formatAgreementDateTime } from "../agreements/agre
 import { formatAgreementDate } from "../agreements/agreement-dates";
 
 
-export function sanitizeIp(ip: string | null | undefined): string {
-  if (!ip || ip === "unknown") return "N/A";
-  if (ip.includes(",")) {
-    return ip.split(",")[0].trim();
-  }
-  return ip.trim();
-}
+// Re-exported from their new home so existing importers are unaffected; the
+// definitions moved so the pure composer can stamp the same audit details.
+export { sanitizeIp, parseUserAgent } from "../agreements/agreement-signature-audit";
+import { sanitizeIp, parseUserAgent } from "../agreements/agreement-signature-audit";
 
-export function parseUserAgent(ua: string | null | undefined): { device: string; os: string; browser: string } {
-  if (!ua || ua === "unknown" || ua === "N/A") {
-    return { device: "Unknown Device", os: "Unknown OS", browser: "Unknown Browser" };
-  }
-
-  let device = "Desktop";
-  let os = "Unknown OS";
-  let browser = "Unknown Browser";
-
-  const uaLower = ua.toLowerCase();
-
-  // Detect Device Type
-  if (/mobi|android|iphone|ipad|ipod|blackberry|iemobile|opera mini/i.test(uaLower)) {
-    if (/ipad|tablet/i.test(uaLower)) {
-      device = "Tablet";
-    } else {
-      device = "Mobile";
-    }
-  }
-
-  // Detect OS
-  if (/android/i.test(uaLower)) {
-    os = "Android";
-    const match = ua.match(/Android\s+([0-9\.]+)/i);
-    if (match) os += ` ${match[1]}`;
-  } else if (/iphone|ipad|ipod/i.test(uaLower)) {
-    os = "iOS";
-    const match = ua.match(/OS\s+([0-9_]+)/i);
-    if (match) os += ` ${match[1].replace(/_/g, ".")}`;
-  } else if (/windows/i.test(uaLower)) {
-    os = "Windows";
-    if (/phone/i.test(uaLower)) os = "Windows Phone";
-  } else if (/macintosh|mac os x/i.test(uaLower)) {
-    os = "macOS";
-  } else if (/linux/i.test(uaLower)) {
-    os = "Linux";
-  }
-
-  // Detect Browser
-  if (/edg/i.test(uaLower)) {
-    browser = "Edge";
-  } else if (/chrome|crios/i.test(uaLower)) {
-    browser = "Chrome";
-  } else if (/safari/i.test(uaLower)) {
-    browser = "Safari";
-  } else if (/firefox|fxios/i.test(uaLower)) {
-    browser = "Firefox";
-  } else if (/opr/i.test(uaLower)) {
-    browser = "Opera";
-  }
-
-  return { device, os, browser };
-}
 
 
 import { DEFAULT_RULES_TEMPLATE, DEFAULT_TERMS_AND_CONDITIONS, interpolateRulesContent, interpolateText } from "../../utils/default-rules";

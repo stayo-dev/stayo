@@ -86,11 +86,31 @@ describe("agreementDocumentInputFromRenderData", () => {
     expect(map().signatures).toEqual({
       tenantName: "B. Vineeth",
       tenantSignatureUrl: null,
+      tenantSignedAt: null,
+      tenantIp: null,
+      tenantUserAgent: null,
       guardianName: null,
       guardianSignatureUrl: null,
       guardianRelation: null,
+      guardianSignedAt: null,
+      guardianIp: null,
+      guardianUserAgent: null,
       ownerSignatureUrl: "https://img/owner.png",
+      ownerSignedAt: "2026-09-17T00:00:00.000Z",
     });
+  });
+
+  it("passes the audit trail through untouched, for the composer to format", () => {
+    // Raw here, formatted there: the resolver must not decide how an IP or a
+    // user agent reads, or the PDF and the reader could format them apart.
+    const out = map({
+      tenantSignatureUrl: "https://img/t.png",
+      tenantSignedAt: "2026-09-17T13:04:05.000Z",
+      tenantIp: "103.43.12.33, 172.68.22.45",
+      tenantUserAgent: "Mozilla/5.0 (Linux; Android 14; Pixel 8) Chrome/120.0.0.0 Mobile Safari/537.36",
+    });
+    expect(out.signatures.tenantIp).toBe("103.43.12.33, 172.68.22.45");
+    expect(out.signatures.tenantSignedAt).toBe("2026-09-17T13:04:05.000Z");
   });
 
   it("takes reference, version and status from the caller, which holds the row", () => {

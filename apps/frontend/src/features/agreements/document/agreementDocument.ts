@@ -12,6 +12,11 @@ export type SignaturePanel = {
   name: string | null;
   signatureUrl: string | null;
   relation: string | null;
+  /** The audit stamp, identical to what the PDF prints. All times are IST. */
+  signedAt: string | null;
+  ip: string | null;
+  device: string | null;
+  userAgent: string | null;
 };
 
 export type DocBlock =
