@@ -1620,3 +1620,10 @@ See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Bus
 - **Falls back to the OTP relay** whenever the template is not configured — Meta approval has a lead time, and the fallback is the path every tenant uses today.
 
 **Not exercised.** Nothing here has been run against a database or a browser; the migration is unapplied and the WhatsApp round trip has never been performed. See [[Decisions#ADR-212|ADR-212]].
+
+### The agreement a tenant reads and signs (2026-09-18)
+
+- **Where:** `/activate/agreement` (onboarding reader), the Agreement step of tenant activation, and `GET /api/agreements/[id]/document` for a logged-in reader.
+- **What:** the tenant opens the real agreement — the owner's own clauses, interpolated with their rent, room and dates, followed by the platform's legal frame — on a full screen with a reading-progress bar. Reaching the end unlocks signing; the read is recorded against the agreement as evidence. Signing is by drawn or photographed signature exactly as before ([[Decisions#ADR-140|ADR-140]] unchanged).
+- **Notes:** the document is composed once on the backend and rendered twice (HTML and PDF) from the same model, so what is read and what is filed cannot drift — see [[Decisions#ADR-214|ADR-214]]. Each signature carries its own IST timestamp, IP, device and browser. The owner's key terms are surfaced on the step's card before the tenant opens the document.
+- **Not verified:** never opened in a browser; no real tenant has read or signed through it.

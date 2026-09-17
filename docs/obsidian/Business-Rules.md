@@ -1154,3 +1154,41 @@ Added 2026-09-16 ([[Decisions#ADR-212|ADR-212]]). **Files:** `src/services/tenan
 8. **`sendGuardianActivation` now requires proof, not intent.** It used to fire whenever a guardian number was entered; it announced access that did not exist to someone who may not have known they were named.
 
 Related: [[Decisions#ADR-212|ADR-212]], [[Database]], [[APIs]], [[Features]]
+## Reading the agreement before signing it
+
+A tenant cannot sign until they have opened the agreement and reached the end of it.
+
+- The document opens on its own full screen (`/activate/agreement`), composed from the same model the PDF is generated from.
+- "Read" is **98% of the scrollable distance**, not the exact bottom — real scrolling rarely lands there. A document shorter than the viewport counts as read by being shown, or a short agreement could never satisfy the gate.
+- Both ends are recorded on `Agreement`: `document_opened_at` and `document_read_completed_at`, plus `document_content_hash` — a digest of exactly what was read.
+- The gate reads the **server's** record, not client state, so a reload cannot skip it. The first open is never overwritten by a re-read.
+- Agreements signed before this existed have all three columns null. Null means "predates the gate", never "did not read".
+
+See [[Decisions#ADR-215|ADR-215]].
+
+## Who has to sign an agreement
+
+**The tenant always signs.** This replaced "at least one signature — tenant or parent/guardian", under which a tenancy could be activated with no signature from the person living there.
+
+- A parent/guardian co-signature is **optional by default**.
+- It becomes mandatory when the hostel sets `preferences_config.tenant_rules.guardian_signature_required`. Absent means **not** required — the opposite default to `agreement_required`, because requiring a co-signature is a deliberate choice.
+- A volunteered guardian signature is validated as strictly as a required one: a signature image demands a typed name and a stated relationship.
+- The rule validates a **submission**. Agreements already signed guardian-only remain valid; nothing re-checks stored rows.
+
+See [[Decisions#ADR-216|ADR-216]].
+
+## What is stamped against a signature
+
+Each signature on the document carries its own provenance, identical in the tenant's reader and in the PDF:
+
+| Stamped | Source |
+|---|---|
+| Signing moment, **IST** | `tenant_signed_at` / `guardian_signed_at`, formatted by `formatAgreementDateTime` |
+| Originating IP | `tenant_ip` / `guardian_ip`, client address taken from the head of an `X-Forwarded-For` chain |
+| Device, OS, browser | parsed from `tenant_user_agent` / `guardian_user_agent` |
+| Raw user agent | stored verbatim alongside the readable summary |
+
+- Times are **IST**, not UTC — every party to these agreements is in India and a UTC timestamp on a tenancy contract invites the wrong reading.
+- An **unsigned** panel is stamped with nothing. A date and an IP under a signature nobody gave would describe an event that never happened.
+- The **owner** gets a date but no device or IP: they sign by applying a stored signature stamp, not from a browser, so there is nothing to record.
+- The stamp is deliberately **excluded from `document_content_hash`** — two renders of the same agreement, signed from different devices, are still the same agreement.

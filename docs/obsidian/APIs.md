@@ -140,6 +140,19 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 ## Agreements & Renewals
 
+### The composed document (2026-09-18)
+
+The agreement as an ordered block model — the same model the PDF is rendered from. See [[Decisions#ADR-214|ADR-214]].
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `GET` | `/api/tenants/activate/agreement-document?token=` | **Activation token** (or tenant session) | Onboarding. Cannot use `getSession`: the tenant has no account yet. Resolves via `activationSubjectFromRequest` → `tenantInvitationLifecycleService`, then looks the agreement up *from* that tenant — never from a caller-supplied id. |
+| `GET` | `/api/agreements/[id]/document` | Session | Logged-in reader. Takes an id from the URL, so authorisation is the whole job: allowed only for the hostel's `owner_id` or the signatory's `profile_id`, and **both comparisons require the stored value to exist** — `tenants.profile_id` is nullable, so a null must never match a caller. |
+| `POST` | `/api/tenants/activate/agreement-read` | **Activation token** | Body `{ token, stage: 'opened' \| 'completed', content_hash }`. Validates stage and the 64-hex hash *before* resolving or writing, so a malformed call cannot leave a half-stamped read. `opened_at` is never moved backwards by a re-read. |
+
+Response shape for both document endpoints: `{ document: AgreementDocument }` where `blocks` is an ordered list of `title \| preamble \| facts \| section \| execution \| signatures \| attestation`, and `contentHash` is a SHA-256 over the normalised block text and order.
+
+
 `/api/agreements/history`, `/api/agreements/renewals` (owner queue), `/api/agreements/renewals/[agreementId]` (GET — Individual Renewal Workspace read model: current agreement, successor draft, full offer history, `RenewalTimelineEvent` timeline, `financialReadModelService` summary, `identificationDocument`s, and activation readiness once a successor exists — see [[Frontend]], [[Decisions]]), `/api/agreements/[id]/lifecycle-recovery`, `/api/agreements/[id]/renewal-draft`, `/api/agreements/[id]/renewal-offer`, `/api/agreements/[id]/sign-renewal`, `/api/agreements/renewal-offers` (GET list / POST bulk-generate — FLAT/PERCENTAGE/ROOM_CATEGORY/FLOOR_WISE/ROOM_WISE strategy, see [[Business-Rules]]), `/api/agreements/renewal-offers/[id]` (PATCH revise/supersede), `/api/agreements/renewal-offers/[id]/send`, `/api/agreements/renewal-audiences`, `/api/agreements/r4-readiness`, `/api/agreements/lifecycle-recovery` (+`/completion`, `/export`). Tenant side: `/api/tenant/agreement-renewal`, `/api/tenant/renewal-offer` (+`/[id]/accept|decline|discuss`), `/api/tenants/me/renewal-signature` (POST — session-authenticated ImageKit signature upload for the `sign-renewal` step above, mirrors `tenants/activate/signature` but resolves the tenant from session instead of an activation token; consumed by `/tenant/renewal`, see [[Frontend]], [[Decisions]] ADR-019), `/api/tenant/exit` (owner-processed exit, distinct from the move-out workflow below).
 
 ## Change Requests (owner-edit ↔ tenant-approval workflow)

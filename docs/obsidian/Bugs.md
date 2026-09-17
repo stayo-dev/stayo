@@ -2875,3 +2875,42 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 **Fix.** The request now carries the number the caller believes it is messaging, and `sendGuardianVerifyRequest` refuses with `GUARDIAN_PHONE_NOT_SAVED` if it does not match the tenancy's own record; the tenant is told to save first. Comparison is on the **last ten digits**, not equality — this codebase stores Indian numbers in two formats (`profiles.phone` bare, `tenant_invitations.phone` E.164), and ADR-110's trust check already shipped once with a `===` that was silently always false. The swallow is kept deliberately (surfacing "profile photo is required" to someone who asked to message their parent is worse), and is only safe *because* of the server-side guard.
 
 Related: [[Decisions#ADR-212|ADR-212]], [[Business-Rules]], [[Database]]
+## 2026-09-18 — Every variable an owner inserted printed literally in signed agreements (fixed)
+
+The agreement editor's insert chips wrote `{TENANT_NAME}`. The backend interpolator only matched `{{TENANT_NAME}}`. So an owner who used the feature as designed produced clauses reading "Rent is {MONTHLY_RENT}." on a document somebody then signed.
+
+Three modules disagreed: `config/agreementDraft.ts` wrote single braces, `config/agreements.ts` read double, the backend substituted double.
+
+**The design gap:** the token vocabulary was defined independently in three places with nothing asserting they matched, and no test ever rendered an owner-authored clause end to end.
+
+**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-214|ADR-214]].
+
+## 2026-09-18 — The tenant was shown a hardcoded document containing none of the owner's clauses (fixed)
+
+`AgreementStep.tsx` rendered a fixed contract: a title, a facts grid numbered "1.", then a jump straight to "6. Management Rights" with two invented sentences, then acknowledgements as "7.". Sections 2–5 did not exist. None of the owner's drafted clauses appeared anywhere.
+
+They were not missing from the payload — `ctx.rules.content.categories` reached the client with the correct content and **zero consumers**. The frozen legacy portal (`portal/pages/ActivateAccountPage.tsx:834`) rendered them correctly, so this was a **regression** introduced by the rebuilt tenant platform, not a feature never built.
+
+Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI that did render it would have shown raw `{{MONTHLY_RENT}}`.
+
+**The design gap:** a design-fidelity rebuild reproduced a mockup's *appearance* of a document, and nothing tested that the rendered document had any relationship to the stored one.
+
+**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-215|ADR-215]].
+
+## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
+
+"Leave out" set `enabled: false` on a rule category. The owner's editor honoured it and the tenant's view honoured it, but `generatePdfBuffer` iterated `data.hostelRules.categories` **raw** — so a section an owner had deliberately withdrawn still appeared on the PDF their tenant signed and the business filed.
+
+**The design gap:** the enabled-flag predicate existed in the frontend only. The PDF had no notion of it.
+
+**Fix:** the PDF's rules section is filtered through the same predicate the composer uses.
+
+## 2026-09-18 — A tenancy could be activated with no signature from the tenant (fixed)
+
+The rule was "at least one signature is required — add tenant or parent/guardian". A guardian-only signature satisfied it, so a person could be moved in, billed and held to a contract they never signed.
+
+An existing test even pinned the behaviour, named *"accepts either signature, but wants a name with it"*.
+
+**The design gap:** "at least one" was written to be accommodating and nobody asked which one.
+
+**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-216|ADR-216]].
