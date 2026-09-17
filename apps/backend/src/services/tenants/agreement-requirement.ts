@@ -145,7 +145,7 @@ export type AgreementSignatureInput = {
  *
  * This validates a *submission*. Agreements already signed guardian-only stay
  * valid — nothing here re-checks stored rows, and retroactively invalidating
- * live tenancies is not on the table. See ADR-216.
+ * live tenancies is not on the table. See ADR-218.
  */
 export function validateAgreementSignatures(input: AgreementSignatureInput): string | null {
   const tenantUrl = String(input.tenantSignatureUrl || "").trim();

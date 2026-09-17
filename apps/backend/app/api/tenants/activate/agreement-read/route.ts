@@ -15,7 +15,7 @@ import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-
  * that produced it. The signing gate reads `document_read_completed_at` back
  * from the agreement, not from anything the client remembers.
  *
- * See ADR-215.
+ * See ADR-217.
  */
 
 const STAGES = ["opened", "completed"] as const;

@@ -2817,7 +2817,7 @@ Three modules disagreed: `config/agreementDraft.ts` wrote single braces, `config
 
 **The design gap:** the token vocabulary was defined independently in three places with nothing asserting they matched, and no test ever rendered an owner-authored clause end to end.
 
-**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-214|ADR-214]].
+**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-216|ADR-216]].
 
 ## 2026-09-18 — The tenant was shown a hardcoded document containing none of the owner's clauses (fixed)
 
@@ -2829,7 +2829,7 @@ Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI t
 
 **The design gap:** a design-fidelity rebuild reproduced a mockup's *appearance* of a document, and nothing tested that the rendered document had any relationship to the stored one.
 
-**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-215|ADR-215]].
+**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
 
 ## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
 
@@ -2847,4 +2847,4 @@ An existing test even pinned the behaviour, named *"accepts either signature, bu
 
 **The design gap:** "at least one" was written to be accommodating and nobody asked which one.
 
-**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-216|ADR-216]].
+**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-218|ADR-218]].

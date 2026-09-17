@@ -49,13 +49,13 @@ The central exit-workflow record. Status (`MoveOutStatus` enum) drives a documen
 | `document_opened_at` | `TIMESTAMPTZ` | First open. Never moved backwards by a re-read. |
 | `document_read_completed_at` | `TIMESTAMPTZ` | Reached the end. Gates signing. |
 
-All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-215|ADR-215]].
+All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-217|ADR-217]].
 
 > **The table is `"Agreement"`, not `agreements`.** The Prisma model carries no `@@map`, so the physical table is the model name, quoted and PascalCase — as the `$queryRaw` row locks in `agreement-renewal-service.ts` and `agreement-renewal-signing-service.ts` show. A migration written against `agreements` fails outright.
 
 > **Migration `085`, not `084`.** `dev` tops out at `083` but `main` already carries `084_lead_source_tracking.sql`. Both branches must be checked before taking a number.
 
-**Status: UNAPPLIED.** Written and committed, never run — the test database is unreachable from the development environment. Apply **before** the regenerated Prisma client deploys. **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+**Status: APPLIED to production 2026-09-18** (`qgfyfbdccjnibdhhvnsr`), before any deploy of the branch that declares these fields. Verified against `information_schema` (3 columns, all nullable) and by selecting them off `"Agreement"`. Apply **before** the regenerated Prisma client deploys. **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
 declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
 such reads** — including `rent-generation-service`, `financial-service`,
 `billing-transition-service` and the activation workflow itself. Deploying a client that declares

@@ -25,7 +25,7 @@ export type ActivationContext = {
     blocked_steps: ActivationStep[];
     /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
-    /** True when this hostel requires a parent/guardian co-signature (ADR-216). */
+    /** True when this hostel requires a parent/guardian co-signature (ADR-218). */
     guardian_signature_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;

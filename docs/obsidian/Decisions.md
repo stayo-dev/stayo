@@ -3175,7 +3175,13 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Not verified:** **not opened in a browser.** No screenshot, no device, no reduced-motion check, and the in-app catch-alls have not been navigated to — the build compiling is not the same as `/owner/nonsense` rendering the owner shell correctly.
 - **See:** [[Frontend]], [[Features]], [[Bugs]], [[Changelog]], [[Decisions#ADR-191|ADR-191]], [[Decisions#ADR-197|ADR-197]]
 
-### ADR-214 — The agreement is one composed document, and the PDF is a rendering of it (2026-09-18)
+> **Numbering note (2026-09-18).** ADR-216–219 were first written as 214–217 and renumbered.
+> `main` topped out at ADR-213 and `dev` at ADR-209, but the unpushed branch
+> `fix/unpublish-removes-listing` had already claimed **214 and 215**. Checking the two
+> long-lived branches is not enough — **unmerged branches hold ADR numbers too**, and this
+> repository has had duplicate ADRs before.
+
+### ADR-216 — The agreement is one composed document, and the PDF is a rendering of it (2026-09-18)
 
 - **Status:** Accepted. Supersedes nothing; it closes a gap nobody had written down.
 - **Context:** the document an owner drafted, the document a tenant was shown, and the PDF that was filed were **three different artifacts composed by three different pieces of code**. The owner edited `AgreementTemplate.rules_content`. The tenant was shown a hardcoded stub in `AgreementStep.tsx` containing none of it. The PDF was composed independently in `generatePdfBuffer`, from a snapshot, *after* the signature was captured. Nothing checked that any of the three agreed.
@@ -3188,9 +3194,9 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Verified:** 129 tests across 11 backend agreement suites. `check:invariants` shows the same two pre-existing failures and no new files.
 - **Not verified:** **not opened in a browser, and not run against a database.** The test Supabase project is unreachable (`ENOTFOUND postgres.qsjrazcbtpmubclkevwi`), so every integration suite in this repo currently fails on connection and no composed document has been rendered from real data.
 
-### ADR-215 — A tenant reads the agreement before signing it, and the read is evidence (2026-09-18)
+### ADR-217 — A tenant reads the agreement before signing it, and the read is evidence (2026-09-18)
 
-- **Status:** Accepted. Depends on [[Decisions#ADR-214|ADR-214]].
+- **Status:** Accepted. Depends on [[Decisions#ADR-216|ADR-216]].
 - **Context:** the signing step showed a hardcoded contract — a facts grid numbered "1.", then a jump straight to a fabricated "6. Management Rights" with two invented sentences, and no sections 2–5. The owner's clauses reached the client (`ctx.rules.content.categories`) and **nothing read them**. The frozen legacy portal had rendered them correctly, so this was a regression, not an unbuilt feature. The real PDF did not exist until after the signature, so there was nothing to preview even in principle.
 - **Decision — the document is read on its own screen.** `/activate/agreement`, full screen, one scrolling column, composed from the same model the PDF is made from. Not a modal and not an inline box: nesting a contract inside the step's own scroll container is what made the old screen feel like it had no document in it.
 - **Decision — signing is gated on the read, recorded server-side.** `document_opened_at` and `document_read_completed_at` on `Agreement`, written by `POST /api/tenants/activate/agreement-read`. The gate reads the server's record, not component state, so a reload cannot skip it and the evidence outlives the session. The first open is never overwritten by a re-read.
@@ -3199,7 +3205,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Consequences:** the gate lives in `agreementIssues()` alongside the step's existing validation, so it surfaces through the Guidance system rather than as a separate refusal.
 - **Not verified:** **no browser, no device, no real tenant has read a document through this screen.**
 
-### ADR-216 — The tenant signs their own agreement (2026-09-18)
+### ADR-218 — The tenant signs their own agreement (2026-09-18)
 
 - **Status:** Accepted. Changes a live business rule. See [[Business-Rules]].
 - **Context:** the rule was "at least one signature — tenant **or** parent/guardian". A tenancy could therefore be activated with **no signature from the person who actually lives there**.
@@ -3208,7 +3214,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Consequences:** the rule is a pure `validateAgreementSignatures()` beside `isAgreementRequired`, not inline in a private method. Wiring it found that the flag lives in `hostels.preferences_config` (not `hostels.policy`) **and** that the resolved tenant does not include `hostels` at all — so reading it off the tenant would have silently evaluated to "not required" and the setting would never have worked.
 - **Not verified:** no real activation has been attempted against this rule.
 
-### ADR-217 — The signing screen carries no legal notice (2026-09-18)
+### ADR-219 — The signing screen carries no legal notice (2026-09-18)
 
 - **Status:** Accepted, by explicit product decision.
 - **Context:** the screen carried "Valid under the IT Act. Digital signatures and IP details collected during onboarding are legally binding." A signature captured as a drawn or photographed PNG is an **electronic** signature; a *digital signature* under IT Act s.3 means an asymmetric-crypto signature affixed with a Digital Signature Certificate, which is not what this flow produces. The sentence claimed a legal character the artifact does not have.

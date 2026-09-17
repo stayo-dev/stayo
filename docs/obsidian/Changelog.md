@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
-- **2026-09-18**: **The agreement a tenant signs is now the agreement the owner wrote** ([[Decisions#ADR-214|ADR-214]], [[Decisions#ADR-215|ADR-215]], [[Decisions#ADR-216|ADR-216]], [[Decisions#ADR-217|ADR-217]], [[Bugs]], [[APIs]], [[Database]]).
+- **2026-09-18**: **The agreement a tenant signs is now the agreement the owner wrote** ([[Decisions#ADR-216|ADR-216]], [[Decisions#ADR-217|ADR-217]], [[Decisions#ADR-218|ADR-218]], [[Decisions#ADR-219|ADR-219]], [[Bugs]], [[APIs]], [[Database]]).
   - The document an owner drafted, the document a tenant was shown, and the PDF that was filed were three artifacts composed by three pieces of code. They are now **one composed model with two renderers** — HTML for reading, pdf-lib for the file — with a `contentHash` that makes the agreement checkable rather than assumed.
   - **The tenant was being shown a hardcoded contract** containing none of the owner's clauses: a facts grid numbered "1.", a jump to a fabricated "6. Management Rights", no sections 2–5. The clauses were reaching the client and nothing read them; the frozen legacy portal had rendered them correctly, so this was a regression. The stub is deleted.
   - **The PDF did not exist until after the signature was captured**, so there was nothing to preview even in principle. The document now opens on its own full screen before signing, and the read is recorded server-side (`document_opened_at`, `document_read_completed_at`) so a reload cannot skip it.
