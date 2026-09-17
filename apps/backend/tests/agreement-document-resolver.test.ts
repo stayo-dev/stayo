@@ -64,6 +64,13 @@ describe("agreementDocumentInputFromRenderData", () => {
     expect(fact("Payment Cycle", { paymentFrequency: null })).toBe("Monthly");
   });
 
+  it("can be composed as a draft, leaving unknown tokens visible", () => {
+    // An owner previewing their own template must see a typo'd token as they
+    // wrote it. Blanking it to ____ would hide the mistake until a tenant
+    // signed the result.
+    expect(agreementDocumentInputFromRenderData(renderData, { ...opts, isFinal: false }).isFinal).toBe(false);
+  });
+
   it("is final, because a stored agreement is being issued and not drafted", () => {
     // An unresolved token must blank rather than print as a token in something
     // somebody is about to sign.
