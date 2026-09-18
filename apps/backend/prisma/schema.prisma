@@ -868,6 +868,7 @@ model profile {
   // record; the two share relations are this profile acting as an *owner* who
   // verified or rejected someone else's document.
   identity                                                          profile_identity?
+  manager_profile                                                   manager_profiles?
   // Meet your host (ADR-200). Relation fields add no scalar columns to
   // `profiles`, so `getSession()`'s profile reads are unaffected.
   host_profile                                                      owner_host_profile?   @relation("OwnerHostProfile")
@@ -2320,6 +2321,81 @@ enum Role {
   OWNER
   TENANT
   ADMIN
+  MANAGER
+}
+
+enum ManagerStatus {
+  PENDING_INVITATION
+  ACTIVE
+  SUSPENDED
+}
+
+/// One value per platform-admin module a manager can be granted access to.
+/// Enforced server-side by `requireManagerPermission` — never by hiding
+/// frontend nav alone. See manager-authorization.ts.
+enum ManagerPermission {
+  MANAGE_LEADS
+  MANAGE_OWNERS
+  MANAGE_HOSTELS
+  MANAGE_ONBOARDING
+  VIEW_REVENUE_ANALYTICS
+  MANAGE_SUBSCRIPTIONS
+  SUPPORT_REPORTS_BUGS
+  MANAGE_BROADCASTS
+  MANAGE_SETTINGS
+}
+
+/// A platform staff account scoped below ADMIN — profile.role = MANAGER,
+/// created only by a Super Admin (no self-serve signup, mirrors
+/// `platform_admins`). Permissions and hostel assignments live in the two
+/// sidecar tables below so they can change over the manager's lifetime
+/// without touching this row.
+model manager_profiles {
+  id               String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id       String                     @unique @db.Uuid
+  status           ManagerStatus              @default(PENDING_INVITATION)
+  invited_by       String?                    @db.Uuid
+  phone_verified_at DateTime?                 @db.Timestamptz(6)
+  activated_at     DateTime?                  @db.Timestamptz(6)
+  suspended_at     DateTime?                  @db.Timestamptz(6)
+  suspended_by     String?                    @db.Uuid
+  suspended_reason String?
+  created_at       DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?                  @db.Timestamptz(6)
+  profile          profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  permissions      manager_permission_grants[]
+  hostel_assignments manager_hostel_assignments[]
+}
+
+model manager_permission_grants {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id String           @db.Uuid
+  permission        ManagerPermission
+  granted_by        String?           @db.Uuid
+  granted_at        DateTime          @default(now()) @db.Timestamptz(6)
+  manager           manager_profiles  @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([manager_profile_id, permission])
+}
+
+/// Which hostels a manager may operate on. Reassignment never deletes a row
+/// — it sets `unassigned_at` on the old one and inserts a new one, so
+/// historical activity attributed to the old assignment stays intact. At
+/// most one *active* (unassigned_at IS NULL) row may exist per hostel; see
+/// the partial unique index added by migrations/0XX_manager_role.sql
+/// (Prisma cannot express a partial index directly here).
+model manager_hostel_assignments {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id  String           @db.Uuid
+  hostel_id           String           @db.Uuid
+  assigned_by         String?          @db.Uuid
+  assigned_at         DateTime         @default(now()) @db.Timestamptz(6)
+  unassigned_at       DateTime?        @db.Timestamptz(6)
+  unassigned_by       String?          @db.Uuid
+  manager             manager_profiles @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([manager_profile_id, unassigned_at])
+  @@index([hostel_id, unassigned_at])
 }
 
 enum ExpenseScope {
@@ -2765,6 +2841,16 @@ model Agreement {
 
   generated_at           DateTime  @default(now()) @db.Timestamptz(6)
   signed_at              DateTime? @db.Timestamptz(6)
+
+  // What the tenant actually read, and evidence that they read it. The
+  // document a tenant signs used to be generated only *after* signing, and the
+  // screen they signed from showed a hardcoded stub containing none of the
+  // owner's clauses. These record the read that now precedes the signature.
+  // All nullable: agreements predating the read gate must stay valid.
+  // See ADR-217.
+  document_content_hash      String?
+  document_opened_at         DateTime? @db.Timestamptz(6)
+  document_read_completed_at DateTime? @db.Timestamptz(6)
   voided_at              DateTime? @db.Timestamptz(6)
   expiry_notified_30d_at DateTime? @db.Timestamptz(6)
   expiry_notified_15d_at DateTime? @db.Timestamptz(6)

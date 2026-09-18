@@ -38,6 +38,15 @@ export interface AuthUser {
   exit_request_id?: string | null;
   phone?: string | null;
   phone_verified?: boolean;
+  /**
+   * MANAGER-role only — the manager's current permission grants, for
+   * nav/tab UX gating. NOT the source of authorization: every route the
+   * manager calls re-derives this itself server-side
+   * (manager-authorization.ts), so a stale value here can only ever hide a
+   * UI affordance, never grant real access. See ManagersPage/manager console.
+   */
+  manager_permissions?: string[];
+  manager_status?: string | null;
 }
 
 /**
@@ -164,6 +173,8 @@ function buildAuthUser(data: any): AuthUser {
     exit_request_id: data.exit_request_id ?? null,
     phone: data.phone ?? null,
     phone_verified: Boolean(data.phone_verified),
+    manager_permissions: Array.isArray(data.manager_permissions) ? data.manager_permissions : undefined,
+    manager_status: data.manager_status ?? null,
   };
 }
 
@@ -208,7 +219,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     const publicPaths = ['/login'];
     if (user && publicPaths.includes(location.pathname)) {
       const role = user.role?.toLowerCase();
-      if (role === 'admin') {
+      if (role === 'admin' || role === 'manager') {
         navigate('/admin', { replace: true });
       } else if (role === 'owner') {
         navigate('/owner/home', { replace: true });

@@ -1109,6 +1109,17 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
 
+## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-214|ADR-214]])
+
+- **A manager's authority is re-derived on every request, never cached in the session/JWT.** `requireAdminOrManagerPermission` and `assertHostelAccess`/`scopeHostelIds` (`src/services/managers/manager-authorization.ts`) load `manager_permission_grants`/`manager_hostel_assignments` fresh from the DB each call. Revoking a permission or unassigning a hostel takes effect on the manager's very next request — no session invalidation, no logout required.
+- **Permissions are a full-replace set, not additive.** `PATCH /api/platform-admin/managers/[id]` with `{permissions: [...]}` deletes and recreates the manager's grant rows in one transaction — the admin console's permission editor always submits the complete intended set, never a delta.
+- **A manager sees only what they are assigned, and that scoping is server-side.** `scopeHostelIds(session)` returns `null` (unrestricted) for ADMIN or the manager's current active hostel-id list for MANAGER — used to filter hostel and owner list queries. `assertHostelAccess(session, hostelId)` gates every single-hostel route. Neither ever reads a manager/hostel id supplied by the client to decide *whose* scope to check — the manager is always resolved from the authenticated session (`session.sub`).
+- **A manager can never escalate, suspend, or reassign themselves.** There is no manager-reachable route to `manager-service.ts`'s CRUD/permission/suspend/hostel-assignment functions — every one of them is called exclusively from ADMIN-gated routes. This is a structural guarantee (no code path exists), not a per-request check that could be missed.
+- **Suspension reuses the platform's one existing login gate.** Suspending a manager sets `profile.is_active = false` — the same flag `lib/auth/supabase-session.ts` already hard-checks for every role. There is no second, parallel "is this manager still allowed in" check to keep in sync.
+- **Reassigning a hostel never deletes assignment history.** `manager_hostel_assignments` rows are closed (`unassigned_at` set), never removed — so activity a manager performed while assigned stays attributable to them even after the hostel moves to someone else. A DB-level partial unique index enforces at most one *active* assignment per hostel.
+- **Manager (and admin) activity is recorded by the service layer, never by the frontend.** `recordManagerActivity` (`src/services/managers/manager-activity.ts`) is called from inside mutation services/routes — e.g. the hostel address-correction route — not from UI button handlers, so activity cannot be skipped by calling the API directly and bypassing a "log this" button. It reuses the existing generic `activity_logs` writer (`ActivityService`) rather than a second audit table, and follows the established `metadata.hostel_id` convention so the same expression index the owner-facing activity feed already uses (`migrations/082_activity_logs_hostel_index.sql`) also serves the Super Admin's manager-activity feed.
+- **Onboarding progress is derived, not stored.** No per-hostel step-tracking table exists or is planned to be added; a hostel's setup checklist is meant to be computed from existing signals (verification/listing status, rooms, documents, etc.) the same way `ownerHealth.ts` derives owner health — see [[Features]] for what is and isn't built yet.
+
 ## The activation sequence
 
 `ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE` ([[Decisions#ADR-213|ADR-213]]), server-enforced by `assertTransition` — the order is not a UI convention.
@@ -1143,3 +1154,69 @@ Added 2026-09-16 ([[Decisions#ADR-212|ADR-212]]). **Files:** `src/services/tenan
 8. **`sendGuardianActivation` now requires proof, not intent.** It used to fire whenever a guardian number was entered; it announced access that did not exist to someone who may not have known they were named.
 
 Related: [[Decisions#ADR-212|ADR-212]], [[Database]], [[APIs]], [[Features]]
+## Reading the agreement before signing it
+
+A tenant cannot sign until they have opened the agreement and reached the end of it.
+
+- The document opens on its own full screen (`/activate/agreement`), composed from the same model the PDF is generated from.
+- "Read" is **98% of the scrollable distance**, not the exact bottom — real scrolling rarely lands there. A document shorter than the viewport counts as read by being shown, or a short agreement could never satisfy the gate.
+- Both ends are recorded on `Agreement`: `document_opened_at` and `document_read_completed_at`, plus `document_content_hash` — a digest of exactly what was read.
+- The gate reads the **server's** record, not client state, so a reload cannot skip it. The first open is never overwritten by a re-read.
+- Agreements signed before this existed have all three columns null. Null means "predates the gate", never "did not read".
+
+See [[Decisions#ADR-217|ADR-217]].
+
+## Who has to sign an agreement
+
+**The tenant always signs.** This replaced "at least one signature — tenant or parent/guardian", under which a tenancy could be activated with no signature from the person living there.
+
+- A parent/guardian co-signature is **optional by default**.
+- It becomes mandatory when the hostel sets `preferences_config.tenant_rules.guardian_signature_required`. Absent means **not** required — the opposite default to `agreement_required`, because requiring a co-signature is a deliberate choice.
+- A volunteered guardian signature is validated as strictly as a required one: a signature image demands a typed name and a stated relationship.
+- The rule validates a **submission**. Agreements already signed guardian-only remain valid; nothing re-checks stored rows.
+
+See [[Decisions#ADR-218|ADR-218]].
+
+## What is stamped against a signature
+
+Each signature on the document carries its own provenance, identical in the tenant's reader and in the PDF:
+
+| Stamped | Source |
+|---|---|
+| Signing moment, **IST** | `tenant_signed_at` / `guardian_signed_at`, formatted by `formatAgreementDateTime` |
+| Originating IP | `tenant_ip` / `guardian_ip`, client address taken from the head of an `X-Forwarded-For` chain |
+| Device, OS, browser | parsed from `tenant_user_agent` / `guardian_user_agent` |
+| Raw user agent | stored verbatim alongside the readable summary |
+
+- Times are **IST**, not UTC — every party to these agreements is in India and a UTC timestamp on a tenancy contract invites the wrong reading.
+- An **unsigned** panel is stamped with nothing. A date and an IP under a signature nobody gave would describe an event that never happened.
+- The **owner** gets a date but no device or IP: they sign by applying a stored signature stamp, not from a browser, so there is nothing to record.
+- The stamp is deliberately **excluded from `document_content_hash`** — two renders of the same agreement, signed from different devices, are still the same agreement.
+
+## The five commercial terms
+
+Every Stayo agreement carries the same five terms, in the same order:
+
+| id | Heading |
+|---|---|
+| `residential_use` | Residential Use Only |
+| `rent_payment` | Rent Payment |
+| `security_deposit` | Security Deposit |
+| `notice_period` | Notice Period |
+| `hostel_rules_compliance` | Hostel Rules Compliance |
+
+- **Owners write the body. The headings are fixed.** An owner cannot rename, delete, reorder or add a term.
+- **Enforced server-side** by `normalizeAgreementTerms()`, not by the editor. The save route previously validated only `id` and `content`, so a renamed, invented or omitted term could persist.
+- **It normalizes rather than rejects.** An unrecognised term is dropped, a missing one is restored with Stayo's wording, and a blanked one falls back the same way — a malformed payload becomes a valid agreement instead of costing an owner their editing session.
+- Before this the whole band was uneditable, so every hostel shipped an identical notice period.
+
+See [[Decisions#ADR-220|ADR-220]].
+
+## When an owner may publish an agreement
+
+- **Blocked** when the draft contains a token Stayo cannot fill. A typo like `{{MONTLY_RENT}}` prints literally on a document somebody signs, so this is the one condition worth refusing over. Every offending token is named.
+- **Blocked** when the draft matches what is already published — there is nothing to publish.
+- **Warned, not blocked**, when the owner's signature is not set. An unsigned agreement is still a real document, and refusing would strand an owner who has not reached that screen.
+- Publishing shows what changed — added, reworded, removed — and how many tenants signed the current version, before it happens.
+
+Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.

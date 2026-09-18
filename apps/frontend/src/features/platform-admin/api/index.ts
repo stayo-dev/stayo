@@ -456,4 +456,73 @@ export const platformAdminService = {
     const response = await api.post('/platform-admin/billing-settings/qr', form);
     return unwrap(response) as { url: string };
   },
+
+  // ── Managers (Super Admin -> Manager -> hostel assignment, ADR-214) ────────
+  // The frontend never decides what a manager may do — every call below is
+  // re-checked server-side against manager_permission_grants/
+  // manager_hostel_assignments on every request. This layer only shapes
+  // requests/responses, same as every other block in this file.
+
+  getManagers: async (params: { search?: string; status?: string } = {}) => {
+    const response = await api.get('/platform-admin/managers', { params });
+    return unwrap(response).managers as any[];
+  },
+  getManager: async (id: string) => {
+    const response = await api.get(`/platform-admin/managers/${id}`);
+    return unwrap(response).manager;
+  },
+  createManager: async (data: { name: string; phone: string; email: string; permissions: string[] }) => {
+    const response = await api.post('/platform-admin/managers', data);
+    return unwrap(response) as { manager: any; invitation: { activationLink: string; expiresAt: string } };
+  },
+  updateManager: async (id: string, data: { name?: string; phone?: string; permissions?: string[] }) => {
+    const response = await api.patch(`/platform-admin/managers/${id}`, data);
+    return unwrap(response).manager;
+  },
+  suspendManager: async (id: string, reason?: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/suspend`, { reason });
+    return unwrap(response).manager;
+  },
+  reactivateManager: async (id: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/reactivate`);
+    return unwrap(response).manager;
+  },
+  resendManagerInvitation: async (id: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/resend-invitation`);
+    return unwrap(response).invitation as { activationLink: string; expiresAt: string };
+  },
+  assignManagerHostels: async (id: string, hostelIds: string[]) => {
+    const response = await api.post(`/platform-admin/managers/${id}/hostels`, { hostelIds });
+    return unwrap(response).manager;
+  },
+  unassignManagerHostel: async (id: string, hostelId: string) => {
+    const response = await api.delete(`/platform-admin/managers/${id}/hostels/${hostelId}`);
+    return unwrap(response).manager;
+  },
+  reassignHostel: async (fromManagerId: string, hostelId: string, toManagerId: string) => {
+    const response = await api.post(
+      `/platform-admin/managers/${fromManagerId}/hostels/${hostelId}/reassign`,
+      { toManagerId },
+    );
+    return unwrap(response).manager;
+  },
+
+  /** Super Admin's manager-activity feed — filters: managerId, hostelId, actionType, entityType, from/to. */
+  getManagerActivity: async (params: {
+    managerId?: string; hostelId?: string; actionType?: string; entityType?: string; from?: string; to?: string; limit?: number;
+  } = {}) => {
+    const response = await api.get('/platform-admin/activity', { params });
+    return unwrap(response).activity as Array<{
+      id: string;
+      actionType: string;
+      entityType: string;
+      entityId: string | null;
+      hostelId: string | null;
+      actorProfileId: string;
+      actorName: string | null;
+      actorRole: string | null;
+      metadata: any;
+      timestamp: string;
+    }>;
+  },
 };

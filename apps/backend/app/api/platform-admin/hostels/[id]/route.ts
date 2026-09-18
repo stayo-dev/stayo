@@ -4,12 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") {
-    throw new Error("FORBIDDEN: Admin access only");
-  }
-}
+import { requireAdminOrManagerPermission, assertHostelAccess } from "@/src/services/managers/manager-authorization";
+import { recordManagerActivity } from "@/src/services/managers/manager-activity";
 
 /**
  * GET /api/platform-admin/hostels/[id]
@@ -20,7 +16,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
   const { id } = await params;
 
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_HOSTELS");
+    await assertHostelAccess(session, id);
 
     const hostel = await prisma.hostels.findUnique({
       where: { id },
@@ -34,6 +31,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         phone: true,
         verification_status: true,
         listing_status: true,
+        public_slug: true,
         created_at: true,
         owner_id: true,
         profiles: { select: { name: true, email: true, phone: true } },
@@ -90,6 +88,7 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
         phone: hostel.phone,
         verification_status: hostel.verification_status,
         listing_status: hostel.listing_status,
+        public_slug: hostel.public_slug,
         created_at: hostel.created_at,
         owner: hostel.profiles,
         owner_id: hostel.owner_id,
@@ -112,9 +111,8 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
       },
     });
   } catch (error: any) {
-    const msg = String(error?.message || "Failed to fetch hostel");
-    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
-    return apiError(msg);
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
+    return apiError(String(error?.message || "Failed to fetch hostel"));
   }
 }
 
@@ -130,11 +128,16 @@ export async function GET(req: NextRequest, { params }: { params: Promise<{ id: 
  */
 export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);
-  if (!session || session.role !== "ADMIN") return apiError("Forbidden", "FORBIDDEN", 403);
   const { id } = await params;
 
   try {
-    const existing = await prisma.hostels.findUnique({ where: { id }, select: { id: true } });
+    await requireAdminOrManagerPermission(session, "MANAGE_HOSTELS");
+    await assertHostelAccess(session, id);
+
+    const existing = await prisma.hostels.findUnique({
+      where: { id },
+      select: { id: true, owner_id: true, address: true, city: true, state: true, pincode: true },
+    });
     if (!existing) return apiError("Hostel not found", "NOT_FOUND", 404);
 
     const body = await req.json().catch(() => ({}));
@@ -172,8 +175,22 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
       data,
       select: { id: true, address: true, city: true, state: true, pincode: true },
     });
+
+    await recordManagerActivity({
+      actorProfileId: session!.sub,
+      actorRole: session!.role,
+      hostelId: id,
+      ownerId: existing.owner_id,
+      actionType: "HOSTEL_UPDATED",
+      entityType: "HOSTEL",
+      entityId: id,
+      before: { address: existing.address, city: existing.city, state: existing.state, pincode: existing.pincode },
+      after: { address: updated.address, city: updated.city, state: updated.state, pincode: updated.pincode },
+    });
+
     return apiResponse(updated);
   } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     return apiError(error?.message || "Failed to update the address");
   }
 }

@@ -3,12 +3,9 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
 import { notificationService } from "@/lib/services/notification-service";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * POST /api/platform-admin/broadcast
@@ -19,7 +16,7 @@ function requireAdmin(session: any) {
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_BROADCASTS");
     const body = await req.json().catch(() => ({}));
     const { message, hostel_id } = body;
     if (!message?.trim()) return apiError("message is required", "VALIDATION_ERROR", 400);
@@ -43,6 +40,7 @@ export async function POST(req: NextRequest) {
     return apiResponse({ sent, total: owners.length });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to send broadcast");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

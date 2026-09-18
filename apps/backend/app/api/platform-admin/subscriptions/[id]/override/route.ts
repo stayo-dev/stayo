@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionOverrideService } from "@/src/services/platform-billing/subscription-override-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/subscriptions/[id]/override
@@ -21,7 +22,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const body = await req.json().catch(() => ({}));
     const result = await subscriptionOverrideService.setOverride({
       subscriptionId: id,
@@ -40,7 +41,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const body = await req.json().catch(() => ({}));
     const result = await subscriptionOverrideService.clearOverride({
       subscriptionId: id,

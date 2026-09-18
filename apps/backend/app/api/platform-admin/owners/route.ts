@@ -9,12 +9,8 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
 import { profilePhoneCandidates } from "@/lib/services/auth/auth-otp-service";
 import { createPlatformLead } from "@/src/services/platform-leads/create-platform-lead";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") {
-    throw new Error("FORBIDDEN: Admin access only");
-  }
-}
+import { requireAdminOrManagerPermission, scopeHostelIds } from "@/src/services/managers/manager-authorization";
+import { PLATFORM_OWNER_EMAIL } from "@/src/services/marketing/platform-owner";
 
 const REQUIRED_DOCS = ["AADHAAR", "PAN"];
 
@@ -39,7 +35,8 @@ const REQUIRED_DOCS = ["AADHAAR", "PAN"];
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_OWNERS");
+    const restrictToHostelIds = await scopeHostelIds(session);
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim();
@@ -48,6 +45,15 @@ export async function GET(req: NextRequest) {
 
     const where = {
       role: "OWNER" as const,
+      // The sentinel "Stayo Platform" profile (platform-owner.ts) owns
+      // PLATFORM_LISTED hostels until a real owner claims one — it satisfies
+      // `role: OWNER` for the foreign key but is not an account anyone
+      // manages, so it must never appear in the real owner roster.
+      email: { not: PLATFORM_OWNER_EMAIL },
+      // A manager only sees owners who run at least one hostel assigned to
+      // them — resolved server-side from manager_hostel_assignments, never
+      // trusted from the request.
+      ...(restrictToHostelIds ? { hostels: { some: { id: { in: restrictToHostelIds } } } } : {}),
       ...(search
         ? {
             // City is matched through the owner's hostels: an admin searching
@@ -241,9 +247,8 @@ export async function GET(req: NextRequest) {
       has_more: offset + owners.length < total,
     });
   } catch (error: any) {
-    const msg = String(error?.message || "Failed to fetch owners");
-    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
-    return apiError(msg);
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
+    return apiError(String(error?.message || "Failed to fetch owners"));
   }
 }
 
@@ -268,7 +273,7 @@ const ADD_OWNER_OTP_PURPOSE = "PHONE_VERIFICATION";
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_OWNERS");
 
     const body = await req.json().catch(() => ({}));
     const validated = AdminAddOwnerSchema.safeParse(body);
@@ -343,8 +348,7 @@ export async function POST(req: NextRequest) {
       201,
     );
   } catch (error: any) {
-    const msg = String(error?.message || "Failed to create owner");
-    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     console.error("Detailed API Error [platform-admin.owners.POST]:", error);
     return apiError("Could not create this owner. Please try again.", "INTERNAL_ERROR", 500);
   }

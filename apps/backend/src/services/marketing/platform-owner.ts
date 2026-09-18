@@ -16,7 +16,7 @@ import { prisma } from "@/lib/db";
  * should ever be able to sign in as it. It is a placeholder for a foreign key,
  * not an account.
  */
-const PLATFORM_OWNER_EMAIL = "platform-listings@stayo.internal";
+export const PLATFORM_OWNER_EMAIL = "platform-listings@stayo.internal";
 
 export async function getOrCreatePlatformOwnerProfile(): Promise<string> {
   const existing = await prisma.profile.findUnique({

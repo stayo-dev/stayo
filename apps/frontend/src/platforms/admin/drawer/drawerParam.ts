@@ -8,11 +8,11 @@
  *
  * PURE MODULE — no I/O, runs under vitest's node environment.
  */
-export type DrawerKind = 'lead' | 'owner' | 'kyc' | 'listing' | 'client';
+export type DrawerKind = 'lead' | 'owner' | 'kyc' | 'listing' | 'client' | 'manager';
 
 export type DrawerTarget = { kind: DrawerKind; id: string };
 
-const KINDS: readonly DrawerKind[] = ['lead', 'owner', 'kyc', 'listing', 'client'];
+const KINDS: readonly DrawerKind[] = ['lead', 'owner', 'kyc', 'listing', 'client', 'manager'];
 
 export function parseDetailParam(raw: string | null): DrawerTarget | null {
   if (!raw) return null;

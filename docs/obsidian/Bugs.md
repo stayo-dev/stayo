@@ -8,6 +8,21 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-18 — A clause's last character could not be deleted, and Publish sat behind the tab bar (fixed)
+
+**Symptom.** Reported by the owner using Configuration › Agreements. Two faults on the same screen: deleting a clause backwards stopped at the final character — it reappeared as fast as it was deleted, so a line could never be emptied — and after changing anything, the "Review and publish" bar showed only as a sliver above Home/Tenants/Money and could not be tapped.
+
+**Root cause 1 — a guard that outlived its editor.** `editLine` (`config/agreementDraft.ts`) trimmed its input and returned the content *unchanged* when the result was blank, documented as "deleting is a separate, deliberate act". That was right for the editor it was written for, which committed on `onBlur` — a whole-value commit, where an empty box really did mean "remove this line". [[Decisions#ADR-220|ADR-220]]'s `SectionRow` replaced it with a **controlled textarea that commits on every keystroke**, and there both rules invert: the intermediate empty string is a normal moment mid-edit, and refusing it left React to re-render the textarea with the previous value, putting the deleted character straight back. The same guard made a *trailing space* unenterable — it was trimmed away, state never changed, and the next character landed against the previous word. `editTerm`, written for the new screen, stores its text verbatim and has neither fault; the two had silently disagreed since the rewrite.
+
+**Root cause 2 — a fixed bar with no offset and no z-index.** The workspace's publish bar was `fixed inset-x-0 bottom-0` with no `z-`, while `OwnerAppShell`'s tab bar is `fixed inset-x-0 bottom-0 z-40`. The bar rendered underneath it; only the part taller than the nav showed. The editor this replaced had used `bottom-[68px]`, and `owner-more`'s own [[Frontend|SaveBar]] already carried the right offset — the rewrite reused neither.
+
+**Fix.** `editLine` stores the text exactly as typed, empty included (which `addLine` and `addSection` already create); removing a line stays `removeLine`. The bar adopts `SaveBar`'s positioning verbatim — `bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 … lg:bottom-0`, 4.5rem being the nav height `OwnerAppShell` already pads its `main` by, and `lg` being where the console shell drops the nav — and the page's bottom padding goes `pb-32` → `pb-40` to match the other bar-bearing config screens.
+
+**Lesson.** When an editor changes *when* it commits, every purity rule written for the old commit point has to be re-read. A validation that assumes a whole-value commit becomes a typing bug the moment the same function is called per keystroke.
+
+**Found alongside, fixed the same day.** The workspace wired only `editLine`, `addLine`, `addSection` and `editTerm`. `removeLine`, `removeSection`, `moveLine`, `moveSection`, `renameSection`, `toggleSection`, `toggleImportant`, `resetSection` and `isSectionEnabled` all existed and were tested, but no control on the screen called them — so a line could be *emptied* but not removed, and a section could not be deleted, renamed or reordered at all. A live regression against the editor ADR-220 replaced, since an emptied line still prints as a numbered blank clause. Now wired, under [[Decisions#ADR-221|ADR-221]].
+
+**See:** [[Decisions#ADR-220|ADR-220]], [[Decisions#ADR-221|ADR-221]], [[Frontend]], [[Changelog]]
 ## 2026-09-14 — Any owner could take over any account, ADMIN included (fixed)
 
 **Symptom.** Found by the 2026-09-14 authentication/authorization audit (finding C1), not by an incident. Reproduced in `tests/supabase-session-linking.test.ts` before the fix: a Supabase token that no profile was linked to resolved `ok: true` as the profile sharing its email.
@@ -41,6 +56,15 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Wider finding (inventoried, not fixed — Phase D):** authorization is hand-rolled across the codebase (~123 `role ===/!== "OWNER"`, ~65 `role !== "ADMIN"`, ~183 role-array checks, and 29 duplicate local `requireAdmin` defs under `/api/platform-admin/**`). Converging onto the shared helpers is follow-up work.
 
 **See:** [[Decisions#ADR-202|ADR-202]], [[APIs]], [[Backend]], [[Changelog]]
+## 2026-09-14 — H2: a password reset did not end the old password or its sessions (fixed on a branch, 2026-09-15)
+
+**Symptom (audit finding, not a user report).** After a "successful" password reset the old password could still sign in and every existing session stayed alive.
+
+**Root cause.** Two password stores and the wrong revocation key. Login checked `profiles.password_hash`, then minted a Supabase session; the Supabase password was a second copy. `completePasswordReset` updated the hash and only *best-effort* synced Supabase — `ensureSupabaseIdentity` returns early for an already-linked account, so the Supabase password never changed, and a failure was logged as a warning while the reset reported success. `resetOnboardingPassword` never touched Supabase at all. Revocation deny-listed `profile.id`, but middleware checks a Supabase token's `sub` (= `auth_user_id`), so JIT-linked accounts were never revoked, and a Supabase refresh token minted fresh access tokens past any deny-list. GoTrue is public, so the old Supabase password worked against it directly.
+
+**Fix** ([[Decisions#ADR-204|ADR-204]]). Not a repair inside Supabase Auth — the first attempt (`c2fe07d1`, deleting `auth.sessions`/`auth.refresh_tokens`) was withdrawn because it deepened the coupling. Clerk became the only credential store and session authority: every password write goes through `credentialService.setPassword`, which writes Clerk, revokes every Clerk session, deny-lists the Clerk user id and nulls the local hash, and **throws** on any Clerk failure. `getSession()` refuses pre-Clerk tokens for a moved profile, which is what ends an old Supabase session without calling Supabase.
+
+**Lesson.** A credential kept in two places is a reset that can half-succeed. And a revocation deny-list is only as good as the match between the key it writes and the key the verifier reads.
 
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 
@@ -2800,36 +2824,75 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **See:** [[Decisions#ADR-208|ADR-208]], [[Decisions#ADR-165|ADR-165]], [[APIs]], [[Changelog]]
 
-## 2026-09-16 — Committing an unrelated stale working tree deleted four live Prisma models and re-shelved Hostel Listings (caught before push, fixed)
+## 2026-09-18 — Every variable an owner inserted printed literally in signed agreements (fixed)
 
-**Symptom.** Commit `49886a08` (Add Owner + Lead Pipeline flows, Settlements/KYC removal — see [[Decisions#ADR-210|ADR-210]]) also removed four unrelated Prisma models still referenced by live service code — `owner_host_profile` ([[Decisions#ADR-200|ADR-200]], applied to production 2026-09-15), `stay_events`/`stay_leaves` ([[Decisions#ADR-194|ADR-194]]) and `meal_service_logs` ([[Decisions#ADR-195|ADR-195]]) — and separately reverted `AdminRoutes.tsx` to redirect `/admin/hostels` and `/admin/listings*` away again, citing ADR-170, which [[Decisions#ADR-192|ADR-192]] had already superseded three days earlier. Neither change was mentioned in the commit message.
+The agreement editor's insert chips wrote `{TENANT_NAME}`. The backend interpolator only matched `{{TENANT_NAME}}`. So an owner who used the feature as designed produced clauses reading "Rent is {MONTHLY_RENT}." on a document somebody then signed.
 
-**Root cause.** The working tree being committed had a large number of pre-existing uncommitted changes of unclear provenance (likely a stale branch or file state layered under the intentional new work) at the time it was committed to `main`; the commit was staged and made without diffing the full change set against recent history first, so the accidental reversion rode along with the intended feature work.
+Three modules disagreed: `config/agreementDraft.ts` wrote single braces, `config/agreements.ts` read double, the backend substituted double.
 
-**Caught by.** The routine documentation pass required by CLAUDE.md's Documentation Rules — updating [[Database]], [[APIs]], [[Features]] and [[Changelog]] for the commit required reading `schema.prisma` and `AdminRoutes.tsx` closely enough to notice both models and routes disagreed with what the vault already recorded as current and recently shipped.
+**The design gap:** the token vocabulary was defined independently in three places with nothing asserting they matched, and no test ever rendered an owner-authored clause end to end.
 
-**Fix.** Same day, before any push to `origin/main`: the four Prisma models were restored verbatim (verified with `prisma validate`, `prisma generate`, and a clean `tsc --noEmit` diff against the pre-regression baseline) and `AdminRoutes.tsx`'s Hostel Listings routes/lazy imports were restored to byte-for-byte match `HEAD~1`, leaving only the intended Settlements/KYC removal as a real diff. `git diff HEAD~1` on both files was used to confirm no other unintended changes remained.
+**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-216|ADR-216]].
 
-**Not verified.** No DB-backed test run against a real database for the restored models; the fix relies on schema/type validation and a diff-against-parent comparison, not an end-to-end exercise of host-profile, stay-status, or meal-forecast flows.
+## 2026-09-18 — The tenant was shown a hardcoded document containing none of the owner's clauses (fixed)
 
-**See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
+`AgreementStep.tsx` rendered a fixed contract: a title, a facts grid numbered "1.", then a jump straight to "6. Management Rights" with two invented sentences, then acknowledgements as "7.". Sections 2–5 did not exist. None of the owner's drafted clauses appeared anywhere.
 
-## Guardian verification wall could only ever appear once (2026-09-16, caught pre-merge)
+They were not missing from the payload — `ctx.rules.content.categories` reached the client with the correct content and **zero consumers**. The frozen legacy portal (`portal/pages/ActivateAccountPage.tsx:834`) rendered them correctly, so this was a **regression** introduced by the rebuilt tenant platform, not a feature never built.
 
-**Status:** Fixed on `feat/guardian-verification-policy` before the migration was applied. Never reached any database, so no data is affected.
+Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI that did render it would have shown raw `{{MONTHLY_RENT}}`.
 
-**What broke.** The overdue wall's back-off was "show it, then on every third dashboard entry", gated on `shouldShowGuardianWall(status, promptCount)` returning `promptCount % 3 === 0`, with `promptCount` incremented by the dismiss endpoint. But a dismissal can only happen when the wall is *shown*. So the sequence was `0 → shown → dismissed → 1`, and `1 % 3 !== 0` blocked it permanently while the counter — which only advances on dismissal — could never reach 3. **The wall would have appeared exactly once per tenancy, for ever**, and the back-off described in [[Decisions#ADR-212|ADR-212]] would not have existed.
+**The design gap:** a design-fidelity rebuild reproduced a mockup's *appearance* of a document, and nothing tested that the rendered document had any relationship to the stored one.
 
-**The general shape.** A counter that only advances on the event it gates cannot gate that event. Worth recognising: it type-checks, it unit-tests green against hand-written counts (the original test asserted `[false, false, true, …]` for counts 1–6 — all values the system can never actually reach), and it fails only as a slow absence of behaviour nobody reports.
+**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
 
-**Fix.** The back-off moved into a date, `tenants.guardian_verification_next_prompt_at`: set to `deferred_at + 7 days` on the first deferral and pushed forward `GUARDIAN_SNOOZE_DAYS` (3) by each dismissal. `shouldShowGuardianWall` is now just `status.wallDue`. `guardian_verification_prompt_count` survives for reporting but gates nothing. Regression test: "comes back after a dismissal, rather than being silenced for ever".
+## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
 
-## Guardian confirmation request could be sent to the wrong handset (2026-09-16, caught pre-merge)
+"Leave out" set `enabled: false` on a rule category. The owner's editor honoured it and the tenant's view honoured it, but `generatePdfBuffer` iterated `data.hostelRules.categories` **raw** — so a section an owner had deliberately withdrawn still appeared on the PDF their tenant signed and the business filed.
 
-**Status:** Fixed on the same branch, pre-merge. Never shipped.
+**The design gap:** the enabled-flag predicate existed in the frontend only. The PDF had no notion of it.
 
-**What broke.** The onboarding "Ask them to confirm" button saved the profile first and swallowed the failure (`.catch(() => undefined)`), then called the send endpoint — which reads `guardian_phone` **off the tenancy**. The PROFILE step validates the whole form, so a perfectly ordinary state (guardian filled in, profile photo not yet uploaded) made the save fail silently. The message then went to whatever number was *already stored*: a previously-saved guardian, or a stranger on an old number — and that message names the resident and the hostel to someone who may never have heard of Stayo.
+**Fix:** the PDF's rules section is filtered through the same predicate the composer uses.
+## 2026-09-18 — Manager login succeeded but never reached the manager dashboard (fixed)
 
-**Fix.** The request now carries the number the caller believes it is messaging, and `sendGuardianVerifyRequest` refuses with `GUARDIAN_PHONE_NOT_SAVED` if it does not match the tenancy's own record; the tenant is told to save first. Comparison is on the **last ten digits**, not equality — this codebase stores Indian numbers in two formats (`profiles.phone` bare, `tenant_invitations.phone` E.164), and ADR-110's trust check already shipped once with a `===` that was silently always false. The swallow is kept deliberately (surfacing "profile photo is required" to someone who asked to message their parent is worse), and is only safe *because* of the server-side guard.
+**Symptom.** Reported by the user: logging in with a MANAGER account's email/password returned a successful response, but the app never navigated to `/admin`/the manager dashboard. Depending on which page the login modal was opened from, the manager was either bounced to the marketing `/owners` page or the modal just closed with no navigation at all, leaving them stranded on the landing page.
 
-Related: [[Decisions#ADR-212|ADR-212]], [[Business-Rules]], [[Database]]
+**Root cause.** The single owner/admin login surface's post-login handler, `handleAuthSuccess` in `apps/frontend/src/app/pages/public/LandingPage.tsx`, only branched on `role === 'admin'` and `role === 'owner'` (predating [[Decisions#ADR-214|ADR-214]]'s introduction of the `MANAGER` role). A manager's role matched neither branch, so it fell through to `crossSurfaceHandoff(..., 'owner')` (`apps/frontend/src/shared/lib/crossSurfaceLogin.ts`), which also only special-cased `role === 'tenant'` for that surface and returned `null` for `'manager'` — and from there to the final fallback, `if (isLoginRoute) navigate('/owners', ...)`, or nothing at all if the modal wasn't opened from the literal `/login` route. `AuthContext.tsx`'s own `role === 'admin' || role === 'manager'` redirect effect only fires on the `/login` path and races with `LandingPage`'s explicit navigate, so it didn't reliably rescue this either. Everything downstream — `/api/auth/me`'s `role`/`is_manager`/`manager_status`/`manager_permissions` fields, `AuthContext.buildAuthUser`, `RequireAdminSession`, and `AdminHomeDispatch` — was already correct; only the login-success routing switch was missing the new role.
+
+**Fix.** Added a `role === 'manager'` branch to `handleAuthSuccess` (navigates to `/admin`, mirroring the `admin` branch), and the symmetric case to `crossSurfaceHandoff`'s discovery branch in `crossSurfaceLogin.ts` (a manager who signs in on the Discovery surface is now handed off to `/admin` instead of being treated as a resident).
+
+**Lesson.** Adding a new `Role` value requires updating every place that switches on role, not just the backend session/permission plumbing — the frontend's login-success router and the Discovery/owner cross-surface handoff are both plain `if (role === ...)` chains with no exhaustiveness check, so a new role silently falls through to the last `else` rather than failing loudly.
+
+**Verified:** existing `crossSurfaceLogin.test.ts` (7 tests) still passes. No component-level test exists for `LandingPage.tsx` per this repo's frontend testing convention (pure `.ts` logic only, no `.tsx` rendering); not verified via a live login click-through in this session.
+
+**See:** [[Decisions#ADR-214|ADR-214]], [[Changelog]]
+
+## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
+
+## 2026-09-18 — A tenancy could be activated with no signature from the tenant (fixed)
+
+The rule was "at least one signature is required — add tenant or parent/guardian". A guardian-only signature satisfied it, so a person could be moved in, billed and held to a contract they never signed.
+
+An existing test even pinned the behaviour, named *"accepts either signature, but wants a name with it"*.
+
+**The design gap:** "at least one" was written to be accommodating and nobody asked which one.
+
+**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-218|ADR-218]].
+
+## 2026-09-18 — The agreement editor could lose the line you were writing (fixed)
+
+Lines committed on `onBlur`. Tapping straight from one line to another dropped the edit in progress, because focus moved before the change was ever handed to React.
+
+The variable picker made it worse: it found its own textarea with `closest('div')?.parentElement?.querySelector('textarea')` and assigned `el.value` directly, so React state and the DOM disagreed until blur — and an inserted token could be lost entirely by the next keystroke.
+
+**The design gap:** an editor for a legal document was built with uncontrolled inputs and DOM reads, so "what is on screen" and "what will be saved" were two different things with no test able to tell them apart.
+
+**Fix:** lines commit `onChange`; token insertion is a pure `insertToken(value, caret, token)` against a ref, unit-tested. See [[Decisions#ADR-220|ADR-220]].
+
+## 2026-09-18 — Owners could not change their own notice period (fixed)
+
+`rules_content.terms_and_conditions` — Residential Use Only, Rent Payment, Security Deposit, Notice Period, Hostel Rules Compliance — had no editing surface at all. Every hostel on Stayo therefore shipped the same notice period in Stayo's wording, for terms that are genuinely per-hostel commercial decisions.
+
+The storage existed and was persisted; only the editor never touched it.
+
+**Fix:** owners write the body, the headings stay fixed, enforced server-side by `normalizeAgreementTerms`. See [[Decisions#ADR-220|ADR-220]].

@@ -3,13 +3,10 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
 import { OnboardingSetupSchema } from "@/lib/validators";
 import { FOUNDING_PLAN_CODE, FOUNDING_MAX_OWNERS } from "@/src/services/platform-billing/subscription-rules";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * PATCH /api/platform-admin/leads/[id]/onboarding-setup
@@ -28,7 +25,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_ONBOARDING");
 
     const lead = await prisma.platform_leads.findUnique({ where: { id } });
     if (!lead) return apiError("Lead not found", "NOT_FOUND", 404);
@@ -75,6 +72,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to set onboarding plan");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { imagekit } from "@/lib/imagekit";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/billing-settings/qr   (multipart, field: `file`)
@@ -19,7 +20,7 @@ const MAX_BYTES = 4 * 1024 * 1024;
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const form = await req.formData();
     const file = form.get("file");
     if (!(file instanceof File)) return apiError("No file uploaded", "VALIDATION_ERROR", 422);

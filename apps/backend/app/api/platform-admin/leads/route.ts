@@ -4,15 +4,12 @@ export const runtime = "nodejs";
 import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
 import { PlatformLeadStatus, PlatformLeadAcquisitionSource } from "@prisma/client";
 
 const VALID_STATUSES: string[] = Object.values(PlatformLeadStatus);
 const VALID_SOURCES: string[] = Object.values(PlatformLeadAcquisitionSource);
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 const DEFAULT_LIMIT = 50;
 const MAX_LIMIT = 200;
@@ -32,7 +29,7 @@ const MAX_LIMIT = 200;
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim();
     const status = searchParams.get("status") || undefined;
@@ -174,6 +171,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch leads");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }
@@ -186,7 +184,7 @@ export async function GET(req: NextRequest) {
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const body = await req.json().catch(() => ({}));
     const { name, hostelName, phone, city, bedCount, notes } = body;
 
@@ -226,6 +224,7 @@ export async function POST(req: NextRequest) {
     return apiResponse(lead, 201);
   } catch (error: any) {
     const msg = String(error?.message || "Failed to create lead");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

@@ -9,6 +9,7 @@ const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m)
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
+const ManagerActivationPage = lazy(() => import('@/app/pages/public/ManagerActivationPage').then((m) => ({ default: m.ManagerActivationPage })));
 const EnquiryStatusPage = lazy(() => import('@/app/pages/public/EnquiryStatusPage').then((m) => ({ default: m.EnquiryStatusPage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
 const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
@@ -19,6 +20,7 @@ const AuthCallbackPage = lazy(() => import('@/app/pages/AuthCallbackPage').then(
 const ForgotPasswordPage = lazy(() => import('@/app/pages/ForgotPasswordPage').then((m) => ({ default: m.ForgotPasswordPage })));
 const ResetPasswordPage = lazy(() => import('@/app/pages/ResetPasswordPage').then((m) => ({ default: m.ResetPasswordPage })));
 const ActivationPage = lazy(() => import('@/platforms/tenant/onboarding/ActivationPage').then((m) => ({ default: m.ActivationPage })));
+const AgreementReaderPage = lazy(() => import('@/platforms/tenant/onboarding/AgreementReaderPage').then((m) => ({ default: m.AgreementReaderPage })));
 const CompleteProfilePage = lazy(() => import('@/portal/pages/CompleteProfilePage').then((m) => ({ default: m.CompleteProfilePage })));
 const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then((m) => ({ default: m.AuthRouteShell })));
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
@@ -103,6 +105,7 @@ export function PublicRoutes() {
         <Route path="/sign-up/*" element={<ClerkSignUpPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
+        <Route path="/admin/manager-invitation/:token" element={<ManagerActivationPage />} />
         <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
         <Route path="/about" element={<AboutPage />} />
@@ -139,6 +142,12 @@ export function PublicRoutes() {
         <Route path="/forgot-password" element={<ForgotPasswordPage />} />
         <Route path="/reset-password" element={<ResetPasswordPage />} />
         <Route path="/activate" element={<ActivationPage />} />
+        {/*
+          Declared before `/activate/:token`, and safe regardless: React Router
+          ranks a static segment above a dynamic one, so "agreement" is never
+          mistaken for an activation token.
+        */}
+        <Route path="/activate/agreement" element={<AgreementReaderPage />} />
         <Route path="/activate/:token" element={<ActivationPage />} />
         <Route path="/invite/:token" element={<ActivationPage />} />
         <Route path="/complete-profile" element={<CompleteProfilePage />} />

@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionPaymentService } from "@/src/services/platform-billing/subscription-payment-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/subscription-payments/cash
@@ -20,7 +21,7 @@ import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const body = await req.json().catch(() => ({}));
     const payment = await subscriptionPaymentService.recordCashPayment((session as any).sub, {
       ownerId: String(body?.owner_id ?? ""),
