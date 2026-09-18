@@ -6,6 +6,7 @@ import { apiError, apiResponse } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
+import { mapActivationError } from "@/src/services/tenants/activation-error";
 import { AgreementGenerationService } from "@/src/services/tenants/agreement-generation-service";
 import { agreementDocumentInputFromRenderData } from "@/src/services/agreements/agreement-document-resolver";
 import { buildAgreementDocument } from "@/src/services/agreements/agreement-document";
@@ -72,6 +73,10 @@ export async function GET(req: NextRequest) {
 
     return apiResponse({ document });
   } catch (error: any) {
-    return apiError(error?.message || "Failed to load agreement document", "INTERNAL_ERROR", 500);
+    // The activation services signal failure by throwing "CODE: message",
+    // so an expired link must become a 410 rather than a 500 that tells the
+    // tenant nothing.
+    const mapped = mapActivationError(error, "Failed to load agreement document");
+    return apiError(mapped.message, mapped.code, mapped.status);
   }
 }
