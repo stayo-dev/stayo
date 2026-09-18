@@ -176,6 +176,9 @@ export default defineConfig({
       // Which obligations bind to a room allocation — the rule behind a real
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
+      // Who is holding which bed. The mock supplies allocation, reservation
+      // and invitation rows as plain arrays — no client, no database.
+      'tests/room-capacity-service.test.ts',
       'tests/agreement-content.test.ts',
       // Clerk auth webhook (ADR-176). The verification test signs with the real
       // `svix` library in-process; the sync test `vi.mock`s `@/lib/db`. Neither

@@ -5,6 +5,17 @@ import { prisma } from "../db";
  * active allocation occupies their bed whether or not they have paid their deposit
  * — that used to be conditional on a `PAYMENT_PENDING` check, which meant an
  * unpaid joiner left their room looking vacant and invitable.
+ *
+ * It is also a question about *people*, not rows. A bed is held by somebody on
+ * their way in, so holds and occupancy are both counted as sets of tenancies,
+ * and a tenancy already occupying a bed cannot also be holding one. Counting
+ * rows instead was a real defect: under ADR-165 `createInvitation` stands the
+ * tenancy up immediately — ACTIVE tenant, real allocation, bed occupied — and
+ * deliberately leaves the invitation live until the tenant personally accepts.
+ * The same person was therefore counted twice, so every owner-added tenant ate
+ * two beds of their room until they accepted: a 4-bed room with two of them
+ * read "4/4 beds taken · 2 held for invites" and refused the third tenant the
+ * owner tried to put in it.
  */
 type DbClient = typeof prisma | any;
 /**
@@ -16,6 +27,32 @@ type DbClient = typeof prisma | any;
  * someone whose tenancy had been cancelled.
  */
 const ACTIVE_INVITE_STATUSES = ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"];
+
+type TenancyRef = { tenant_id?: string | null };
+
+/**
+ * How many beds are held by tenancies that are not already sitting in one.
+ *
+ * A reservation is the bed-level record and an invitation the person-level one.
+ * Either alone holds a bed — an invitation that outlived its reservation is
+ * still somebody on their way in, which is what the old `Math.max` of the two
+ * counts was reaching for — and both together still hold just the one.
+ */
+function heldBedCount(occupants: Set<string>, ...holders: TenancyRef[][]): number {
+  const held = new Set<string>();
+  let unattributed = 0;
+  for (const list of holders) {
+    for (const holder of list ?? []) {
+      const tenantId = holder?.tenant_id;
+      // Both tables declare `tenant_id` NOT NULL; a hold that somehow arrives
+      // without one keeps its bed rather than being silently dropped.
+      if (!tenantId) { unattributed++; continue; }
+      if (occupants.has(tenantId)) continue;
+      held.add(tenantId);
+    }
+  }
+  return held.size + unattributed;
+}
 
 export type RoomCapacitySnapshot = {
   room: any;
@@ -69,23 +106,27 @@ export class RoomCapacityService {
       },
     });
 
-    const [reservedReservations, activeInvitations] = await Promise.all([
-      db.tenant_invitation_reservations.count({
+    const [reservations, invitations] = await Promise.all([
+      db.tenant_invitation_reservations.findMany({
         where: {
           room_id: roomId,
           status: "ACTIVE",
         },
+        select: { tenant_id: true },
       }),
-      db.tenant_invitations.count({
+      db.tenant_invitations.findMany({
         where: {
           room_id: roomId,
           status: { in: ACTIVE_INVITE_STATUSES },
         },
+        select: { tenant_id: true },
       }),
     ]);
 
-    const reserved = Math.max(reservedReservations, activeInvitations);
-    return this.toSnapshot(room, activeAllocations.length, reserved);
+    const occupants = new Set<string>(
+      activeAllocations.map((a: TenancyRef) => a.tenant_id).filter(Boolean) as string[],
+    );
+    return this.toSnapshot(room, occupants.size, heldBedCount(occupants, reservations, invitations));
   }
 
   async getHostelCapacityMap(
@@ -101,19 +142,19 @@ export class RoomCapacityService {
       },
       include: {
         hostels: true,
-        _count: {
-          select: {
-            tenant_invitation_reservations: {
-              where: {
-                status: "ACTIVE",
-              },
-            },
-            tenant_invitations: {
-              where: {
-                status: { in: ACTIVE_INVITE_STATUSES },
-              },
-            },
+        // The holders themselves rather than `_count`: which tenancy holds a
+        // bed is what tells a hold apart from the occupancy it already became.
+        tenant_invitation_reservations: {
+          where: {
+            status: "ACTIVE",
           },
+          select: { tenant_id: true },
+        },
+        tenant_invitations: {
+          where: {
+            status: { in: ACTIVE_INVITE_STATUSES },
+          },
+          select: { tenant_id: true },
         },
       },
     });
@@ -133,23 +174,26 @@ export class RoomCapacityService {
     // reproduce the whole deposit/maintenance calculation inline to decide whether
     // a tenant "really" counted; with the payment gate gone there is nothing left
     // to decide, which also removes a large per-hostel query fan-out.
-    const occupiedCountByRoom = new Map<string, number>();
+    const occupantsByRoom = new Map<string, Set<string>>();
     for (const alloc of activeAllocations) {
-      occupiedCountByRoom.set(alloc.room_id, (occupiedCountByRoom.get(alloc.room_id) || 0) + 1);
+      if (!alloc.tenant_id) continue;
+      const occupants = occupantsByRoom.get(alloc.room_id) ?? new Set<string>();
+      occupants.add(alloc.tenant_id);
+      occupantsByRoom.set(alloc.room_id, occupants);
     }
 
     return new Map(
-      rooms.map((room: any) => [
-        room.id,
-        this.toSnapshot(
-          room,
-          occupiedCountByRoom.get(room.id) || 0,
-          Math.max(
-            Number(room._count?.tenant_invitation_reservations || 0),
-            Number(room._count?.tenant_invitations || 0)
+      rooms.map((room: any) => {
+        const occupants = occupantsByRoom.get(room.id) ?? new Set<string>();
+        return [
+          room.id,
+          this.toSnapshot(
+            room,
+            occupants.size,
+            heldBedCount(occupants, room.tenant_invitation_reservations, room.tenant_invitations),
           ),
-        ),
-      ]),
+        ];
+      }),
     );
   }
 

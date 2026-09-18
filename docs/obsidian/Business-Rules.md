@@ -526,6 +526,8 @@ The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. 
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
 
+**A bed is held by a person, and one person holds at most one bed in a room** (2026-09-18, see [[Bugs]]). `roomCapacityService` counts occupancy and holds as *sets of tenancies*, not as rows: the held-bed count is the union of the room's ACTIVE `tenant_invitation_reservations` and its live `tenant_invitations`, **minus every tenancy already counted as occupying a bed there**. Either record alone still holds a bed — an invitation that outlived its reservation is somebody on their way in — and both together hold one. This matters because [[Decisions#ADR-165|ADR-165]] makes a tenancy live at invite time (`ACTIVE` tenant, real allocation) while deliberately leaving the invitation open until the tenant personally accepts, so the same person is legitimately present in both tables at once.
+
 ## Food schedule generation is independent of voting (2026-08-08) — **superseded 2026-08-25**
 
 **Superseded by [[Decisions#ADR-114|ADR-114]]: automatic schedule generation was removed entirely, not merely decoupled from voting.** There is no `Generate`/`Rebuild`/`Fill gaps` action left to gate on anything — the owner builds every week by hand via the Timetable page. This entry is kept for the historical record of the 2026-08-08 decision; see "Manual-only food scheduling" below for the current rule, and [[Food]] §18.

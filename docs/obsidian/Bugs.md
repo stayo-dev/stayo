@@ -8,6 +8,23 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-18 — Every owner-added tenant ate two beds, so rooms filled at half capacity (fixed)
+
+**Symptom.** Reported by the owner from the Rooms tab. Room 505 of Sri Adithya Boys Hostel — capacity 4, two residents — read **"4/4 beds taken · 2 held for invites"**, offered **0 beds free**, and refused a third tenant with `CAPACITY_EXCEEDED: Room is already at full capacity`. The two held beds showed as nameless dashed placeholders, so there was no invite on screen to cancel and no way out of it from the UI.
+
+**Root cause — a bed counted by rows, and a lifecycle that legitimately writes two.** `roomCapacityService` derived holds as `Math.max(count(ACTIVE reservations), count(live invitations))`. That `Math.max` predates the current invitation model: it reads "an invitation without a reservation row still holds a bed", which is right, but it counts *rows*, and [[Decisions#ADR-165|ADR-165]] made one person legitimately occupy two of them. `createInvitation` now stands the tenancy up immediately — `ACTIVE` tenant, real `room_allocations` row, bed genuinely occupied — releases the reservation as `INVITE_LINKED`, and **deliberately leaves the invitation `PENDING`/`OPENED`** until the tenant personally accepts (the expiry ladder, the nudge cron and re-invite dedup all key on it staying live). So each owner-added tenant was counted once as occupied and once as reserved. A 4-bed room reached "full" at two people.
+
+Confirmed against production before the fix: room 505 had `occupied = 2`, `active_reservations = 0`, `active_invitations = 2` — and those two invitations were M Sai Vikas and N Manoj Kumar, the same two people already in the beds. Across the 44 live rooms, 4 were miscounted, 7 phantom beds were held, and all 3 rooms reading "full" were falsely full.
+
+**Why the held beds were invisible.** `property-service` builds the invited faces from ACTIVE `tenant_invitation_reservations` only, while the bed *count* came from the capacity service. Every phantom hold had a released reservation, so it produced a reserved bed with nobody attached to it — a placeholder the owner could neither identify nor cancel.
+
+**Fix.** Occupancy and holds are both counted as **sets of tenancies**: held beds are the union of the room's ACTIVE reservations and live invitations *minus* the tenancies already occupying a bed in that room (`heldBedCount`). The `Math.max` intent survives — either record alone still holds a bed — and two records naming one person now hold one. Read-side only: no migration, nothing backfilled, no write path changed. `QUEUED` stays a bed-holding status, and `OCCUPYING_ALLOCATION_WHERE` ([[Decisions#ADR-194|ADR-194]]) is untouched, so Stay Status still agrees with `occupied`.
+
+**Lesson.** When a lifecycle change makes one person legitimately present in two tables, every count expressed over rows silently becomes a count of records rather than of people. ADR-165 documented exactly why the invitation stays open; the counting rule that assumption broke was three files away and nobody re-read it.
+
+**Not verified.** Never opened in a browser — the corrected numbers were checked by replaying both the old and new rules as SQL over live production data, not by loading the Rooms tab. The capacity block itself (`createInvitation`'s `SELECT … FOR UPDATE` + snapshot) is unchanged and was not re-exercised against a real database, since the test project is still down.
+
+**See:** [[Business-Rules]], [[Decisions#ADR-165|ADR-165]], [[Backend]], [[Changelog]]
 ## 2026-09-18 — A clause's last character could not be deleted, and Publish sat behind the tab bar (fixed)
 
 **Symptom.** Reported by the owner using Configuration › Agreements. Two faults on the same screen: deleting a clause backwards stopped at the final character — it reappeared as fast as it was deleted, so a line could never be emptied — and after changing anything, the "Review and publish" bar showed only as a sliver above Home/Tenants/Money and could not be tapped.
