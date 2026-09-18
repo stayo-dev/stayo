@@ -22,8 +22,18 @@ vi.mock("@/lib/auth", () => ({
   getSession: mockSession,
   apiError: (message: string, code: string, status = 400) =>
     new Response(JSON.stringify({ error: { message, code } }), { status }),
+  // Matches lib/auth-edge.ts: an object is SPREAD at the top level, it is not
+  // nested under `data`. The mock used to nest it, which would have let a
+  // response-shape bug through unnoticed.
   apiResponse: (data: unknown, status = 200) =>
-    new Response(JSON.stringify({ success: true, data }), { status }),
+    new Response(
+      JSON.stringify(
+        typeof data === 'object' && data !== null && !Array.isArray(data)
+          ? { success: true, ...(data as object) }
+          : { success: true, data },
+      ),
+      { status },
+    ),
 }));
 
 import { POST as previewDocument } from "../app/api/owner/hostels/[id]/agreement-template/document/route";
@@ -45,7 +55,7 @@ const draft = {
 };
 
 const sections = async (res: Response) =>
-  ((await res.json()).data.document.blocks as any[]).filter((b) => b.kind === "section");
+  ((await res.json()).document.blocks as any[]).filter((b) => b.kind === "section");
 
 beforeEach(() => {
   vi.clearAllMocks();
@@ -58,14 +68,14 @@ describe("POST /api/owner/hostels/[id]/agreement-template/document", () => {
     mockSession.mockResolvedValue({ sub: "t1", role: "TENANT" });
     const res = await previewDocument(request({ rules_content: draft }), params);
     expect(res.status).toBe(403);
-    expect((await res.json()).data).toBeUndefined();
+    expect((await res.json()).document).toBeUndefined();
   });
 
   it("refuses an owner who does not own the hostel", async () => {
     mockPrisma.hostels.findFirst.mockResolvedValue(null);
     const res = await previewDocument(request({ rules_content: draft }), params);
     expect(res.status).toBe(404);
-    expect((await res.json()).data).toBeUndefined();
+    expect((await res.json()).document).toBeUndefined();
   });
 
   it("scopes the hostel lookup to the caller, never a first-hostel fallback", async () => {
@@ -91,7 +101,7 @@ describe("POST /api/owner/hostels/[id]/agreement-template/document", () => {
   it("includes the platform band and the execution furniture", async () => {
     const res = await previewDocument(request({ rules_content: draft }), params);
     // One read: a Response body is single-use.
-    const blocks = (await res.json()).data.document.blocks as any[];
+    const blocks = (await res.json()).document.blocks as any[];
     const kinds = blocks.map((b) => b.kind);
     expect(kinds).toContain("execution");
     expect(kinds).toContain("attestation");

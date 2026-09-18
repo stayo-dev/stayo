@@ -19,8 +19,18 @@ vi.mock("../lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("@/lib/auth", () => ({
   apiError: (message: string, code: string, status = 400) =>
     new Response(JSON.stringify({ error: { message, code } }), { status }),
+  // Matches lib/auth-edge.ts: an object is SPREAD at the top level, it is not
+  // nested under `data`. The mock used to nest it, which would have let a
+  // response-shape bug through unnoticed.
   apiResponse: (data: unknown, status = 200) =>
-    new Response(JSON.stringify({ success: true, data }), { status }),
+    new Response(
+      JSON.stringify(
+        typeof data === 'object' && data !== null && !Array.isArray(data)
+          ? { success: true, ...(data as object) }
+          : { success: true, data },
+      ),
+      { status },
+    ),
 }));
 vi.mock("@/src/services/tenants/activation-request-subject", () => ({
   activationSubjectFromRequest: mockSubject,
@@ -115,7 +125,7 @@ describe("POST /api/tenants/activate/agreement-read", () => {
 
   it("reports the recorded timestamps back to the caller", async () => {
     const res = await recordRead(request({ token: "tok-123", stage: "completed", content_hash: HASH }));
-    const { data } = await res.json();
+    const data = await res.json();
     expect(data.read_completed_at).toBeTruthy();
   });
 });

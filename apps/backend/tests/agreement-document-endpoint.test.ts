@@ -25,8 +25,18 @@ vi.mock("../lib/db", () => ({ prisma: mockPrisma }));
 vi.mock("@/lib/auth", () => ({
   apiError: (message: string, code: string, status = 400) =>
     new Response(JSON.stringify({ error: { message, code } }), { status }),
+  // Matches lib/auth-edge.ts: an object is SPREAD at the top level, it is not
+  // nested under `data`. The mock used to nest it, which would have let a
+  // response-shape bug through unnoticed.
   apiResponse: (data: unknown, status = 200) =>
-    new Response(JSON.stringify({ success: true, data }), { status }),
+    new Response(
+      JSON.stringify(
+        typeof data === 'object' && data !== null && !Array.isArray(data)
+          ? { success: true, ...(data as object) }
+          : { success: true, data },
+      ),
+      { status },
+    ),
 }));
 vi.mock("@/src/services/tenants/activation-request-subject", () => ({
   activationSubjectFromRequest: mockSubject,
@@ -91,7 +101,7 @@ describe("GET /api/tenants/activate/agreement-document", () => {
     mockSubject.mockResolvedValue({ ok: false, code: "VALIDATION_ERROR", message: "Activation token is required" });
     const res = await getAgreementDocument(request());
     expect(res.status).toBe(400);
-    expect((await res.json()).data).toBeUndefined();
+    expect((await res.json()).document).toBeUndefined();
   });
 
   it("refuses an expired or invalid activation link", async () => {
@@ -110,7 +120,7 @@ describe("GET /api/tenants/activate/agreement-document", () => {
     const res = await getAgreementDocument(request("tok-123"));
     expect(res.status).toBe(200);
 
-    const { document } = (await res.json()).data;
+    const { document } = await res.json();
     expect(document.blocks[0].kind).toBe("title");
     expect(document.blocks.map((b: any) => b.kind)).toContain("execution");
     expect(document.contentHash).toMatch(/^[0-9a-f]{64}$/);
@@ -118,7 +128,7 @@ describe("GET /api/tenants/activate/agreement-document", () => {
 
   it("shows the owner's own clauses, interpolated", async () => {
     const res = await getAgreementDocument(request("tok-123"));
-    const { document } = (await res.json()).data;
+    const { document } = await res.json();
 
     const rules = document.blocks.find((b: any) => b.kind === "section" && b.band === "rules");
     // The whole point of this endpoint: the owner's wording, with real numbers.
@@ -128,7 +138,7 @@ describe("GET /api/tenants/activate/agreement-document", () => {
 
   it("carries the published template version so the reader can label it", async () => {
     const res = await getAgreementDocument(request("tok-123"));
-    expect((await res.json()).data.document.meta.versionNumber).toBe(4);
+    expect((await res.json()).document.meta.versionNumber).toBe(4);
   });
 
   it("scopes the lookup to the resolved tenant, never a bare agreement id", async () => {
