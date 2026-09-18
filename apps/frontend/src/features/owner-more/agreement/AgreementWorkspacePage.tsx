@@ -147,7 +147,7 @@ export function AgreementWorkspacePage() {
         <span className="text-[11.5px] font-medium text-muted-foreground">
           {saveStateLabel({ saving: saveDraft.isPending, unsaved, hasDraft, savedAt })}
         </span>
-        <div className="flex rounded-full border border-border p-0.5">
+        <div className="flex rounded-full border border-border p-0.5 lg:hidden">
           {(['write', 'read'] as const).map((s) => (
             <button
               key={s}
@@ -171,30 +171,13 @@ export function AgreementWorkspacePage() {
         </p>
       )}
 
-      {segment === 'read' ? (
-        <div className="lg:grid lg:grid-cols-[minmax(0,1fr)] lg:gap-6">
-          <div className="rounded-[20px] border border-border bg-card p-5">
-            {document ? <AgreementDocumentView doc={document} /> : <div className="h-72 animate-pulse rounded-xl bg-muted" />}
-          </div>
-          <button
-            type="button"
-            onClick={async () => {
-              try {
-                const blob = await downloadSampleAgreementPdf(hostelId!, draft);
-                const url = URL.createObjectURL(blob);
-                window.open(url, '_blank', 'noopener');
-              } catch {
-                stayoToast.error('Could not build the sample PDF');
-              }
-            }}
-            className="mt-3 flex items-center justify-center gap-2 rounded-[13px] border border-border py-3 text-[13px] font-semibold text-foreground"
-          >
-            <Download className="h-4 w-4" strokeWidth={2} />
-            Download a sample PDF
-          </button>
-        </div>
-      ) : (
-        <div className="flex flex-col gap-4">
+      {/* Below lg the segmented control picks one pane. At lg both are shown
+          side by side — the same code serving a laptop properly rather than a
+          stretched phone screen. Visibility is a class rather than a ternary so
+          neither pane unmounts when the breakpoint changes. */}
+      <div className="lg:grid lg:grid-cols-2 lg:items-start lg:gap-6">
+        {/* Write */}
+        <div className={`${segment === 'write' ? '' : 'hidden'} flex flex-col gap-4 lg:order-1 lg:flex`}>
           <section className="flex flex-col gap-2.5">
             <h2 className="pl-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Your terms
@@ -256,7 +239,37 @@ export function AgreementWorkspacePage() {
             Read to see them.
           </p>
         </div>
-      )}
+
+        {/* Read */}
+        <div className={`${segment === 'read' ? '' : 'hidden'} lg:order-2 lg:block`}>
+          <div className="lg:sticky lg:top-4">
+            <div className="rounded-[20px] border border-border bg-card p-5 lg:max-h-[calc(100vh-12rem)] lg:overflow-y-auto">
+              {document ? (
+                <AgreementDocumentView doc={document} />
+              ) : (
+                <div className="h-72 animate-pulse rounded-xl bg-muted" />
+              )}
+            </div>
+            <button
+              type="button"
+              onClick={async () => {
+                try {
+                  const blob = await downloadSampleAgreementPdf(hostelId!, draft);
+                  const url = URL.createObjectURL(blob);
+                  window.open(url, '_blank', 'noopener');
+                } catch {
+                  stayoToast.error('Could not build the sample PDF');
+                }
+              }}
+              className="mt-3 flex w-full items-center justify-center gap-2 rounded-[13px] border border-border py-3 text-[13px] font-semibold text-foreground"
+            >
+              <Download className="h-4 w-4" strokeWidth={2} />
+              Download a sample PDF
+            </button>
+          </div>
+        </div>
+      </div>
+
 
       <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
         <button
