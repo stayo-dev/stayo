@@ -41,6 +41,15 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 **Wider finding (inventoried, not fixed — Phase D):** authorization is hand-rolled across the codebase (~123 `role ===/!== "OWNER"`, ~65 `role !== "ADMIN"`, ~183 role-array checks, and 29 duplicate local `requireAdmin` defs under `/api/platform-admin/**`). Converging onto the shared helpers is follow-up work.
 
 **See:** [[Decisions#ADR-202|ADR-202]], [[APIs]], [[Backend]], [[Changelog]]
+## 2026-09-14 — H2: a password reset did not end the old password or its sessions (fixed on a branch, 2026-09-15)
+
+**Symptom (audit finding, not a user report).** After a "successful" password reset the old password could still sign in and every existing session stayed alive.
+
+**Root cause.** Two password stores and the wrong revocation key. Login checked `profiles.password_hash`, then minted a Supabase session; the Supabase password was a second copy. `completePasswordReset` updated the hash and only *best-effort* synced Supabase — `ensureSupabaseIdentity` returns early for an already-linked account, so the Supabase password never changed, and a failure was logged as a warning while the reset reported success. `resetOnboardingPassword` never touched Supabase at all. Revocation deny-listed `profile.id`, but middleware checks a Supabase token's `sub` (= `auth_user_id`), so JIT-linked accounts were never revoked, and a Supabase refresh token minted fresh access tokens past any deny-list. GoTrue is public, so the old Supabase password worked against it directly.
+
+**Fix** ([[Decisions#ADR-204|ADR-204]]). Not a repair inside Supabase Auth — the first attempt (`c2fe07d1`, deleting `auth.sessions`/`auth.refresh_tokens`) was withdrawn because it deepened the coupling. Clerk became the only credential store and session authority: every password write goes through `credentialService.setPassword`, which writes Clerk, revokes every Clerk session, deny-lists the Clerk user id and nulls the local hash, and **throws** on any Clerk failure. `getSession()` refuses pre-Clerk tokens for a moved profile, which is what ends an old Supabase session without calling Supabase.
+
+**Lesson.** A credential kept in two places is a reset that can half-succeed. And a revocation deny-list is only as good as the match between the key it writes and the key the verifier reads.
 
 ## 2026-09-14 — Nothing sticky stuck on a page the document scrolls (fixed)
 
@@ -2800,81 +2809,6 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **See:** [[Decisions#ADR-208|ADR-208]], [[Decisions#ADR-165|ADR-165]], [[APIs]], [[Changelog]]
 
-## 2026-09-16 — Committing an unrelated stale working tree deleted four live Prisma models and re-shelved Hostel Listings (caught before push, fixed)
-
-**Symptom.** Commit `49886a08` (Add Owner + Lead Pipeline flows, Settlements/KYC removal — see [[Decisions#ADR-210|ADR-210]]) also removed four unrelated Prisma models still referenced by live service code — `owner_host_profile` ([[Decisions#ADR-200|ADR-200]], applied to production 2026-09-15), `stay_events`/`stay_leaves` ([[Decisions#ADR-194|ADR-194]]) and `meal_service_logs` ([[Decisions#ADR-195|ADR-195]]) — and separately reverted `AdminRoutes.tsx` to redirect `/admin/hostels` and `/admin/listings*` away again, citing ADR-170, which [[Decisions#ADR-192|ADR-192]] had already superseded three days earlier. Neither change was mentioned in the commit message.
-
-**Root cause.** The working tree being committed had a large number of pre-existing uncommitted changes of unclear provenance (likely a stale branch or file state layered under the intentional new work) at the time it was committed to `main`; the commit was staged and made without diffing the full change set against recent history first, so the accidental reversion rode along with the intended feature work.
-
-**Caught by.** The routine documentation pass required by CLAUDE.md's Documentation Rules — updating [[Database]], [[APIs]], [[Features]] and [[Changelog]] for the commit required reading `schema.prisma` and `AdminRoutes.tsx` closely enough to notice both models and routes disagreed with what the vault already recorded as current and recently shipped.
-
-**Fix.** Same day, before any push to `origin/main`: the four Prisma models were restored verbatim (verified with `prisma validate`, `prisma generate`, and a clean `tsc --noEmit` diff against the pre-regression baseline) and `AdminRoutes.tsx`'s Hostel Listings routes/lazy imports were restored to byte-for-byte match `HEAD~1`, leaving only the intended Settlements/KYC removal as a real diff. `git diff HEAD~1` on both files was used to confirm no other unintended changes remained.
-
-**Not verified.** No DB-backed test run against a real database for the restored models; the fix relies on schema/type validation and a diff-against-parent comparison, not an end-to-end exercise of host-profile, stay-status, or meal-forecast flows.
-
-**See:** [[Decisions#ADR-210|ADR-210]], [[Decisions#ADR-200|ADR-200]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]], [[Decisions#ADR-192|ADR-192]], [[Changelog]]
-
-## 2026-09-17 — Manager activation links 401'd because the route wasn't in middleware's public allowlist (fixed)
-
-**Symptom.** Caught during live integration testing of the new manager-invitation flow ([[Decisions#ADR-214|ADR-214]]), before any real manager hit it. `GET /api/managers/invitation/[token]` and its `send-otp`/`verify-otp`/`activate` siblings all returned `401 {"error":{"message":"Authentication required","code":"UNAUTHORIZED"}}` even with a fresh, valid token and no session — exactly the scenario a just-invited manager is in (they have no account yet, so no session is possible).
-
-**Root cause.** `apps/backend/middleware.ts`'s `PUBLIC_ROUTES` allowlist (prefix-matched) was never updated to include `/api/managers/invitation`. The sibling flow it mirrors, `/api/leads/invitation`, is on that list; the new one was built without adding its own entry, so `middleware.ts` rejected every request before the route handler — which correctly has no session check of its own, by design — ever ran.
-
-**Fix.** Added `"/api/managers/invitation"` to `PUBLIC_ROUTES` in `middleware.ts`, next to `/api/leads/invitation`.
-
-**Lesson.** A new public/token-gated endpoint isn't public until it's on this list — the route handler having no `getSession()` call is necessary but not sufficient, since `middleware.ts` runs first and defaults to requiring a session. Grep `PUBLIC_ROUTES` for the sibling pattern being mirrored before assuming a new "no session needed" route is actually reachable.
-
-**Verified live** (see [[Decisions#ADR-214|ADR-214]] for the full end-to-end test log): the same request sequence — create manager → get invitation context → send OTP → verify OTP (seeded via direct DB write, since the OTP was sent to a fake test phone number) → activate → log in as the manager → confirm JIT Supabase account linking and correct role/permissions in `/api/auth/me` — failed at "get invitation context" before this fix and passed completely after it, against the real dev database.
-
-**See:** [[Decisions#ADR-214|ADR-214]], [[APIs]], [[Changelog]]
-
-## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
-
-**Symptom.** Reported by the user from a screenshot: `/admin/activity` showed a long list of `Allocate`/`Create`/`Update`/`Delete` entries all attributed to "Srinivas Rao," none of them related to any manager action — with the "All managers"/"All hostels" filters at their defaults.
-
-**Root cause.** `GET /api/platform-admin/activity` read `activity_logs` with no scope on the acting user's role at all — only the optional `managerId`/`hostelId`/`actionType`/`entityType`/date filters, all empty by default. `activity_logs` is a pre-existing table that `lib/events/index.ts` (owner-side, unrelated to the Manager feature) already writes to for routine owner actions — tenant/room create/update/allocate — via handlers like `tenant_allocated_room` (`userId: data.owner_id`, `actionType: "ALLOCATE"`). "Srinivas Rao" was that hostel's owner managing his own rooms through the normal owner app; the feed simply returned whatever the newest 50 rows in the whole table were, regardless of who wrote them.
-
-**Fix.** Added a floor scope to the route's SQL — `user_id IN (SELECT id FROM profiles WHERE role IN ('MANAGER', 'ADMIN'))` — applied in the `WHERE` clause itself (not filtered in JS after the fact, so it also governs `LIMIT`/pagination correctly) and unconditionally, so no combination of the optional query params (e.g. passing an owner's id as `managerId`) can widen the feed past it.
-
-**Guarded against recurrence:** `tests/platform-admin-activity-scope.test.ts` — creates real OWNER/MANAGER/ADMIN profiles and real `activity_logs` rows for each (including the exact `ALLOCATE`/`CREATE`/`UPDATE`/`DELETE` action types from the screenshot), then asserts the owner's rows never appear (by default, or via any filter combination) while the manager's and admin's do.
-
-**Verified live**, against the real dev database: all 7 new tests pass (`DATABASE_URL_TEST` pointed at the same Supabase project used for [[Decisions#ADR-214|ADR-214]]'s earlier live verification); test data cleaned up afterward, confirmed empty.
-
-**See:** [[Decisions#ADR-214|ADR-214]], [[APIs]], [[Changelog]]
-
-## 2026-09-17 — Owner acquisition funnel showed all zeros (fixed)
-
-**Symptom.** Reported by the owner. Platform admin's Overview page — the "Owner acquisition funnel" card (Leads captured / In review / Approved & invited / Account activated / Live on Stayo, plus "Lead → owner conversion") — rendered every stage as `0` and the conversion rate as `—`, despite `platform_leads` holding real rows.
-
-**Root cause.** [[Decisions#ADR-211|ADR-211]] added `platform_leads.source` and `platform_leads.plan_code` to `prisma/schema.prisma` and wrote `migrations/084_lead_source_tracking.sql`, but — as ADR-211's own "Not verified" section flagged — the migration was never applied to the real database. `apps/backend/app/api/platform-admin/leads/route.ts`'s `prisma.platform_leads.findMany(...)` selects all columns (no `select` clause), so every call started throwing `column t1.source does not exist`. The route's catch block turned that into an API error response instead of a 500 with a clear signal; the frontend (`apps/frontend/src/platforms/admin/pages/OverviewPage.tsx`) then saw `leads.data` as `undefined`, defaulted `counts` to `{}`, and `buildFunnel({})` ([[Frontend]] `overviewModel.ts`) rendered every stage as zero. Same failure mode hit `LeadsPage.tsx`'s leads query and likely other full-row `platform_leads` reads.
-
-**Fix.** Applied `migrations/084_lead_source_tracking.sql` to the live database (Supabase project `qgfyfbdccjnibdhhvnsr`) — additive, nullable, `IF NOT EXISTS` columns, no code change needed. Confirmed `source`/`plan_code` now exist on `platform_leads`.
-
-**Lesson.** This repo applies migrations by hand (Supabase SQL editor/psql), and an ADR's own "Not verified: migration not applied" note is a real, load-bearing warning, not boilerplate — the gap between "Prisma client regenerated" and "migration applied to the real DB" is invisible until a query touches the new column, and here it silently zeroed a metrics widget rather than 500ing loudly. Worth checking for other un-applied migrations flagged the same way across [[Decisions]] (several exist as of this writing, e.g. migrations 064–068, 079).
-
-**Not verified in a browser.** The fix was verified by schema inspection (`information_schema.columns`) after applying the migration, not by reloading the actual Overview page.
-
-**See:** [[Decisions#ADR-211|ADR-211]], [[APIs]], [[Frontend]], [[Changelog]]
-
-## Guardian verification wall could only ever appear once (2026-09-16, caught pre-merge)
-
-**Status:** Fixed on `feat/guardian-verification-policy` before the migration was applied. Never reached any database, so no data is affected.
-
-**What broke.** The overdue wall's back-off was "show it, then on every third dashboard entry", gated on `shouldShowGuardianWall(status, promptCount)` returning `promptCount % 3 === 0`, with `promptCount` incremented by the dismiss endpoint. But a dismissal can only happen when the wall is *shown*. So the sequence was `0 → shown → dismissed → 1`, and `1 % 3 !== 0` blocked it permanently while the counter — which only advances on dismissal — could never reach 3. **The wall would have appeared exactly once per tenancy, for ever**, and the back-off described in [[Decisions#ADR-212|ADR-212]] would not have existed.
-
-**The general shape.** A counter that only advances on the event it gates cannot gate that event. Worth recognising: it type-checks, it unit-tests green against hand-written counts (the original test asserted `[false, false, true, …]` for counts 1–6 — all values the system can never actually reach), and it fails only as a slow absence of behaviour nobody reports.
-
-**Fix.** The back-off moved into a date, `tenants.guardian_verification_next_prompt_at`: set to `deferred_at + 7 days` on the first deferral and pushed forward `GUARDIAN_SNOOZE_DAYS` (3) by each dismissal. `shouldShowGuardianWall` is now just `status.wallDue`. `guardian_verification_prompt_count` survives for reporting but gates nothing. Regression test: "comes back after a dismissal, rather than being silenced for ever".
-
-## Guardian confirmation request could be sent to the wrong handset (2026-09-16, caught pre-merge)
-
-**Status:** Fixed on the same branch, pre-merge. Never shipped.
-
-**What broke.** The onboarding "Ask them to confirm" button saved the profile first and swallowed the failure (`.catch(() => undefined)`), then called the send endpoint — which reads `guardian_phone` **off the tenancy**. The PROFILE step validates the whole form, so a perfectly ordinary state (guardian filled in, profile photo not yet uploaded) made the save fail silently. The message then went to whatever number was *already stored*: a previously-saved guardian, or a stranger on an old number — and that message names the resident and the hostel to someone who may never have heard of Stayo.
-
-**Fix.** The request now carries the number the caller believes it is messaging, and `sendGuardianVerifyRequest` refuses with `GUARDIAN_PHONE_NOT_SAVED` if it does not match the tenancy's own record; the tenant is told to save first. Comparison is on the **last ten digits**, not equality — this codebase stores Indian numbers in two formats (`profiles.phone` bare, `tenant_invitations.phone` E.164), and ADR-110's trust check already shipped once with a `===` that was silently always false. The swallow is kept deliberately (surfacing "profile photo is required" to someone who asked to message their parent is worse), and is only safe *because* of the server-side guard.
-
-Related: [[Decisions#ADR-212|ADR-212]], [[Business-Rules]], [[Database]]
 ## 2026-09-18 — Every variable an owner inserted printed literally in signed agreements (fixed)
 
 The agreement editor's insert chips wrote `{TENANT_NAME}`. The backend interpolator only matched `{{TENANT_NAME}}`. So an owner who used the feature as designed produced clauses reading "Rent is {MONTHLY_RENT}." on a document somebody then signed.
@@ -2883,7 +2817,7 @@ Three modules disagreed: `config/agreementDraft.ts` wrote single braces, `config
 
 **The design gap:** the token vocabulary was defined independently in three places with nothing asserting they matched, and no test ever rendered an owner-authored clause end to end.
 
-**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-214|ADR-214]].
+**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-216|ADR-216]].
 
 ## 2026-09-18 — The tenant was shown a hardcoded document containing none of the owner's clauses (fixed)
 
@@ -2895,7 +2829,7 @@ Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI t
 
 **The design gap:** a design-fidelity rebuild reproduced a mockup's *appearance* of a document, and nothing tested that the rendered document had any relationship to the stored one.
 
-**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-215|ADR-215]].
+**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
 
 ## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
 
@@ -2913,4 +2847,22 @@ An existing test even pinned the behaviour, named *"accepts either signature, bu
 
 **The design gap:** "at least one" was written to be accommodating and nobody asked which one.
 
-**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-216|ADR-216]].
+**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-218|ADR-218]].
+
+## 2026-09-18 — The agreement editor could lose the line you were writing (fixed)
+
+Lines committed on `onBlur`. Tapping straight from one line to another dropped the edit in progress, because focus moved before the change was ever handed to React.
+
+The variable picker made it worse: it found its own textarea with `closest('div')?.parentElement?.querySelector('textarea')` and assigned `el.value` directly, so React state and the DOM disagreed until blur — and an inserted token could be lost entirely by the next keystroke.
+
+**The design gap:** an editor for a legal document was built with uncontrolled inputs and DOM reads, so "what is on screen" and "what will be saved" were two different things with no test able to tell them apart.
+
+**Fix:** lines commit `onChange`; token insertion is a pure `insertToken(value, caret, token)` against a ref, unit-tested. See [[Decisions#ADR-220|ADR-220]].
+
+## 2026-09-18 — Owners could not change their own notice period (fixed)
+
+`rules_content.terms_and_conditions` — Residential Use Only, Rent Payment, Security Deposit, Notice Period, Hostel Rules Compliance — had no editing surface at all. Every hostel on Stayo therefore shipped the same notice period in Stayo's wording, for terms that are genuinely per-hostel commercial decisions.
+
+The storage existed and was persisted; only the editor never touched it.
+
+**Fix:** owners write the body, the headings stay fixed, enforced server-side by `normalizeAgreementTerms`. See [[Decisions#ADR-220|ADR-220]].

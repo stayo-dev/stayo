@@ -1627,3 +1627,12 @@ See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Bus
 - **What:** the tenant opens the real agreement — the owner's own clauses, interpolated with their rent, room and dates, followed by the platform's legal frame — on a full screen with a reading-progress bar. Reaching the end unlocks signing; the read is recorded against the agreement as evidence. Signing is by drawn or photographed signature exactly as before ([[Decisions#ADR-140|ADR-140]] unchanged).
 - **Notes:** the document is composed once on the backend and rendered twice (HTML and PDF) from the same model, so what is read and what is filed cannot drift — see [[Decisions#ADR-214|ADR-214]]. Each signature carries its own IST timestamp, IP, device and browser. The owner's key terms are surfaced on the step's card before the tenant opens the document.
 - **Not verified:** never opened in a browser; no real tenant has read or signed through it.
+
+
+### The agreement workspace (2026-09-18)
+
+- **Where:** Owner → More → Configuration → Agreements (`/owner/more/configuration/agreements`).
+- **What:** one screen to write the agreement. **Write** holds the commercial terms (body editable, headings fixed), the owner's own rule sections, and a note naming the platform clauses that are always included. **Read** shows the real composed document — the same one the tenant reads — with a sample PDF to download. At `lg:` both panes show side by side, the document sticky beside the sections being edited.
+- **Publishing** opens a review sheet: added / reworded / removed sections, how many tenants signed the current version, a block on unknown tokens and a warning if the owner's signature is unset.
+- **Notes:** replaces the editor, clause list, template screen and template list; retired paths redirect. See [[Decisions#ADR-220|ADR-220]] and [[Business-Rules]].
+- **Not verified:** never opened in a browser — the two-column layout, the sticky pane and the publish sheet have not been rendered.

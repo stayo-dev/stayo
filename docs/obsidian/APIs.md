@@ -140,6 +140,13 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 ## Agreements & Renewals
 
+### The owner's draft preview (2026-09-18)
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| `POST` | `/api/owner/hostels/[id]/agreement-template/document` | Session, OWNER/ADMIN | Composes the **draft** in the body into the same `AgreementDocument` a tenant reads. Hostel scoped by `owner_id: session.sub`; never a first-hostel fallback. Normalizes the terms band first, so the preview cannot show something that could never be persisted. Composes with `isFinal: false`, so a mistyped token stays visible to the one person who can still fix it. |
+| `POST` | `/api/owner/hostels/[id]/agreement-template/preview` | Session, OWNER/ADMIN | **Pre-existing, and had zero callers since it was written.** Returns a sample PDF. Now wired as "Download a sample PDF" in the agreement workspace. |
+
 ### The composed document (2026-09-18)
 
 The agreement as an ordered block model — the same model the PDF is rendered from. See [[Decisions#ADR-214|ADR-214]].
