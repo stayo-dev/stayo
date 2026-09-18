@@ -50,17 +50,32 @@ function withRules(category: RulesCategory, rules: string[]): RulesCategory {
   return { ...category, rules };
 }
 
-/** Replace one line. Blank text is rejected — use `removeLine` to delete. */
+/**
+ * Replace one line, with the text exactly as typed.
+ *
+ * It used to trim and reject blank, which belonged to an editor that committed
+ * on blur — there, an empty box meant "I want this line gone". `SectionRow`
+ * commits on every keystroke, where both rules are wrong:
+ *
+ * - **Rejecting blank** returned the content unchanged, so React re-rendered
+ *   the controlled textarea with the old value and the last character an owner
+ *   deleted came straight back. A one-character line could not be cleared.
+ * - **Trimming** made a trailing space unenterable for the same reason: the
+ *   space was stripped, state never changed, and the next character landed
+ *   against the previous word.
+ *
+ * Empty is a legitimate line here — `addLine` and `addSection` both create one.
+ * Removing a line is `removeLine`, a separate act.
+ */
 export function editLine(
   content: RulesContent,
   categoryId: string,
   index: number,
   text: string,
 ): RulesContent {
-  const trimmed = String(text ?? '').trim();
-  if (!trimmed) return content;
+  const next = String(text ?? '');
   return mapCategory(content, categoryId, (c) =>
-    withRules(c, (c.rules ?? []).map((rule, i) => (i === index ? trimmed : rule))),
+    withRules(c, (c.rules ?? []).map((rule, i) => (i === index ? next : rule))),
   );
 }
 

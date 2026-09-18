@@ -100,6 +100,21 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
       return apiResponse({ default_template: DEFAULT_AGREEMENT_TEMPLATE });
     }
 
+    // ── Discard Draft Action ──────────────────────────────────────
+    // Deliberately before the `rules_content` validation below: throwing away
+    // a draft must not require sending a valid document, which is exactly what
+    // an owner abandoning a half-finished edit does not have.
+    //
+    // A draft is the only row here that is safe to delete — it was never live,
+    // so no `Agreement` can point at it. Published and archived versions are
+    // the evidence of what tenants signed and are never removed.
+    if (action === "discard_draft") {
+      const discarded = await prisma.agreementTemplate.deleteMany({
+        where: { hostel_id: hostelId, type: "RESIDENCY", status: "DRAFT" },
+      });
+      return apiResponse({ discarded: discarded.count });
+    }
+
     // ── Save Draft / Publish ──────────────────────────────────────
     const type = "RESIDENCY" as const;
     const title = String(body.title || "Standard Tenant Agreement").trim();

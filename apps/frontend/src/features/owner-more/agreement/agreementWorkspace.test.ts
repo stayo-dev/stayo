@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { blastRadiusLabel, publishReadiness, saveStateLabel } from './agreementWorkspace';
+import {
+  blastRadiusLabel,
+  publishReadiness,
+  saveStateLabel,
+  sectionActions,
+  sectionSubtitle,
+} from './agreementWorkspace';
 
 describe('publishReadiness', () => {
   const ok = { hasDraftChanges: true, unknownTokens: [], signatureConfigured: true, affectedTenants: 4 };
@@ -81,5 +87,76 @@ describe('blastRadiusLabel', () => {
   it('gives no number rather than a wrong one when the count is unknown', () => {
     expect(blastRadiusLabel(null)).toBe('Future tenants will sign this version.');
     expect(blastRadiusLabel(undefined)).toBe('Future tenants will sign this version.');
+  });
+});
+
+describe('sectionActions', () => {
+  const base = {
+    title: 'Fee Structure',
+    severity: 'standard',
+    enabled: true,
+    isFirst: false,
+    isLast: false,
+    hasDefault: true,
+  };
+  const ids = (i: Partial<typeof base> = {}) => sectionActions({ ...base, ...i }).map((a) => a.id);
+  const find = (id: string, i: Partial<typeof base> = {}) =>
+    sectionActions({ ...base, ...i }).find((a) => a.id === id)!;
+
+  it('offers every operation the draft module supports', () => {
+    expect(ids()).toEqual(['moveUp', 'moveDown', 'important', 'include', 'reset', 'delete']);
+  });
+
+  it('omits reset where there is no Stayo wording to reset to', () => {
+    // `resetSection` no-ops on a section the owner wrote. A button that
+    // silently does nothing teaches an owner to distrust the others.
+    expect(ids({ hasDefault: false })).not.toContain('reset');
+  });
+
+  it('refuses to move the first section up and the last one down', () => {
+    expect(find('moveUp', { isFirst: true }).disabled).toBe(true);
+    expect(find('moveDown', { isFirst: true }).disabled).toBe(false);
+    expect(find('moveDown', { isLast: true }).disabled).toBe(true);
+  });
+
+  it('flips the highlight label to match the current state', () => {
+    expect(find('important').label).toBe('Mark important');
+    expect(find('important', { severity: 'important' }).label).toBe('Remove highlight');
+  });
+
+  it('flips leave-out to include-again once a section is excluded', () => {
+    expect(find('include').label).toBe('Leave out');
+    expect(find('include', { enabled: false }).label).toBe('Include again');
+  });
+
+  it('marks delete destructive and names the section in its confirmation', () => {
+    // The one operation here that loses text. "Leave out" exists for
+    // everything short of it.
+    const del = find('delete');
+    expect(del.destructive).toBe(true);
+    expect(del.confirm).toContain('Fee Structure');
+  });
+
+  it('asks for confirmation on nothing but delete', () => {
+    expect(sectionActions(base).filter((a) => a.confirm).map((a) => a.id)).toEqual(['delete']);
+  });
+});
+
+describe('sectionSubtitle', () => {
+  it('says nothing about an ordinary, included section', () => {
+    expect(sectionSubtitle({ severity: 'standard', enabled: true })).toBeUndefined();
+  });
+
+  it('names a highlight', () => {
+    expect(sectionSubtitle({ severity: 'important', enabled: true })).toBe('shown as a highlight');
+  });
+
+  it('names an excluded section, so a dimmed card is not the only clue', () => {
+    expect(sectionSubtitle({ severity: 'standard', enabled: false })).toBe('not included');
+  });
+
+  it('reports both at once', () => {
+    expect(sectionSubtitle({ severity: 'important', enabled: false }))
+      .toBe('shown as a highlight · not included');
   });
 });

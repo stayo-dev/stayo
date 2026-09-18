@@ -44,6 +44,21 @@ export const configApi = {
   },
 
   /**
+   * Throws away the unpublished draft, leaving the live version untouched.
+   *
+   * Until this existed there was no way back from a draft short of retyping
+   * the published wording — the editor autosaves, so an owner who changed
+   * their mind was stuck with the change. Only the draft row is deleted; it
+   * was never live, so no signed agreement can point at it.
+   */
+  discardAgreementDraft: async (hostelId: string) => {
+    const response = await api.post(`/owner/hostels/${hostelId}/agreement-template`, {
+      action: 'discard_draft',
+    });
+    return response.data;
+  },
+
+  /**
    * Publishes an agreement template.
    *
    * **`rulesContent` is required whenever the owner has written anything.**

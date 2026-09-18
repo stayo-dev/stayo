@@ -1636,3 +1636,18 @@ See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Bus
 - **Publishing** opens a review sheet: added / reworded / removed sections, how many tenants signed the current version, a block on unknown tokens and a warning if the owner's signature is unset.
 - **Notes:** replaces the editor, clause list, template screen and template list; retired paths redirect. See [[Decisions#ADR-220|ADR-220]] and [[Business-Rules]].
 - **Not verified:** never opened in a browser — the two-column layout, the sticky pane and the publish sheet have not been rendered.
+
+### Agreement version history — read any past version, bring its wording back (2026-09-18)
+
+- **Where:** Owner → More → Configuration → Agreements → **History** (a sheet, not a route).
+- **What:** every version the owner has ever published, newest first, each showing its number, publish date, how many tenants signed *that exact wording*, and what changed against the version before it ("1 added · 2 reworded"). The live one is badged and, deliberately, offers no action. Opening a version renders it as the **real composed document** through the same endpoint and view the Read pane uses — not an approximation — so two versions are genuinely comparable.
+- **Bringing a version back:** "Use this wording again" loads that version's text into the **draft**; it does not publish. A confirmation answers the fear first (*nothing changes for tenants until you publish; no signed agreement is affected*) and states the one real cost last (*the draft you are working on will be replaced*), and only when there is a draft to lose. Publishing afterwards makes it the live wording as a new version, with the usual diff review. See [[Decisions#ADR-222|ADR-222]].
+- **Discard draft:** next to the save state, shown only when there is something to throw away. Deletes the draft row and returns to the published wording — before this, the editor's autosave meant an owner who changed their mind had no way back except retyping.
+- **Notes:** no schema change. The lineage was always stored (publishing archives rather than deletes, and `Agreement.template_id` pins each signed agreement to its row) and had simply never been shown. Change summaries are derived on read, so they cannot drift from the text they describe.
+- **Not verified:** never opened in a browser, and **never run against a hostel with more than one published version** — no real lineage has been listed, opened or reused.
+
+### The agreement editor's operations are reachable again (2026-09-18)
+
+- **What:** per line — move up, move down, delete, revealed on the line being edited alongside the variable picker. Per section — rename, move up/down, mark important, leave out / include again, reset wording, delete section.
+- **Why it is a feature entry and not just a fix:** [[Decisions#ADR-220|ADR-220]]'s rewrite wired four operations and left nine tested ones unreachable, so a clause could be reworded but not removed and a section could not be deleted or reordered at all. See [[Decisions#ADR-221|ADR-221]] and [[Bugs]].
+- **Notes:** "Reset wording" appears only where Stayo ships a default for that section, because resetting an owner's own section does nothing — an action that cannot act is absent rather than inert. Deleting a section is the one destructive operation and carries its confirmation in the action definition, so it cannot be wired without one.
