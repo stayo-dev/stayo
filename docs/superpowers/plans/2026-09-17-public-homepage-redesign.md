@@ -29,6 +29,7 @@ Every task's requirements implicitly include these.
 - **Migration `085` must be applied to production BEFORE the code that queries the table deploys.** Several earlier migrations are recorded as unapplied; `085` joins that queue and needs applying explicitly.
 - **`npm run build` does NOT typecheck** — it is `check:architecture && vite build && branding-check`, and esbuild skips type checking. Run `npx tsc --noEmit` filtered to your own files.
 - **Use the brand pack at `Stayo-Brand-Assetes/`, not hand-picked hexes.** Palette: Warm Clay `#B46A55`, Terra Cotta `#A45D44`, Dusty Orange `#D2986C`, Latte `#EBD9C4`, Charcoal `#2F2F2F`, Cream `#F7F3EE`. The mark is the S-monogram already shipped as `StayoMark` (viewBox `0 0 539 727`, geometry lifted from the brand vector) — **never redraw it**. The header/footer lockup is the horizontal logo.
+- **Texture is the graph-paper grid, never the brand pattern tile.** `pattern/stayo-pattern-tile.svg` carries house/window/tick motifs — sticker art, too loud behind copy. Use ruled 1px gradients: `rgba(180,106,85,0.11)` at `52px` on cream, `rgba(255,255,255,0.055)` at `48px` on charcoal, and `rgba(164,93,68,0.15)` at `26px` on Latte for a photo slot that has not loaded.
 - **No green.** The brand has no success colour. Availability ("3 beds free") uses `#3F6B50`, a muted warm-leaning green chosen for 6.1:1 on white — never a Tailwind `emerald-*`, which is off-palette.
 - **ADR number is 214.** Highest on `origin/main` is ADR-213. Re-check `git show origin/main:docs/obsidian/Decisions.md | grep -oE 'ADR-[0-9]+' | sort -n | tail -1` at merge time — numbers collide across concurrent branches.
 
@@ -1576,7 +1577,7 @@ export function HomeHero({ cityLabel, ctaCity, lead, loading }: HomeHeroProps) {
   const photo = listingPhotoUrl(facts?.photo ?? null, 620);
 
   return (
-    <header className="relative px-4 pb-14 pt-12 sm:px-6 sm:pb-20 sm:pt-16 [background-image:linear-gradient(rgba(120,80,70,.07)_1px,transparent_1px),linear-gradient(90deg,rgba(120,80,70,.07)_1px,transparent_1px)] [background-size:52px_52px]">
+    <header className="relative px-4 pb-14 pt-12 sm:px-6 sm:pb-20 sm:pt-16 [background-image:linear-gradient(rgba(180,106,85,.11)_1px,transparent_1px),linear-gradient(90deg,rgba(180,106,85,.11)_1px,transparent_1px)] [background-size:52px_52px]">
       <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <div>
           {cityLabel && (
