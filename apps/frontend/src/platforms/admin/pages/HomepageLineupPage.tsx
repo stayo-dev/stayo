@@ -4,7 +4,7 @@ import { ArrowDown, ArrowUp, Plus, X } from 'lucide-react';
 
 import { platformAdminService } from '@features/platform-admin/api';
 
-import { MAX_FEATURED, moveItem } from '../leads/homepageLineup';
+import { MAX_FEATURED, moveItem } from '../homepage/homepageLineup';
 
 /**
  * Which hostels the public homepage shows, and in what order.

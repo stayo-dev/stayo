@@ -73,11 +73,12 @@ function ReferHostelForm({ source }: { source: string }) {
     const result = validateFollowUp({ mode, value: followUp });
     setFollowUpError(result.error ?? null);
     if (!result.valid || !result.payload || !referralId) return;
-    // The referral is already saved, so this never blocks: either way the
-    // student is thanked and the step closes.
+    // The referral is already saved, so a failure here is never fatal — but it
+    // must not be silent either. Swallowing it would thank the student while
+    // dropping the most valuable field on the page; they get to retry, or skip.
     attach.mutate({ id: referralId, payload: result.payload }, {
       onSuccess: () => setStage('done'),
-      onError: () => setStage('done'),
+      onError: () => setFollowUpError("That didn't send. Try again, or skip — your referral is already saved."),
     });
   };
 
