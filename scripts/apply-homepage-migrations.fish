@@ -39,15 +39,43 @@ for file in $migrations
 end
 
 if test -z "$url"
-    if not test -f $repo_root/.env
-        echo "✗ no .env at the repo root, and no connection string given."
-        echo "  ./scripts/apply-homepage-migrations.fish --apply \"postgresql://…\""
+    # .env is gitignored, so it lives in whichever checkout you actually work
+    # in — not necessarily the one this script was checked out into. Look in
+    # this tree first, then in the main checkout when this is a git worktree.
+    set -l env_file ""
+    if test -f $repo_root/.env
+        set env_file $repo_root/.env
+    else
+        set -l common (git -C $repo_root rev-parse --git-common-dir 2>/dev/null)
+        if test -n "$common"
+            set -l main_root (dirname (realpath $common))
+            if test -f $main_root/.env
+                set env_file $main_root/.env
+            end
+        end
+    end
+
+    if test -z "$env_file"
+        echo "✗ no .env found, and no connection string given."
+        echo "  Pass one explicitly:"
+        echo "    "(status --current-filename)" --apply \"postgresql://…\""
         exit 1
     end
-    # Read DATABASE_URL without sourcing .env (it holds secrets we do not want
-    # exported into this shell, and values may contain characters fish would
-    # try to interpret).
-    set url (grep -m1 '^DATABASE_URL=' $repo_root/.env | string replace -r '^DATABASE_URL=' '' | string trim -c '"' | string trim -c "'")
+
+    echo "Env    : $env_file"
+    # DIRECT_URL first, DATABASE_URL only as a fallback. DATABASE_URL points at
+    # the pgbouncer pooler in transaction mode, and DDL does not belong there —
+    # `ALTER TYPE … ADD VALUE` in particular cannot run inside a transaction
+    # block, which is exactly what transaction pooling wraps every statement in.
+    # Read without sourcing .env: it holds secrets we do not want exported into
+    # this shell, and the values contain characters fish would try to interpret.
+    for key in DIRECT_URL DATABASE_URL
+        set url (grep -m1 "^$key=" $env_file | string replace -r "^$key=" '' | string trim -c '"' | string trim -c "'")
+        if test -n "$url"
+            echo "Using  : $key"
+            break
+        end
+    end
 end
 
 if test -z "$url"
@@ -58,6 +86,14 @@ end
 # Show where this is going without printing the password.
 set -l target (string replace -r '^postgres(ql)?://[^@]*@' '' -- $url)
 echo "Target : $target"
+if string match -q '*pgbouncer=true*' -- $url; or string match -q '*:6543/*' -- $url
+    echo
+    echo "⚠  That is the pgbouncer pooler. Migrations should run on the direct"
+    echo "   connection (db.<ref>.supabase.co:5432) — ALTER TYPE … ADD VALUE"
+    echo "   cannot run inside a transaction block, and transaction pooling puts"
+    echo "   every statement in one. Use DIRECT_URL, or pass it explicitly."
+    echo
+end
 echo "Files  :"
 for file in $migrations
     echo "         "(basename $file)
