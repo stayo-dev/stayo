@@ -6,6 +6,7 @@ import { apiError, apiResponse } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
+import { mapActivationError } from "@/src/services/tenants/activation-error";
 
 /**
  * Evidence that the tenant read the agreement before signing it.
@@ -85,6 +86,10 @@ export async function POST(req: NextRequest) {
       read_completed_at: updated.document_read_completed_at ?? null,
     });
   } catch (error: any) {
-    return apiError(error?.message || "Failed to record agreement read", "INTERNAL_ERROR", 500);
+    // The activation services signal failure by throwing "CODE: message",
+    // so an expired link must become a 410 rather than a 500 that tells the
+    // tenant nothing.
+    const mapped = mapActivationError(error, "Failed to record agreement read");
+    return apiError(mapped.message, mapped.code, mapped.status);
   }
 }
