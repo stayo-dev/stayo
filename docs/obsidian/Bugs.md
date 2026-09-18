@@ -2828,6 +2828,20 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 
 **See:** [[Decisions#ADR-214|ADR-214]], [[APIs]], [[Changelog]]
 
+## 2026-09-18 — Manager login succeeded but never reached the manager dashboard (fixed)
+
+**Symptom.** Reported by the user: logging in with a MANAGER account's email/password returned a successful response, but the app never navigated to `/admin`/the manager dashboard. Depending on which page the login modal was opened from, the manager was either bounced to the marketing `/owners` page or the modal just closed with no navigation at all, leaving them stranded on the landing page.
+
+**Root cause.** The single owner/admin login surface's post-login handler, `handleAuthSuccess` in `apps/frontend/src/app/pages/public/LandingPage.tsx`, only branched on `role === 'admin'` and `role === 'owner'` (predating [[Decisions#ADR-214|ADR-214]]'s introduction of the `MANAGER` role). A manager's role matched neither branch, so it fell through to `crossSurfaceHandoff(..., 'owner')` (`apps/frontend/src/shared/lib/crossSurfaceLogin.ts`), which also only special-cased `role === 'tenant'` for that surface and returned `null` for `'manager'` — and from there to the final fallback, `if (isLoginRoute) navigate('/owners', ...)`, or nothing at all if the modal wasn't opened from the literal `/login` route. `AuthContext.tsx`'s own `role === 'admin' || role === 'manager'` redirect effect only fires on the `/login` path and races with `LandingPage`'s explicit navigate, so it didn't reliably rescue this either. Everything downstream — `/api/auth/me`'s `role`/`is_manager`/`manager_status`/`manager_permissions` fields, `AuthContext.buildAuthUser`, `RequireAdminSession`, and `AdminHomeDispatch` — was already correct; only the login-success routing switch was missing the new role.
+
+**Fix.** Added a `role === 'manager'` branch to `handleAuthSuccess` (navigates to `/admin`, mirroring the `admin` branch), and the symmetric case to `crossSurfaceHandoff`'s discovery branch in `crossSurfaceLogin.ts` (a manager who signs in on the Discovery surface is now handed off to `/admin` instead of being treated as a resident).
+
+**Lesson.** Adding a new `Role` value requires updating every place that switches on role, not just the backend session/permission plumbing — the frontend's login-success router and the Discovery/owner cross-surface handoff are both plain `if (role === ...)` chains with no exhaustiveness check, so a new role silently falls through to the last `else` rather than failing loudly.
+
+**Verified:** existing `crossSurfaceLogin.test.ts` (7 tests) still passes. No component-level test exists for `LandingPage.tsx` per this repo's frontend testing convention (pure `.ts` logic only, no `.tsx` rendering); not verified via a live login click-through in this session.
+
+**See:** [[Decisions#ADR-214|ADR-214]], [[Changelog]]
+
 ## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
 
 **Symptom.** Reported by the user from a screenshot: `/admin/activity` showed a long list of `Allocate`/`Create`/`Update`/`Delete` entries all attributed to "Srinivas Rao," none of them related to any manager action — with the "All managers"/"All hostels" filters at their defaults.
