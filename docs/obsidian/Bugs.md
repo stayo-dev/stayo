@@ -2848,3 +2848,21 @@ An existing test even pinned the behaviour, named *"accepts either signature, bu
 **The design gap:** "at least one" was written to be accommodating and nobody asked which one.
 
 **Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-218|ADR-218]].
+
+## 2026-09-18 — The agreement editor could lose the line you were writing (fixed)
+
+Lines committed on `onBlur`. Tapping straight from one line to another dropped the edit in progress, because focus moved before the change was ever handed to React.
+
+The variable picker made it worse: it found its own textarea with `closest('div')?.parentElement?.querySelector('textarea')` and assigned `el.value` directly, so React state and the DOM disagreed until blur — and an inserted token could be lost entirely by the next keystroke.
+
+**The design gap:** an editor for a legal document was built with uncontrolled inputs and DOM reads, so "what is on screen" and "what will be saved" were two different things with no test able to tell them apart.
+
+**Fix:** lines commit `onChange`; token insertion is a pure `insertToken(value, caret, token)` against a ref, unit-tested. See [[Decisions#ADR-220|ADR-220]].
+
+## 2026-09-18 — Owners could not change their own notice period (fixed)
+
+`rules_content.terms_and_conditions` — Residential Use Only, Rent Payment, Security Deposit, Notice Period, Hostel Rules Compliance — had no editing surface at all. Every hostel on Stayo therefore shipped the same notice period in Stayo's wording, for terms that are genuinely per-hostel commercial decisions.
+
+The storage existed and was persisted; only the editor never touched it.
+
+**Fix:** owners write the body, the headings stay fixed, enforced server-side by `normalizeAgreementTerms`. See [[Decisions#ADR-220|ADR-220]].

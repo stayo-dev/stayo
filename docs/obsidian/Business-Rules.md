@@ -1155,3 +1155,31 @@ Each signature on the document carries its own provenance, identical in the tena
 - An **unsigned** panel is stamped with nothing. A date and an IP under a signature nobody gave would describe an event that never happened.
 - The **owner** gets a date but no device or IP: they sign by applying a stored signature stamp, not from a browser, so there is nothing to record.
 - The stamp is deliberately **excluded from `document_content_hash`** — two renders of the same agreement, signed from different devices, are still the same agreement.
+
+## The five commercial terms
+
+Every Stayo agreement carries the same five terms, in the same order:
+
+| id | Heading |
+|---|---|
+| `residential_use` | Residential Use Only |
+| `rent_payment` | Rent Payment |
+| `security_deposit` | Security Deposit |
+| `notice_period` | Notice Period |
+| `hostel_rules_compliance` | Hostel Rules Compliance |
+
+- **Owners write the body. The headings are fixed.** An owner cannot rename, delete, reorder or add a term.
+- **Enforced server-side** by `normalizeAgreementTerms()`, not by the editor. The save route previously validated only `id` and `content`, so a renamed, invented or omitted term could persist.
+- **It normalizes rather than rejects.** An unrecognised term is dropped, a missing one is restored with Stayo's wording, and a blanked one falls back the same way — a malformed payload becomes a valid agreement instead of costing an owner their editing session.
+- Before this the whole band was uneditable, so every hostel shipped an identical notice period.
+
+See [[Decisions#ADR-220|ADR-220]].
+
+## When an owner may publish an agreement
+
+- **Blocked** when the draft contains a token Stayo cannot fill. A typo like `{{MONTLY_RENT}}` prints literally on a document somebody signs, so this is the one condition worth refusing over. Every offending token is named.
+- **Blocked** when the draft matches what is already published — there is nothing to publish.
+- **Warned, not blocked**, when the owner's signature is not set. An unsigned agreement is still a real document, and refusing would strand an owner who has not reached that screen.
+- Publishing shows what changed — added, reworded, removed — and how many tenants signed the current version, before it happens.
+
+Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.
