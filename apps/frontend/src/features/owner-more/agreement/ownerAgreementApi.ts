@@ -19,7 +19,8 @@ export async function fetchOwnerAgreementDocument(
     rules_content: rulesContent ?? undefined,
     version_number: versionNumber,
   });
-  return res.data?.data?.document ?? res.data?.document;
+  // `apiResponse` spreads an object at the top level ({ success, document }).
+  return res.data?.document ?? res.data?.data?.document;
 }
 
 /**

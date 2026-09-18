@@ -21,8 +21,18 @@ vi.mock("@/lib/auth", () => ({
   getSession: mockSession,
   apiError: (message: string, code: string, status = 400) =>
     new Response(JSON.stringify({ error: { message, code } }), { status }),
+  // Matches lib/auth-edge.ts: an object is SPREAD at the top level, it is not
+  // nested under `data`. The mock used to nest it, which would have let a
+  // response-shape bug through unnoticed.
   apiResponse: (data: unknown, status = 200) =>
-    new Response(JSON.stringify({ success: true, data }), { status }),
+    new Response(
+      JSON.stringify(
+        typeof data === 'object' && data !== null && !Array.isArray(data)
+          ? { success: true, ...(data as object) }
+          : { success: true, data },
+      ),
+      { status },
+    ),
 }));
 vi.mock("@/src/services/tenants/agreement-generation-service", () => ({
   AgreementGenerationService: { getAgreementRenderData: mockRenderData },
@@ -78,14 +88,14 @@ describe("GET /api/agreements/[id]/document", () => {
     mockSession.mockResolvedValue(null);
     const res = await getDocument(req, params);
     expect(res.status).toBe(403);
-    expect((await bodyOf(res)).data).toBeUndefined();
+    expect((await bodyOf(res)).document).toBeUndefined();
   });
 
   it("lets the tenant who signed it read their own agreement", async () => {
     mockSession.mockResolvedValue({ sub: "tenant-profile-1", role: "TENANT" });
     const res = await getDocument(req, params);
     expect(res.status).toBe(200);
-    expect((await bodyOf(res)).data.document.blocks[0].kind).toBe("title");
+    expect((await bodyOf(res)).document.blocks[0].kind).toBe("title");
   });
 
   it("lets the owner of the hostel read it", async () => {
@@ -97,14 +107,14 @@ describe("GET /api/agreements/[id]/document", () => {
     mockSession.mockResolvedValue({ sub: "owner-2", role: "OWNER" });
     const res = await getDocument(req, params);
     expect(res.status).toBe(403);
-    expect((await bodyOf(res)).data).toBeUndefined();
+    expect((await bodyOf(res)).document).toBeUndefined();
   });
 
   it("refuses a different tenant, and returns no document", async () => {
     mockSession.mockResolvedValue({ sub: "tenant-profile-2", role: "TENANT" });
     const res = await getDocument(req, params);
     expect(res.status).toBe(403);
-    expect((await bodyOf(res)).data).toBeUndefined();
+    expect((await bodyOf(res)).document).toBeUndefined();
   });
 
   it("does not grant access when the agreement's tenant has no profile linked", async () => {

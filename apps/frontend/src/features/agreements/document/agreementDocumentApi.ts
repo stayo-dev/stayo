@@ -11,13 +11,15 @@ import type { AgreementDocument } from './agreementDocument';
 /** Onboarding: token-authenticated, because the tenant has no account yet. */
 export async function fetchActivationAgreementDocument(token: string): Promise<AgreementDocument> {
   const res = await api.get('/tenants/activate/agreement-document', { params: { token } });
-  return res.data?.data?.document ?? res.data?.document;
+  // `apiResponse` spreads an object at the top level ({ success, document }).
+  // The nested form is kept only as a fallback.
+  return res.data?.document ?? res.data?.data?.document;
 }
 
 /** An already-activated tenant, or the owner, re-reading an issued agreement. */
 export async function fetchAgreementDocument(agreementId: string): Promise<AgreementDocument> {
   const res = await api.get(`/agreements/${agreementId}/document`);
-  return res.data?.data?.document ?? res.data?.document;
+  return res.data?.document ?? res.data?.data?.document;
 }
 
 /**
