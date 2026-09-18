@@ -4,8 +4,10 @@ import { Navigate, Outlet, Route, useParams } from 'react-router-dom';
 import { queryClient } from '@lib/queryClient';
 import { AuthProvider } from '@context/AuthContext';
 import { StayoLoadingScreen } from '@shared/ui/brand';
+import { resolveHomepageVersion } from '@/app/pages/public/homepageVersion';
 
 const WelcomePage = lazy(() => import('@/app/pages/public/WelcomePage').then((m) => ({ default: m.WelcomePage })));
+const HomePage = lazy(() => import('@/app/pages/public/HomePage').then((m) => ({ default: m.HomePage })));
 const LandingPage = lazy(() => import('@/app/pages/public/LandingPage').then((m) => ({ default: m.LandingPage })));
 const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupCallbackPage').then((m) => ({ default: m.LeadSignupCallbackPage })));
 const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
@@ -76,18 +78,38 @@ function AuthShell() {
   );
 }
 
+/**
+ * Whichever front door `/` is configured to serve.
+ *
+ * Read once per render from the environment and the live query string, so
+ * `?homepage=chooser` works on a deployed build without a redeploy.
+ */
+function RootHomepage() {
+  const version = resolveHomepageVersion({
+    envValue: import.meta.env.VITE_HOMEPAGE,
+    search: typeof window === 'undefined' ? '' : window.location.search,
+  });
+  return version === 'chooser' ? <WelcomePage /> : <HomePage />;
+}
+
 export function PublicRoutes() {
   return (
     <>
       {/* ── Public hostel landing pages (SEO crawlable) ──────────────── */}
       <Route element={<PublicShell />}>
-        {/* ADR-071: `/` asks which audience you are before it pitches at you.
-            The owner marketing page it used to hold now lives at `/owners`,
-            which is where "Start free" hands off to. Every other route that
-            means "the owner home" points at `/owners` too — `/` is a fork,
-            not a destination, so landing a signed-out owner there after a
-            session expiry or a logo click would have been a step backwards. */}
-        <Route path="/" element={<WelcomePage />} />
+        {/* ADR-223: `/` serves the student-first homepage, and ADR-071's
+            audience chooser is kept beside it rather than deleted. Which one
+            `/` renders is decided by `resolveHomepageVersion` — a query
+            parameter for previewing, else VITE_HOMEPAGE, else the default —
+            so switching back is a config change, not a revert.
+
+            Both also keep permanent URLs of their own, so a bad flag value can
+            never make either unreachable. `/owners` is untouched by all of
+            this: it is still the owner marketing page and still where every
+            owner CTA and route guard points. */}
+        <Route path="/" element={<RootHomepage />} />
+        <Route path="/welcome" element={<WelcomePage />} />
+        <Route path="/home-v2" element={<HomePage />} />
         <Route path="/owners" element={<LandingPage />} />
         {/* ADR-035: one login surface. `/login` is the landing page with the
             Stayo login popup already open — kept as a real URL because
