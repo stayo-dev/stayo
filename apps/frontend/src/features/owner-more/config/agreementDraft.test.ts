@@ -60,8 +60,19 @@ describe('editLine', () => {
     expect(rulesOf(next, 'facilities')).toEqual(rulesOf(content(), 'facilities'));
   });
 
-  it('refuses to blank a line — deleting is a separate, deliberate act', () => {
-    expect(editLine(content(), 'fees', 0, '   ')).toEqual(content());
+  it('lets a line be emptied', () => {
+    // The editor commits on every keystroke, so an empty box is a normal
+    // moment mid-edit, not a request to delete. Refusing it re-rendered the
+    // controlled textarea with the old value, and the last character an owner
+    // deleted reappeared.
+    expect(rulesOf(editLine(content(), 'fees', 0, ''), 'fees')[0]).toBe('');
+  });
+
+  it('keeps the text exactly as typed, spaces and all', () => {
+    // Trimming per keystroke made a trailing space unenterable: the state
+    // never changed, so React put the untrimmed value back and the next
+    // character landed against the previous word.
+    expect(rulesOf(editLine(content(), 'fees', 0, 'Fees are '), 'fees')[0]).toBe('Fees are ');
   });
 
   it('never mutates the input', () => {

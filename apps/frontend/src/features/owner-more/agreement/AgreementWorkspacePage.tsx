@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Download, Eye, Pencil, Plus } from 'lucide-react';
+import { Download, Eye, History, Pencil, Plus } from 'lucide-react';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { AgreementDocumentView } from '@features/agreements/document/AgreementDocumentView';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
@@ -15,12 +15,28 @@ import {
   editLine,
   editTerm,
   hasDraftChanges,
+  isSectionEnabled,
+  moveLine,
+  moveSection,
+  removeLine,
+  removeSection,
+  renameSection,
+  resetSection,
+  toggleImportant,
+  toggleSection,
   unknownVariables,
 } from '../config/agreementDraft';
 import { SectionRow } from './SectionRow';
 import { PublishReviewSheet } from './PublishReviewSheet';
+import { VersionHistorySheet } from './VersionHistorySheet';
 import { diffAgreementDocument } from './agreementDiff';
-import { publishReadiness, saveStateLabel } from './agreementWorkspace';
+import {
+  publishReadiness,
+  saveStateLabel,
+  sectionActions,
+  sectionSubtitle,
+  type SectionActionId,
+} from './agreementWorkspace';
 import { fetchOwnerAgreementDocument, downloadSampleAgreementPdf, ownerAgreementKeys } from './ownerAgreementApi';
 
 /**
@@ -43,7 +59,7 @@ import { fetchOwnerAgreementDocument, downloadSampleAgreementPdf, ownerAgreement
 export function AgreementWorkspacePage() {
   const hostelId = useConfiguredHostelId();
   const queryClient = useQueryClient();
-  const { active, rules, hasDraft, signatureConfigured, isLoading } = useAgreementTemplate();
+  const { active, rules, defaultRules, hasDraft, signatureConfigured, isLoading } = useAgreementTemplate();
   const { templates } = useAgreementTemplates();
 
   const [segment, setSegment] = useState<'write' | 'read'>('write');
@@ -51,6 +67,7 @@ export function AgreementWorkspacePage() {
   const [openSection, setOpenSection] = useState<string | null>(null);
   const [savedAt, setSavedAt] = useState<Date | null>(null);
   const [reviewOpen, setReviewOpen] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
   const saveTimer = useRef<number | null>(null);
 
   useEffect(() => {
@@ -84,6 +101,24 @@ export function AgreementWorkspacePage() {
     onError: () => stayoToast.error('Could not publish'),
   });
 
+  /**
+   * Throw the draft away and go back to what is live.
+   *
+   * The editor autosaves, so before this existed an owner who changed their
+   * mind had no way back except retyping the published wording from memory.
+   */
+  const discardDraft = useMutation({
+    mutationFn: () => configApi.discardAgreementDraft(hostelId!),
+    onSuccess: () => {
+      setDraft((active?.rules_content as RulesContent) ?? null);
+      setSavedAt(null);
+      stayoToast.success('Draft discarded — back to the published version');
+      queryClient.invalidateQueries({ queryKey: ['owner', 'agreement-template', hostelId] });
+      queryClient.invalidateQueries({ queryKey: ['owner', 'agreement-templates', hostelId] });
+    },
+    onError: () => stayoToast.error('Could not discard the draft'),
+  });
+
   /** Autosave after a pause: a legal document is edited in bursts. */
   const change = (next: RulesContent) => {
     setDraft(next);
@@ -91,6 +126,33 @@ export function AgreementWorkspacePage() {
     saveTimer.current = window.setTimeout(() => {
       if (hostelId) saveDraft.mutate(next);
     }, 1200);
+  };
+
+  /**
+   * One section action to one draft operation.
+   *
+   * The screen decides nothing here: which actions exist, how they are
+   * labelled and which one needs confirming all come from `sectionActions`,
+   * and every branch below is a call into the tested `agreementDraft` module.
+   */
+  const runSectionAction = (categoryId: string, id: SectionActionId) => {
+    if (!draft) return;
+    switch (id) {
+      case 'moveUp':
+        return change(moveSection(draft, categoryId, -1));
+      case 'moveDown':
+        return change(moveSection(draft, categoryId, 1));
+      case 'important':
+        return change(toggleImportant(draft, categoryId));
+      case 'include':
+        return change(toggleSection(draft, categoryId));
+      case 'reset':
+        return change(resetSection(draft, categoryId, defaultRules));
+      case 'delete':
+        // Confirmed in `SectionRow` from the action's own `confirm` text.
+        setOpenSection(null);
+        return change(removeSection(draft, categoryId));
+    }
   };
 
   // The composed document, from the server. Keyed on the draft so the Read
@@ -146,7 +208,7 @@ export function AgreementWorkspacePage() {
   const terms = ((draft as any).terms_and_conditions ?? []) as Array<{ id: string; title: string; content: string }>;
 
   return (
-    <div className="flex flex-col gap-4 px-4 pb-32 pt-6 sm:px-6">
+    <div className="flex flex-col gap-4 px-4 pb-40 pt-6 sm:px-6">
       <MoreScreenHeader
         title="Agreement"
         subtitle={
@@ -157,9 +219,43 @@ export function AgreementWorkspacePage() {
       />
 
       <div className="flex items-center justify-between gap-3">
-        <span className="text-[11.5px] font-medium text-muted-foreground">
-          {saveStateLabel({ saving: saveDraft.isPending, unsaved, hasDraft, savedAt })}
+        <span className="flex min-w-0 items-center gap-2">
+          <span className="truncate text-[11.5px] font-medium text-muted-foreground">
+            {saveStateLabel({ saving: saveDraft.isPending, unsaved, hasDraft, savedAt })}
+          </span>
+          {/* Only offered when there is something to throw away. */}
+          {(hasDraft || unsaved) && (
+            <button
+              type="button"
+              disabled={discardDraft.isPending}
+              onClick={() => {
+                if (!window.confirm('Discard this draft and go back to the published version?')) return;
+                discardDraft.mutate();
+              }}
+              className="flex-none text-[11.5px] font-semibold text-muted-foreground underline underline-offset-2 disabled:opacity-50"
+            >
+              Discard
+            </button>
+          )}
         </span>
+
+        <div className="flex flex-none items-center gap-2">
+          {/*
+            History is a permanent, visible affordance rather than something in
+            a menu. Most of its value is delivered to owners who never open it:
+            the reason they want version history is the fear that editing a
+            legal document is irreversible, and seeing that every version is
+            kept answers that before they ever need it to.
+          */}
+          <button
+            type="button"
+            onClick={() => setHistoryOpen(true)}
+            className="flex items-center gap-1.5 rounded-full border border-border px-3 py-1.5 text-[12px] font-semibold text-foreground"
+          >
+            <History className="h-3.5 w-3.5" strokeWidth={2} />
+            History
+          </button>
+
         <div className="flex rounded-full border border-border p-0.5 lg:hidden">
           {(['write', 'read'] as const).map((s) => (
             <button
@@ -174,6 +270,7 @@ export function AgreementWorkspacePage() {
               {s === 'write' ? 'Write' : 'Read'}
             </button>
           ))}
+        </div>
         </div>
       </div>
 
@@ -217,18 +314,36 @@ export function AgreementWorkspacePage() {
             <h2 className="pl-0.5 text-[11px] font-bold uppercase tracking-wider text-muted-foreground">
               Your rules
             </h2>
-            {categories.map((category) => (
-              <SectionRow
-                key={category.id}
-                title={category.title}
-                subtitle={category.severity === 'important' ? 'shown as a highlight' : undefined}
-                lines={category.rules ?? []}
-                open={openSection === category.id}
-                onToggle={() => setOpenSection(openSection === category.id ? null : category.id)}
-                onEditLine={(index, text) => change(editLine(draft, category.id, index, text))}
-                onAddLine={() => change(addLine(draft, category.id, (category.rules ?? []).length - 1))}
-              />
-            ))}
+            {categories.map((category, index) => {
+              const enabled = isSectionEnabled(category);
+              return (
+                <SectionRow
+                  key={category.id}
+                  title={category.title}
+                  subtitle={sectionSubtitle({ severity: category.severity, enabled })}
+                  dimmed={!enabled}
+                  lines={category.rules ?? []}
+                  open={openSection === category.id}
+                  actions={sectionActions({
+                    title: category.title,
+                    severity: category.severity,
+                    enabled,
+                    isFirst: index === 0,
+                    isLast: index === categories.length - 1,
+                    // `resetSection` leaves a section we ship no default for
+                    // untouched, so the action is absent rather than inert.
+                    hasDefault: (defaultRules?.categories ?? []).some((c) => c.id === category.id),
+                  })}
+                  onToggle={() => setOpenSection(openSection === category.id ? null : category.id)}
+                  onEditLine={(i, text) => change(editLine(draft, category.id, i, text))}
+                  onAddLine={() => change(addLine(draft, category.id, (category.rules ?? []).length - 1))}
+                  onRemoveLine={(i) => change(removeLine(draft, category.id, i))}
+                  onMoveLine={(i, direction) => change(moveLine(draft, category.id, i, direction))}
+                  onRename={(title) => change(renameSection(draft, category.id, title))}
+                  onAction={(id) => runSectionAction(category.id, id)}
+                />
+              );
+            })}
 
             <button
               type="button"
@@ -284,7 +399,16 @@ export function AgreementWorkspacePage() {
       </div>
 
 
-      <div className="fixed inset-x-0 bottom-0 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:px-6">
+      {/*
+        Sits *on top of* the owner tab bar, not under it. `bottom-0` put it
+        behind a `fixed bottom-0 z-40` nav, so an owner who changed something
+        saw an orange sliver above Home/Tenants/Money and never reached
+        Publish. Offsets match `components/SaveBar.tsx`, the same feature's
+        existing bottom bar: 4.5rem is the nav's height (`OwnerAppShell` pads
+        its main by the same amount), and at `lg` the console shell drops the
+        nav entirely, so the bar returns to the bottom edge.
+      */}
+      <div className="fixed inset-x-0 bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 border-t border-border bg-card px-4 pt-3 pb-[max(0.75rem,env(safe-area-inset-bottom))] sm:mx-auto sm:max-w-[480px] sm:px-6 lg:bottom-0 lg:max-w-[760px]">
         <button
           type="button"
           disabled={!readiness.canPublish}
@@ -297,6 +421,25 @@ export function AgreementWorkspacePage() {
           Tenants keep signing the published version until you publish.
         </p>
       </div>
+
+      {historyOpen && hostelId && (
+        <VersionHistorySheet
+          hostelId={hostelId}
+          liveVersionNumber={active?.version_number ?? null}
+          hasDraftEdits={hasDraft || unsaved}
+          onClose={() => setHistoryOpen(false)}
+          onUseVersion={(content) => {
+            // Lands in the draft and autosaves, exactly like any other edit.
+            // Publishing stays the one deliberate act that changes what
+            // tenants sign, and the review sheet will show the diff against
+            // the live version before it does.
+            change(content);
+            setOpenSection(content.categories?.[0]?.id ?? null);
+            setHistoryOpen(false);
+            stayoToast.success('Loaded into your draft — publish when you are ready');
+          }}
+        />
+      )}
 
       {reviewOpen && (
         <PublishReviewSheet

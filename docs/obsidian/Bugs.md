@@ -8,6 +8,21 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-18 — A clause's last character could not be deleted, and Publish sat behind the tab bar (fixed)
+
+**Symptom.** Reported by the owner using Configuration › Agreements. Two faults on the same screen: deleting a clause backwards stopped at the final character — it reappeared as fast as it was deleted, so a line could never be emptied — and after changing anything, the "Review and publish" bar showed only as a sliver above Home/Tenants/Money and could not be tapped.
+
+**Root cause 1 — a guard that outlived its editor.** `editLine` (`config/agreementDraft.ts`) trimmed its input and returned the content *unchanged* when the result was blank, documented as "deleting is a separate, deliberate act". That was right for the editor it was written for, which committed on `onBlur` — a whole-value commit, where an empty box really did mean "remove this line". [[Decisions#ADR-220|ADR-220]]'s `SectionRow` replaced it with a **controlled textarea that commits on every keystroke**, and there both rules invert: the intermediate empty string is a normal moment mid-edit, and refusing it left React to re-render the textarea with the previous value, putting the deleted character straight back. The same guard made a *trailing space* unenterable — it was trimmed away, state never changed, and the next character landed against the previous word. `editTerm`, written for the new screen, stores its text verbatim and has neither fault; the two had silently disagreed since the rewrite.
+
+**Root cause 2 — a fixed bar with no offset and no z-index.** The workspace's publish bar was `fixed inset-x-0 bottom-0` with no `z-`, while `OwnerAppShell`'s tab bar is `fixed inset-x-0 bottom-0 z-40`. The bar rendered underneath it; only the part taller than the nav showed. The editor this replaced had used `bottom-[68px]`, and `owner-more`'s own [[Frontend|SaveBar]] already carried the right offset — the rewrite reused neither.
+
+**Fix.** `editLine` stores the text exactly as typed, empty included (which `addLine` and `addSection` already create); removing a line stays `removeLine`. The bar adopts `SaveBar`'s positioning verbatim — `bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 … lg:bottom-0`, 4.5rem being the nav height `OwnerAppShell` already pads its `main` by, and `lg` being where the console shell drops the nav — and the page's bottom padding goes `pb-32` → `pb-40` to match the other bar-bearing config screens.
+
+**Lesson.** When an editor changes *when* it commits, every purity rule written for the old commit point has to be re-read. A validation that assumes a whole-value commit becomes a typing bug the moment the same function is called per keystroke.
+
+**Found alongside, fixed the same day.** The workspace wired only `editLine`, `addLine`, `addSection` and `editTerm`. `removeLine`, `removeSection`, `moveLine`, `moveSection`, `renameSection`, `toggleSection`, `toggleImportant`, `resetSection` and `isSectionEnabled` all existed and were tested, but no control on the screen called them — so a line could be *emptied* but not removed, and a section could not be deleted, renamed or reordered at all. A live regression against the editor ADR-220 replaced, since an emptied line still prints as a numbered blank clause. Now wired, under [[Decisions#ADR-221|ADR-221]].
+
+**See:** [[Decisions#ADR-220|ADR-220]], [[Decisions#ADR-221|ADR-221]], [[Frontend]], [[Changelog]]
 ## 2026-09-14 — Any owner could take over any account, ADMIN included (fixed)
 
 **Symptom.** Found by the 2026-09-14 authentication/authorization audit (finding C1), not by an incident. Reproduced in `tests/supabase-session-linking.test.ts` before the fix: a Supabase token that no profile was linked to resolved `ok: true` as the profile sharing its email.
