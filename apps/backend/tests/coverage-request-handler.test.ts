@@ -19,10 +19,20 @@ describe('handleCoverageRequest', () => {
       deps({ record }),
     );
     expect(result.status).toBe(201);
-    expect(result.body).toEqual({ recorded: true, will_notify: true });
+    // The id comes back so the referral can be completed in a second step.
+    expect(result.body).toEqual({ recorded: true, will_notify: true, id: 'cr1' });
     expect(record).toHaveBeenCalledWith(
       expect.objectContaining({ areaQuery: 'Osmania University', contactPhone: '9876543210', seekerProfileId: null }),
     );
+  });
+
+  it('returns the id so a second step can attach the owner number later', async () => {
+    const result = await handleCoverageRequest({ kind: 'HOSTEL', hostel_name: 'Sri Sai' }, '1.2.3.4', deps({
+      record: async () => ({ id: 'cr-banked', willNotify: false }),
+    }));
+    expect(result.status).toBe(201);
+    if (result.status !== 201) return;
+    expect(result.body.id).toBe('cr-banked');
   });
 
   it('passes a hostel referral through with the owner contact intact', async () => {

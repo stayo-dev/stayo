@@ -2,8 +2,10 @@ import { useState, type FormEvent } from 'react';
 import { HousePlus, MapPin } from 'lucide-react';
 
 import { useSubmitCoverageRequest } from '@features/coverage/hooks/useSubmitCoverageRequest';
+import { useAttachCoverageDetails } from '@features/coverage/hooks/useAttachCoverageDetails';
 
 import { validateCoverage, validateHostelReferral } from './coverageRequest';
+import { validateFollowUp, type FollowUpMode } from './referralFollowUp';
 import { GROUND_DARK } from './ground';
 
 interface SupplyRequestSectionProps {
@@ -17,36 +19,79 @@ const LABEL = 'mt-3.5 block font-display text-[11px] font-bold uppercase trackin
 const SUBMIT =
   'mt-4 h-[50px] w-full rounded-[13px] bg-primary font-display text-[15px] font-extrabold text-primary-foreground disabled:opacity-60';
 const ERROR = 'mt-1.5 text-[13px] font-semibold text-primary';
+/** Keeps the first field on the same baseline in both cards. */
+const INTRO = 'mt-2 text-sm leading-relaxed text-background/70 sm:min-h-[66px]';
 
-/** A student naming the hostel they already live in is an owner lead. */
+/**
+ * A student naming the hostel they already live in is an owner lead.
+ *
+ * Two steps on purpose. The name alone is saved first, and only then are we
+ * asking for the owner's number — the field that turns a name into a phone
+ * call. Asked up front it is a second hurdle before any commitment, and
+ * hesitating over it loses the referral entirely; asked after, the referral is
+ * already banked and a skip costs nothing.
+ *
+ * The number is optional and says so, but the label leads with what it buys
+ * rather than with permission to skip. The line about anonymity is there
+ * because the real hesitation is never effort — it is "am I allowed to give
+ * out my landlord's number?", and leaving that unanswered is what makes the
+ * safe move a blank field.
+ */
 function ReferHostelForm({ source }: { source: string }) {
   const [hostelName, setHostelName] = useState('');
-  const [ownerContact, setOwnerContact] = useState('');
-  const [errors, setErrors] = useState<{ hostelName?: string; ownerContact?: string }>({});
-  const submit = useSubmitCoverageRequest();
+  const [errors, setErrors] = useState<{ hostelName?: string }>({});
+  const [stage, setStage] = useState<'name' | 'details' | 'done'>('name');
+  const [referralId, setReferralId] = useState<string | null>(null);
+  const [mode, setMode] = useState<FollowUpMode>('number');
+  const [followUp, setFollowUp] = useState('');
+  const [followUpError, setFollowUpError] = useState<string | null>(null);
 
-  const onSubmit = (event: FormEvent) => {
+  const submit = useSubmitCoverageRequest();
+  const attach = useAttachCoverageDetails();
+
+  const onSubmitName = (event: FormEvent) => {
     event.preventDefault();
-    const result = validateHostelReferral({ hostelName, ownerContact }, source);
+    const result = validateHostelReferral({ hostelName, ownerContact: '' }, source);
     setErrors(result.errors);
-    if (result.valid && result.payload) submit.mutate(result.payload);
+    if (!result.valid || !result.payload) return;
+    submit.mutate(result.payload, {
+      onSuccess: (data) => {
+        // No id means an older server that cannot take the second step; the
+        // referral is still saved, so say thank you rather than stall.
+        if (data.id) {
+          setReferralId(data.id);
+          setStage('details');
+        } else {
+          setStage('done');
+        }
+      },
+    });
+  };
+
+  const onSubmitFollowUp = (event: FormEvent) => {
+    event.preventDefault();
+    const result = validateFollowUp({ mode, value: followUp });
+    setFollowUpError(result.error ?? null);
+    if (!result.valid || !result.payload || !referralId) return;
+    // The referral is already saved, so this never blocks: either way the
+    // student is thanked and the step closes.
+    attach.mutate({ id: referralId, payload: result.payload }, {
+      onSuccess: () => setStage('done'),
+      onError: () => setStage('done'),
+    });
   };
 
   return (
     <div className="rounded-[20px] border border-white/10 bg-white/[0.055] p-6">
       <HousePlus className="h-6 w-6 text-primary" strokeWidth={1.9} aria-hidden="true" />
       <h3 className="mt-3 font-display text-[19px] font-extrabold text-background">Get your hostel on Stayo</h3>
-      <p className="mt-2 text-sm leading-relaxed text-background/70">
+      <p className={INTRO}>
         Name the hostel and we'll approach the owner ourselves. Your hostel gets a real page — and you get rent receipts
         and complaints that don't get lost.
       </p>
 
-      {submit.isSuccess ? (
-        <p className="mt-5 text-[15px] font-semibold text-background" role="status" aria-live="polite">
-          Got it — we'll reach out to them. Thank you.
-        </p>
-      ) : (
-        <form onSubmit={onSubmit} noValidate>
+      {stage === 'name' && (
+        <form onSubmit={onSubmitName} noValidate>
           <label htmlFor="refer-name" className={LABEL}>
             Hostel name
           </label>
@@ -66,25 +111,6 @@ function ReferHostelForm({ source }: { source: string }) {
             </p>
           )}
 
-          <label htmlFor="refer-owner" className={LABEL}>
-            Owner's number <span className="font-semibold normal-case tracking-normal text-background/60">— optional</span>
-          </label>
-          <input
-            id="refer-owner"
-            type="tel"
-            value={ownerContact}
-            onChange={(event) => setOwnerContact(event.target.value)}
-            placeholder="So we can call them"
-            aria-invalid={Boolean(errors.ownerContact)}
-            aria-describedby={errors.ownerContact ? 'refer-owner-error' : undefined}
-            className={FIELD}
-          />
-          {errors.ownerContact && (
-            <p id="refer-owner-error" className={ERROR}>
-              {errors.ownerContact}
-            </p>
-          )}
-
           <button type="submit" disabled={submit.isPending} className={SUBMIT}>
             {submit.isPending ? 'Sending…' : 'Refer this hostel'}
           </button>
@@ -95,6 +121,90 @@ function ReferHostelForm({ source }: { source: string }) {
             </p>
           )}
         </form>
+      )}
+
+      {stage === 'details' && (
+        <form onSubmit={onSubmitFollowUp} noValidate>
+          <p className="mt-4 text-[15px] font-semibold text-background" role="status" aria-live="polite">
+            Saved — thank you.
+          </p>
+
+          <label htmlFor="refer-follow-up" className={LABEL}>
+            {mode === 'number' ? "Owner's number" : 'Where is it?'}
+          </label>
+          <p className="mt-1 text-[12.5px] leading-relaxed text-background/60">
+            {mode === 'number'
+              ? "Optional — but it's the difference between us calling this week and hunting for them for weeks."
+              : 'An area or a landmark is enough to find them.'}
+          </p>
+          <input
+            id="refer-follow-up"
+            key={mode}
+            autoFocus
+            type={mode === 'number' ? 'tel' : 'text'}
+            inputMode={mode === 'number' ? 'numeric' : 'text'}
+            value={followUp}
+            onChange={(event) => setFollowUp(event.target.value)}
+            placeholder={mode === 'number' ? '98765 43210' : 'e.g. Ameerpet, near the metro'}
+            aria-invalid={Boolean(followUpError)}
+            aria-describedby={followUpError ? 'refer-follow-up-error' : 'refer-follow-up-privacy'}
+            className={FIELD}
+          />
+          {followUpError && (
+            <p id="refer-follow-up-error" className={ERROR}>
+              {followUpError}
+            </p>
+          )}
+
+          <p id="refer-follow-up-privacy" className="mt-2.5 text-[12.5px] leading-relaxed text-background/60">
+            We'll tell them a resident recommended the place — your name never comes up.
+          </p>
+
+          <button type="submit" disabled={attach.isPending} className={SUBMIT}>
+            {attach.isPending ? 'Sending…' : 'Send it'}
+          </button>
+
+          <div className="mt-3 flex items-center justify-between gap-3">
+            {mode === 'number' ? (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('area');
+                  setFollowUp('');
+                  setFollowUpError(null);
+                }}
+                className="text-[12.5px] font-semibold text-background/70 underline underline-offset-2"
+              >
+                I don't know it
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode('number');
+                  setFollowUp('');
+                  setFollowUpError(null);
+                }}
+                className="text-[12.5px] font-semibold text-background/70 underline underline-offset-2"
+              >
+                I have the number
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setStage('done')}
+              className="text-[12.5px] font-medium text-background/45 underline underline-offset-2"
+            >
+              Skip
+            </button>
+          </div>
+        </form>
+      )}
+
+      {stage === 'done' && (
+        <p className="mt-5 text-[15px] font-semibold text-background" role="status" aria-live="polite">
+          Thanks — we'll take it from here.
+        </p>
       )}
     </div>
   );
@@ -118,7 +228,7 @@ function AreaRequestForm({ source }: { source: string }) {
     <div className="rounded-[20px] border border-white/10 bg-white/[0.055] p-6">
       <MapPin className="h-6 w-6 text-primary" strokeWidth={1.9} aria-hidden="true" />
       <h3 className="mt-3 font-display text-[19px] font-extrabold text-background">Not in your area yet?</h3>
-      <p className="mt-2 text-sm leading-relaxed text-background/70">
+      <p className={INTRO}>
         Tell us the campus you're near. We'll go and find hostels there, and you'll be the first to know when one lists.
       </p>
 

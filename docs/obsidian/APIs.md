@@ -877,3 +877,11 @@ The decision lives in `src/services/discovery/coverage-request-handler.ts` (depe
 
 Related: [[Database]], [[Frontend]], [[Decisions#ADR-223|ADR-223]].
 
+### `PATCH /api/discover/coverage-requests/:id` (ADR-223)
+
+Completes a referral the POST already saved: `{ owner_contact?, area_query? }`, at least one required (an empty patch is `400 EMPTY` rather than a silent success). Public, rate limited 20/hour/IP.
+
+**Fills blanks only.** The id is an unguessable uuid, but this endpoint needs no account, so the service refuses to overwrite a value that is already set — a replay returns `{ updated: false }` rather than editing somebody's referral. Attaching a number also appends it to the open `platform_leads` row for that hostel, which is the entire point of the second step.
+
+The POST now returns `id` alongside `recorded`/`will_notify` so the client can make this call. Related: [[Database]], [[Features]], [[Decisions#ADR-223|ADR-223]].
+

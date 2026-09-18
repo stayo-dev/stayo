@@ -126,3 +126,53 @@ export function parseCoverageRequest(body: unknown): ParsedCoverageRequest {
     },
   };
 }
+
+export interface CoverageDetails {
+  ownerContact: string | null;
+  areaQuery: string | null;
+  normalizedQuery: string | null;
+}
+
+export type ParsedCoverageDetails =
+  | { ok: true; value: CoverageDetails }
+  | { ok: false; error: "INVALID_CONTACT" | "INVALID_AREA" | "EMPTY" };
+
+/**
+ * The second step of a referral: the owner's number, or — when the student
+ * does not have it — where the hostel is, which is nearly as useful for
+ * finding them.
+ *
+ * At least one must be present. An empty patch is rejected rather than
+ * treated as success, so a client bug cannot look like a completed step.
+ */
+export function parseCoverageDetails(body: unknown): ParsedCoverageDetails {
+  const input = (body ?? {}) as Record<string, unknown>;
+
+  const owner = parseContact(input.owner_contact);
+  if (owner === "invalid") return { ok: false, error: "INVALID_CONTACT" };
+
+  let areaQuery: string | null = null;
+  const rawArea = input.area_query;
+  if (rawArea !== undefined && rawArea !== null) {
+    if (typeof rawArea !== "string") return { ok: false, error: "INVALID_AREA" };
+    const trimmed = rawArea.trim();
+    if (trimmed) {
+      if (trimmed.length < AREA_MIN || trimmed.length > AREA_MAX) {
+        return { ok: false, error: "INVALID_AREA" };
+      }
+      areaQuery = trimmed;
+    }
+  }
+
+  const ownerContact = owner.phone ?? owner.email;
+  if (!ownerContact && !areaQuery) return { ok: false, error: "EMPTY" };
+
+  return {
+    ok: true,
+    value: {
+      ownerContact,
+      areaQuery,
+      normalizedQuery: areaQuery ? normalizeQuery(areaQuery) : null,
+    },
+  };
+}

@@ -10,7 +10,7 @@ export interface CoverageHandlerDeps {
 }
 
 export type CoverageHandlerResult =
-  | { status: 201; body: { recorded: true; will_notify: boolean } }
+  | { status: 201; body: { recorded: true; will_notify: boolean; id: string } }
   | { status: 400; body: { error: "INVALID_AREA" | "INVALID_CONTACT" | "INVALID_HOSTEL" } }
   | { status: 429; body: { error: "RATE_LIMITED"; retry_after_seconds: number } };
 
@@ -47,5 +47,7 @@ export async function handleCoverageRequest(
   }
 
   const saved = await deps.record({ ...parsed.value, seekerProfileId });
-  return { status: 201, body: { recorded: true, will_notify: saved.willNotify } };
+  // The id comes back so a referral can be completed in a second step: the row
+  // is already banked, so abandoning that step costs the signal nothing.
+  return { status: 201, body: { recorded: true, will_notify: saved.willNotify, id: saved.id } };
 }

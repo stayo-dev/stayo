@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normalizeQuery, parseCoverageRequest } from '@/src/services/discovery/coverage-request-rules';
+import { normalizeQuery, parseCoverageDetails, parseCoverageRequest } from '@/src/services/discovery/coverage-request-rules';
 
 describe('normalizeQuery', () => {
   it('lower-cases and collapses whitespace so the same campus aggregates', () => {
@@ -90,5 +90,52 @@ describe('parseCoverageRequest', () => {
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
     expect(parsed.value.kind).toBe('AREA');
+  });
+});
+
+describe('parseCoverageDetails — the second step of a referral', () => {
+  it('accepts just the owner number, as ten local digits', () => {
+    const parsed = parseCoverageDetails({ owner_contact: '+91 98765 43210' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.ownerContact).toBe('9876543210');
+    expect(parsed.value.areaQuery).toBeNull();
+  });
+
+  it('accepts just the area, for the student who does not know the number', () => {
+    const parsed = parseCoverageDetails({ area_query: '  Ameerpet  ' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.areaQuery).toBe('Ameerpet');
+    expect(parsed.value.normalizedQuery).toBe('ameerpet');
+    expect(parsed.value.ownerContact).toBeNull();
+  });
+
+  it('accepts both together', () => {
+    const parsed = parseCoverageDetails({ owner_contact: '9876543210', area_query: 'Ameerpet' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.ownerContact).toBe('9876543210');
+    expect(parsed.value.areaQuery).toBe('Ameerpet');
+  });
+
+  it('rejects an empty patch rather than reporting success', () => {
+    expect(parseCoverageDetails({}).ok).toBe(false);
+    expect(parseCoverageDetails({ owner_contact: '   ', area_query: '' }).ok).toBe(false);
+    const parsed = parseCoverageDetails({});
+    if (parsed.ok) return;
+    expect(parsed.error).toBe('EMPTY');
+  });
+
+  it('rejects a malformed number', () => {
+    const parsed = parseCoverageDetails({ owner_contact: '12345' });
+    expect(parsed.ok).toBe(false);
+    if (parsed.ok) return;
+    expect(parsed.error).toBe('INVALID_CONTACT');
+  });
+
+  it('rejects an area that is too short or too long', () => {
+    expect(parseCoverageDetails({ area_query: 'a' }).ok).toBe(false);
+    expect(parseCoverageDetails({ area_query: 'x'.repeat(121) }).ok).toBe(false);
   });
 });

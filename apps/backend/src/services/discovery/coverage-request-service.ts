@@ -5,7 +5,7 @@ import {
   buildPlatformLeadFromReferral,
   referralNote,
 } from "@/src/services/marketing/platform-listing-leads";
-import type { RecordCoverageRequestInput } from "./coverage-request-rules";
+import type { CoverageDetails, RecordCoverageRequestInput } from "./coverage-request-rules";
 
 /**
  * A student referral becomes a sales lead on the owner, deduped by hostel name
@@ -72,5 +72,51 @@ export const coverageRequestService = {
       id: row.id,
       willNotify: input.kind === "AREA" && Boolean(input.contactPhone || input.contactEmail),
     };
+  },
+
+  /**
+   * Complete a referral that was already saved: the owner's number, or the
+   * area when the student did not have one.
+   *
+   * **Fills blanks only.** The id is an unguessable uuid, but this endpoint is
+   * public, so a second write must never be able to overwrite a first — a
+   * `null` guard in the `where` makes a late or replayed request a no-op
+   * rather than a way to edit somebody else's referral.
+   */
+  async attachDetails(id: string, details: CoverageDetails): Promise<{ updated: boolean }> {
+    const row = await prisma.coverage_requests.findFirst({
+      where: { id, kind: "HOSTEL" },
+      select: { id: true, hostel_name: true, owner_contact: true, area_query: true },
+    });
+    if (!row) return { updated: false };
+
+    const data: Record<string, string> = {};
+    if (details.ownerContact && !row.owner_contact) data.owner_contact = details.ownerContact;
+    if (details.areaQuery && !row.area_query) {
+      data.area_query = details.areaQuery;
+      if (details.normalizedQuery) data.normalized_query = details.normalizedQuery;
+    }
+    if (Object.keys(data).length === 0) return { updated: false };
+
+    await prisma.coverage_requests.update({ where: { id: row.id }, data });
+
+    // The number is the entire point of the second step — it has to reach the
+    // sales lead, not just sit on the referral row.
+    if (data.owner_contact && row.hostel_name) {
+      await (async () => {
+        const open = await prisma.platform_leads.findFirst({
+          where: { hostel_name: row.hostel_name, status: { notIn: ["LOST", "LIVE"] } },
+          orderBy: { created_at: "desc" },
+          select: { id: true, notes: true },
+        });
+        if (!open) return;
+        await prisma.platform_leads.update({
+          where: { id: open.id },
+          data: { notes: referralNote(open.notes, data.owner_contact), updated_at: new Date() },
+        });
+      })().catch(() => undefined);
+    }
+
+    return { updated: true };
   },
 };
