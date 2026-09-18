@@ -1154,7 +1154,7 @@ export class ActivationWorkflowService {
     // the person who actually lives there.
     //
     // This validates a *submission*. Agreements already signed guardian-only
-    // remain valid; nothing here re-checks stored rows. See ADR-216.
+    // remain valid; nothing here re-checks stored rows. See ADR-218.
     const signatureProblem = validateAgreementSignatures({
       tenantSignatureUrl: tenantSigUrl,
       tenantSignatureName: tenantSigName,

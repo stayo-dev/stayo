@@ -1164,7 +1164,7 @@ A tenant cannot sign until they have opened the agreement and reached the end of
 - The gate reads the **server's** record, not client state, so a reload cannot skip it. The first open is never overwritten by a re-read.
 - Agreements signed before this existed have all three columns null. Null means "predates the gate", never "did not read".
 
-See [[Decisions#ADR-215|ADR-215]].
+See [[Decisions#ADR-217|ADR-217]].
 
 ## Who has to sign an agreement
 
@@ -1175,7 +1175,7 @@ See [[Decisions#ADR-215|ADR-215]].
 - A volunteered guardian signature is validated as strictly as a required one: a signature image demands a typed name and a stated relationship.
 - The rule validates a **submission**. Agreements already signed guardian-only remain valid; nothing re-checks stored rows.
 
-See [[Decisions#ADR-216|ADR-216]].
+See [[Decisions#ADR-218|ADR-218]].
 
 ## What is stamped against a signature
 

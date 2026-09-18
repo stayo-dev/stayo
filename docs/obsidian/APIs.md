@@ -149,7 +149,7 @@ Tenant activation (`/api/tenants/activate`, see below) also mints a Supabase ses
 
 ### The composed document (2026-09-18)
 
-The agreement as an ordered block model — the same model the PDF is rendered from. See [[Decisions#ADR-214|ADR-214]].
+The agreement as an ordered block model — the same model the PDF is rendered from. See [[Decisions#ADR-216|ADR-216]].
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|

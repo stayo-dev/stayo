@@ -49,7 +49,7 @@ The central exit-workflow record. Status (`MoveOutStatus` enum) drives a documen
 | `document_opened_at` | `TIMESTAMPTZ` | First open. Never moved backwards by a re-read. |
 | `document_read_completed_at` | `TIMESTAMPTZ` | Reached the end. Gates signing. |
 
-All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-215|ADR-215]].
+All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-217|ADR-217]].
 
 > **The table is `"Agreement"`, not `agreements`.** The Prisma model carries no `@@map`, so the physical table is the model name, quoted and PascalCase — as the `$queryRaw` row locks in `agreement-renewal-service.ts` and `agreement-renewal-signing-service.ts` show. A migration written against `agreements` fails outright.
 

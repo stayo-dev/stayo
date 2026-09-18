@@ -3248,7 +3248,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Follow-up, same day — the guidance had to move too.** The first cut split the *fields* but left the *rules* behind: `identityIssues` still emitted `guardian_name`/`guardian_phone` issues anchored to controls the Identity screen no longer rendered. Pressing Continue would have reported "2 things left" and then tried to scroll to nothing — a count the tenant could neither see nor act on, which is the precise failure the guidance system exists to prevent. The rules now live in `guardianIssues` beside the screen that owns them, the Guardian step calls `guidance.block()` and renders `GuidanceSummary` like every other step, and a deferral satisfies the guidance exactly as verification does — guidance that kept asking would be demanding something [[Decisions#ADR-212|ADR-212]] has already accepted the tenant cannot do. **The lesson generalises: splitting a screen means moving its validation, its anchors and its action bar, not just its inputs.**
 - **Not verified:** no browser. The new screen has never been rendered — this app's suite is node-only, so `GuardianStep` is covered only by its props typechecking. Nobody has walked the six-step flow end to end.
 - **See:** [[Features]], [[APIs]], [[Business-Rules]], [[Changelog]], [[Decisions#ADR-212|ADR-212]], [[Decisions#ADR-070|ADR-070]], [[Decisions#ADR-059|ADR-059]]
-### ADR-214 — The agreement is one composed document, and the PDF is a rendering of it (2026-09-18)
+### ADR-216 — The agreement is one composed document, and the PDF is a rendering of it (2026-09-18)
 
 - **Status:** Accepted. Supersedes nothing; it closes a gap nobody had written down.
 - **Context:** the document an owner drafted, the document a tenant was shown, and the PDF that was filed were **three different artifacts composed by three different pieces of code**. The owner edited `AgreementTemplate.rules_content`. The tenant was shown a hardcoded stub in `AgreementStep.tsx` containing none of it. The PDF was composed independently in `generatePdfBuffer`, from a snapshot, *after* the signature was captured. Nothing checked that any of the three agreed.
@@ -3261,9 +3261,9 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Verified:** 129 tests across 11 backend agreement suites. `check:invariants` shows the same two pre-existing failures and no new files.
 - **Not verified:** **not opened in a browser, and not run against a database.** The test Supabase project is unreachable (`ENOTFOUND postgres.qsjrazcbtpmubclkevwi`), so every integration suite in this repo currently fails on connection and no composed document has been rendered from real data.
 
-### ADR-215 — A tenant reads the agreement before signing it, and the read is evidence (2026-09-18)
+### ADR-217 — A tenant reads the agreement before signing it, and the read is evidence (2026-09-18)
 
-- **Status:** Accepted. Depends on [[Decisions#ADR-214|ADR-214]].
+- **Status:** Accepted. Depends on [[Decisions#ADR-216|ADR-216]].
 - **Context:** the signing step showed a hardcoded contract — a facts grid numbered "1.", then a jump straight to a fabricated "6. Management Rights" with two invented sentences, and no sections 2–5. The owner's clauses reached the client (`ctx.rules.content.categories`) and **nothing read them**. The frozen legacy portal had rendered them correctly, so this was a regression, not an unbuilt feature. The real PDF did not exist until after the signature, so there was nothing to preview even in principle.
 - **Decision — the document is read on its own screen.** `/activate/agreement`, full screen, one scrolling column, composed from the same model the PDF is made from. Not a modal and not an inline box: nesting a contract inside the step's own scroll container is what made the old screen feel like it had no document in it.
 - **Decision — signing is gated on the read, recorded server-side.** `document_opened_at` and `document_read_completed_at` on `Agreement`, written by `POST /api/tenants/activate/agreement-read`. The gate reads the server's record, not component state, so a reload cannot skip it and the evidence outlives the session. The first open is never overwritten by a re-read.
@@ -3272,7 +3272,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Consequences:** the gate lives in `agreementIssues()` alongside the step's existing validation, so it surfaces through the Guidance system rather than as a separate refusal.
 - **Not verified:** **no browser, no device, no real tenant has read a document through this screen.**
 
-### ADR-216 — The tenant signs their own agreement (2026-09-18)
+### ADR-218 — The tenant signs their own agreement (2026-09-18)
 
 - **Status:** Accepted. Changes a live business rule. See [[Business-Rules]].
 - **Context:** the rule was "at least one signature — tenant **or** parent/guardian". A tenancy could therefore be activated with **no signature from the person who actually lives there**.
@@ -3281,7 +3281,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Consequences:** the rule is a pure `validateAgreementSignatures()` beside `isAgreementRequired`, not inline in a private method. Wiring it found that the flag lives in `hostels.preferences_config` (not `hostels.policy`) **and** that the resolved tenant does not include `hostels` at all — so reading it off the tenant would have silently evaluated to "not required" and the setting would never have worked.
 - **Not verified:** no real activation has been attempted against this rule.
 
-### ADR-217 — The signing screen carries no legal notice (2026-09-18)
+### ADR-219 — The signing screen carries no legal notice (2026-09-18)
 
 - **Status:** Accepted, by explicit product decision.
 - **Context:** the screen carried "Valid under the IT Act. Digital signatures and IP details collected during onboarding are legally binding." A signature captured as a drawn or photographed PNG is an **electronic** signature; a *digital signature* under IT Act s.3 means an asymmetric-crypto signature affixed with a Digital Signature Certificate, which is not what this flow produces. The sentence claimed a legal character the artifact does not have.

@@ -368,7 +368,7 @@ export function AgreementStep({
       />
 
       {/*
-        No legal notice sits here, deliberately (ADR-217).
+        No legal notice sits here, deliberately (ADR-219).
 
         The line removed with the stub read: "Valid under the IT Act. Digital
         signatures and IP details collected during onboarding are legally
