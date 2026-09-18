@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-18**: **Owners write their agreement in one place, and can finally set their own terms** ([[Decisions#ADR-220|ADR-220]], [[Bugs]], [[APIs]], [[Business-Rules]]).
+  - **Notice period, rent payment and security deposit were frozen at Stayo's defaults for every hostel on the platform.** The storage existed and was persisted; the editor never touched it. Owners now write the body, with the headings fixed and enforced server-side.
+  - **Five screens become one workspace.** Changing a sentence used to take six taps across two screens that wrote the same `rules_content` with different save semantics. Write and Read now sit behind one segmented control, and at `lg:` both show side by side.
+  - **Read is the real composed document**, fetched from the server — the same `AgreementDocument` the tenant reads and the PDF is made from. The editor's own preview had omitted the preamble, the standard legal clauses, the execution statement and the signature block, so an owner approved one document and issued another.
+  - **Publishing is now a review**: what was added, reworded and removed, who it affects, a hard block on unknown tokens, a warning on a missing signature. It was one tap into the dark.
+  - **The editor could lose the line you were writing** — lines committed on `onBlur`, and the variable picker wrote `el.value` through the DOM so React state and the DOM disagreed until blur.
+  - The sample-PDF endpoint finally has a caller, after existing with none since it was written. `deriveAgreementSections` is deleted — unused, still tested, and routing to a path that was never registered.
+
+
+- **2026-09-18**: **The agreement a tenant signs is now the agreement the owner wrote** ([[Decisions#ADR-216|ADR-216]], [[Decisions#ADR-217|ADR-217]], [[Decisions#ADR-218|ADR-218]], [[Decisions#ADR-219|ADR-219]], [[Bugs]], [[APIs]], [[Database]]).
 - **2026-09-18**: **Fixed: manager login succeeded but never reached the manager dashboard** ([[Bugs]], [[Decisions#ADR-214|ADR-214]]).
   - The owner/admin login surface's post-login handler, `handleAuthSuccess` in `LandingPage.tsx`, only branched on `role === 'admin'`/`'owner'` — a leftover from before [[Decisions#ADR-214|ADR-214]] added the `MANAGER` role. A manager's role matched neither branch and fell through to the tenant-only cross-surface handoff, then to a fallback that either sent them to the marketing `/owners` page or navigated nowhere at all.
   - Added the missing `role === 'manager'` branch (routes to `/admin`) in `LandingPage.tsx`, and the symmetric case in `crossSurfaceLogin.ts`'s Discovery-surface handoff. `/api/auth/me`, `AuthContext`, `RequireAdminSession`, and `AdminHomeDispatch` were all already correct — only the login-success routing switch was missing the role.

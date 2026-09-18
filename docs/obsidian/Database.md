@@ -40,6 +40,28 @@ A payment-gateway transaction attempt (UPI/QR, PhonePe/Razorpay), `status: Attem
 The central exit-workflow record. Status (`MoveOutStatus` enum) drives a documented transition graph `REQUESTED → SETTLEMENT_PENDING → SETTLEMENT_APPROVED → PHYSICALLY_VACATED → SETTLEMENT_PENDING_PAYMENT → COMPLETED` (branch: `REJECTED`); two legacy enum values `APPROVED`/`VACATED` remain for reading old rows. Satellite 1:1/1:N tables: `move_out_inspections` (room condition + fee breakdown), `move_out_inspection_items` (structured per-item checklist, replacing free-text), `exit_settlement_transactions` (the actual net-settlement computation: deposit + credit − dues − deductions = `net_settlement_amount`, with `settlement_direction`), `exit_disputes` (1:N, disagreements over the settlement), `exit_feedbacks` (1:1 exit survey, 8 rating dimensions).
 
 ### `Agreement` / `AgreementTemplate` / `RenewalOffer` / `BulkRenewalBatch` / `RenewalDecision` / `RenewalTimelineEvent`
+
+**Read-tracking columns (migration `085_agreement_read_tracking.sql`, 2026-09-18):**
+
+| Column | Type | Meaning |
+|---|---|---|
+| `document_content_hash` | `TEXT` | SHA-256 of the block text and order the tenant actually read |
+| `document_opened_at` | `TIMESTAMPTZ` | First open. Never moved backwards by a re-read. |
+| `document_read_completed_at` | `TIMESTAMPTZ` | Reached the end. Gates signing. |
+
+All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-217|ADR-217]].
+
+> **The table is `"Agreement"`, not `agreements`.** The Prisma model carries no `@@map`, so the physical table is the model name, quoted and PascalCase — as the `$queryRaw` row locks in `agreement-renewal-service.ts` and `agreement-renewal-signing-service.ts` show. A migration written against `agreements` fails outright.
+
+> **Migration `085`, not `084`.** `dev` tops out at `083` but `main` already carries `084_lead_source_tracking.sql`. Both branches must be checked before taking a number.
+
+**Status: UNAPPLIED.** Written and committed, never run — the test database is unreachable from the development environment. Apply **before** the regenerated Prisma client deploys. **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
+such reads** — including `rent-generation-service`, `financial-service`,
+`billing-transition-service` and the activation workflow itself. Deploying a client that declares
+`document_content_hash` against a database that lacks it 500s every one of them. This is the exact
+shape of the 2026-08-22 `hostels.navigation` outage.
+
 The tenant-contract subsystem — **entirely undocumented in `docs/data-models/schema.md`** (see gap list below). `AgreementTemplate` is a versioned, publishable contract template per hostel (`TemplateStatus`: DRAFT/PUBLISHED/ARCHIVED). `Agreement` is the signed instance (tenant/guardian/owner signature capture with IP/UA, `AgreementStatus`: DRAFT/SIGNED/EXPIRING_SOON/AGREEMENT_EXPIRED/RENEWED/TERMINATED/VOID), self-referentially linked forward/backward through renewals (`renewed_from_agreement_id`/`renewed_to_agreement_id`). `RenewalOffer` carries the proposed renewal terms and its own status lifecycle (`RenewalOfferStatus`). `RenewalTimelineEvent` (added 2026-07-20, migration `20260720000000_renewal_timeline_events`) is a new append-only audit trail — `RenewalTimelineEventType` (OFFER_CREATED/SENT/DISCUSSED/REVISED/ACCEPTED/DECLINED/EXPIRED, DRAFT_CREATED, RENEWAL_ACTIVATED/ACTIVATION_BLOCKED) × `RenewalTimelineActorType` (OWNER/TENANT/SYSTEM) — written by `renewal-timeline-service.ts`, called from inside the same transaction as the mutation it describes wherever the caller already has one open. Closes the gap where owner-side offer actions previously had no queryable DB record at all (only `logger.info()` lines) and tenant-side actions were only partially captured in `RenewalDecision` (no actor-role, no distinct event vocabulary). See [[Decisions]] ADR-016.
 
 ### `change_requests` / `change_request_events`

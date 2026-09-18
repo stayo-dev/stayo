@@ -2841,6 +2841,16 @@ model Agreement {
 
   generated_at           DateTime  @default(now()) @db.Timestamptz(6)
   signed_at              DateTime? @db.Timestamptz(6)
+
+  // What the tenant actually read, and evidence that they read it. The
+  // document a tenant signs used to be generated only *after* signing, and the
+  // screen they signed from showed a hardcoded stub containing none of the
+  // owner's clauses. These record the read that now precedes the signature.
+  // All nullable: agreements predating the read gate must stay valid.
+  // See ADR-217.
+  document_content_hash      String?
+  document_opened_at         DateTime? @db.Timestamptz(6)
+  document_read_completed_at DateTime? @db.Timestamptz(6)
   voided_at              DateTime? @db.Timestamptz(6)
   expiry_notified_30d_at DateTime? @db.Timestamptz(6)
   expiry_notified_15d_at DateTime? @db.Timestamptz(6)

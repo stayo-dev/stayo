@@ -89,23 +89,11 @@ const MoreHelpPage = lazy(() => import('@features/owner-more/pages/MoreHelpPage'
 const MoreConfigurationHubPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigurationHubPage').then((m) => ({ default: m.MoreConfigurationHubPage })),
 );
-const MoreConfigAgreementsPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAgreementsPage').then((m) => ({ default: m.MoreConfigAgreementsPage })),
-);
-const MoreConfigAgreementEditorPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAgreementEditorPage').then((m) => ({ default: m.MoreConfigAgreementEditorPage })),
-);
-const MoreConfigAgreementTemplatesPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAgreementTemplatesPage').then((m) => ({ default: m.MoreConfigAgreementTemplatesPage })),
-);
-const MoreConfigAgreementTemplatePage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAgreementTemplatePage').then((m) => ({ default: m.MoreConfigAgreementTemplatePage })),
+const AgreementWorkspacePage = lazy(() =>
+  import('@features/owner-more/agreement/AgreementWorkspacePage').then((m) => ({ default: m.AgreementWorkspacePage })),
 );
 const MoreConfigAgreementSignaturePage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementSignaturePage').then((m) => ({ default: m.MoreConfigAgreementSignaturePage })),
-);
-const MoreConfigAgreementClausesPage = lazy(() =>
-  import('@features/owner-more/pages/MoreConfigAgreementClausesPage').then((m) => ({ default: m.MoreConfigAgreementClausesPage })),
 );
 const MoreConfigAgreementRequirementPage = lazy(() =>
   import('@features/owner-more/pages/MoreConfigAgreementRequirementPage').then((m) => ({
@@ -296,14 +284,17 @@ export function OwnerRoutes() {
             links point at it; it now redirects to the screen that holds all
             of the invite defaults, carrying `?hostelId=` through. */}
         <Route path="/owner/more/configuration/hostel/agreement-duration" element={<KeepQueryRedirect to="/owner/more/configuration/hostel/tenant-defaults" />} />
-        <Route path="/owner/more/configuration/agreements" element={<MoreConfigAgreementsPage />} />
-        <Route path="/owner/more/configuration/agreements/templates" element={<MoreConfigAgreementTemplatesPage />} />
-        <Route path="/owner/more/configuration/agreements/edit" element={<MoreConfigAgreementEditorPage />} />
-        <Route path="/owner/more/configuration/agreements/template" element={<MoreConfigAgreementTemplatePage />} />
+        {/* One workspace replaces the editor, the clause list, the template
+            screen and the template list. The old paths redirect rather than
+            404, so existing links and bookmarks still land somewhere real. */}
+        <Route path="/owner/more/configuration/agreements" element={<AgreementWorkspacePage />} />
         <Route path="/owner/more/configuration/agreements/requirement" element={<MoreConfigAgreementRequirementPage />} />
         <Route path="/owner/more/configuration/guardian-verification" element={<MoreConfigGuardianVerificationPage />} />
-        <Route path="/owner/more/configuration/agreements/clauses" element={<MoreConfigAgreementClausesPage />} />
         <Route path="/owner/more/configuration/agreements/signature" element={<MoreConfigAgreementSignaturePage />} />
+        <Route path="/owner/more/configuration/agreements/templates" element={<KeepQueryRedirect to="/owner/more/configuration/agreements" />} />
+        <Route path="/owner/more/configuration/agreements/template" element={<KeepQueryRedirect to="/owner/more/configuration/agreements" />} />
+        <Route path="/owner/more/configuration/agreements/edit" element={<KeepQueryRedirect to="/owner/more/configuration/agreements" />} />
+        <Route path="/owner/more/configuration/agreements/clauses" element={<KeepQueryRedirect to="/owner/more/configuration/agreements" />} />
         <Route path="/owner/more/configuration/notifications" element={<MoreConfigNotificationsPage />} />
         <Route path="/owner/more/configuration/finance/late-fees" element={<MoreConfigLateFeePage />} />
         <Route path="/owner/more/configuration/finance/rent-schedule" element={<MoreConfigRentSchedulePage />} />

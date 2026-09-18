@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   AGREEMENT_VARIABLES,
   countClauses,
-  deriveAgreementSections,
   splitByVariables,
   summarizeTemplate,
   usedVariables,
@@ -152,65 +151,3 @@ describe('countClauses', () => {
   });
 });
 
-describe('deriveAgreementSections', () => {
-  const sections = (t = 6, drafts = 3, agreementRequired = true) =>
-    deriveAgreementSections({ templateCount: t, draftCount: drafts, rules, signatureConfigured: false, agreementRequired });
-
-  const find = (key: string) =>
-    sections().flatMap((s) => s.rows).find((r) => r.key === key)!;
-
-  it('describes templates by count and drafts', () => {
-    expect(find('templates').detail).toBe('6 documents · 3 in draft');
-  });
-
-  it('flags drafts as needing attention, since an unpublished template is not in use', () => {
-    expect(find('templates').state).toBe('attention');
-  });
-
-  it('marks templates configured when nothing is in draft', () => {
-    const rows = deriveAgreementSections({
-      templateCount: 6,
-      draftCount: 0,
-      rules,
-      signatureConfigured: true,
-      agreementRequired: true,
-    }).flatMap((s) => s.rows);
-
-    expect(rows.find((r) => r.key === 'templates')!.state).toBe('configured');
-  });
-
-  it('leads with whether an agreement is required at all', () => {
-    // The first thing an owner decides: some PGs run without signed paperwork.
-    expect(sections()[0].label).toBe('Requirement');
-    expect(sections()[0].rows[0].key).toBe('agreement-required');
-  });
-
-  it('describes a required agreement as part of activation', () => {
-    const row = sections(6, 3, true).flatMap((s) => s.rows).find((r) => r.key === 'agreement-required')!;
-
-    expect(row.state).toBe('configured');
-    expect(row.detail).toContain('sign before activation');
-  });
-
-  it('treats "not required" as a stance rather than an unfinished setup', () => {
-    const row = sections(6, 3, false).flatMap((s) => s.rows).find((r) => r.key === 'agreement-required')!;
-
-    expect(row.state).toBe('off');
-    expect(row.detail).toContain('without signing');
-  });
-
-  it('reports the real variable count, not the mockup figure', () => {
-    // Two of the eight are referenced by this content.
-    expect(find('variables').detail).toBe('2 of 8 auto-filled fields in use');
-  });
-
-  it('flags a missing owner signature, which blocks issuing agreements', () => {
-    expect(find('signatures').state).toBe('attention');
-  });
-
-  it('never renders an Aadhaar e-signature row, which does not exist', () => {
-    const all = sections().flatMap((s) => s.rows);
-
-    expect(all.some((r) => /aadhaar/i.test(r.title) || /aadhaar/i.test(r.detail))).toBe(false);
-  });
-});

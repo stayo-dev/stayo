@@ -163,34 +163,61 @@ export function passwordIssues(state: { password: string; confirm: string }): Is
 
 export type AgreementState = {
   acknowledgements: Record<string, boolean>;
+  /** Server truth: `agreements.document_read_completed_at` is set. */
+  readCompleted: boolean;
   tenantSignature: boolean;
   tenantSignatureName: string;
   guardianSignature: boolean;
   guardianSignatureName: string;
   guardianRelation: string;
+  /**
+   * `policy.tenant_rules.guardian_signature_required`. Absent means not
+   * required, matching the backend default — a hostel predating the setting
+   * must not suddenly block its tenants.
+   */
+  guardianRequired?: boolean;
 };
 
 export function agreementIssues(state: AgreementState): Issue[] {
   const issues: Issue[] = [];
 
+  // First, because there is no point telling someone to sign a document they
+  // have not opened. Read from the server's record, not from local state, so a
+  // reload cannot skip it.
+  if (!state.readCompleted) {
+    issues.push({
+      field: 'agreement_document',
+      label: 'Your agreement',
+      message: 'Open the agreement and read it to the end before signing.',
+    });
+  }
+
   for (const [key, ticked] of Object.entries(state.acknowledgements)) {
     if (!ticked) issues.push({ field: `ack:${key}`, label: 'House rules', message: 'Tick this to confirm you have read it.' });
   }
 
-  const tenantComplete = state.tenantSignature && Boolean(state.tenantSignatureName.trim());
-  const guardianComplete = state.guardianSignature && Boolean(state.guardianSignatureName.trim()) && Boolean(state.guardianRelation.trim());
-
-  if (state.tenantSignature && !state.tenantSignatureName.trim()) {
+  // The tenant signs. This used to accept "tenant, guardian, or both", which
+  // meant a tenancy could be activated with no signature from the person who
+  // actually lives there. Guardian is now a genuine co-signature.
+  if (!state.tenantSignature) {
+    issues.push({ field: 'tenant_signature', label: 'Signature', message: 'Sign here to accept your agreement.' });
+  } else if (!state.tenantSignatureName.trim()) {
     issues.push({ field: 'tenant_signature_name', label: 'Your name', message: 'Type your full name under your signature.' });
+  }
+
+  // A guardian who signs must be fully identified whether or not they had to.
+  if (state.guardianRequired && !state.guardianSignature) {
+    issues.push({
+      field: 'guardian_signature',
+      label: 'Parent / Guardian',
+      message: 'This hostel needs a parent or guardian to co-sign.',
+    });
   }
   if (state.guardianSignature && !state.guardianSignatureName.trim()) {
     issues.push({ field: 'guardian_signature_name', label: "Guardian's name", message: "Type your parent or guardian's full name under their signature." });
   }
   if (state.guardianSignature && !state.guardianRelation.trim()) {
     issues.push({ field: 'guardian_relation', label: 'Relationship', message: 'Choose how they are related to you.' });
-  }
-  if (!tenantComplete && !guardianComplete && issues.length === 0) {
-    issues.push({ field: 'tenant_signature', label: 'Signature', message: 'Sign here — you or your parent/guardian.' });
   }
 
   return issues;

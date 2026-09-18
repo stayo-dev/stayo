@@ -7,6 +7,7 @@ import { BackButton, PrimaryActionButton, StepActionBar } from './shared';
 import { FLOW_INK } from '../skyTheme';
 import { Guidance, GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
 import { agreementIssues } from '../guidance/stepIssues';
+import { AgreementDocumentCard } from './AgreementDocumentCard';
 
 /**
  * Step 3 — "Review & Sign Agreement" (moved after Identity, ADR-070).
@@ -113,6 +114,8 @@ const REQUIRED_ACKS: { key: string; label: string }[] = [
 
 interface AgreementStepProps {
   ctx: ActivationContext;
+  /** Needed to open the reader, which is token-authenticated like every other onboarding call. */
+  activationToken: string;
   completedSteps: Set<string>;
   submitting: boolean;
   guardianName: string;
@@ -133,6 +136,7 @@ interface AgreementStepProps {
 
 export function AgreementStep({
   ctx,
+  activationToken,
   completedSteps,
   submitting,
   guardianName,
@@ -145,6 +149,13 @@ export function AgreementStep({
   onError,
 }: AgreementStepProps) {
   const agreement = ctx.agreement;
+  /**
+   * Server truth. Held on the agreement rather than in local state so a reload
+   * cannot skip the gate, and so the evidence outlives the session.
+   */
+  const readCompletedAt = (agreement as any)?.document_read_completed_at ?? null;
+  /** Published by the backend on the activation state; absent means not required. */
+  const guardianRequired = Boolean(ctx.activation_state?.guardian_signature_required);
   const rulesAccepted = completedSteps.has('RULES') || Boolean(ctx.activation_state?.rules_accepted);
   const agreementSigned = completedSteps.has('AGREEMENT') || Boolean(ctx.activation_state?.agreement_signed);
 
@@ -279,6 +290,8 @@ export function AgreementStep({
     ? []
     : agreementIssues({
         acknowledgements: rulesAccepted ? {} : Object.fromEntries(REQUIRED_ACKS.map((a) => [a.key, acks[a.key] === true])),
+        readCompleted: Boolean(readCompletedAt),
+        guardianRequired,
         tenantSignature: tenantHasSignature,
         tenantSignatureName,
         guardianSignature: guardianHasSignature,
@@ -333,67 +346,71 @@ export function AgreementStep({
         </div>
       </div>
 
-      <div className="mt-[15px] rounded-[13px] p-[14px_16px]" style={{ background: '#F6F1EA', padding: '16px 14px' }}>
-        <div className="text-center">
-          <div className="font-display text-sm font-extrabold" style={{ color: '#221E1A', letterSpacing: '.01em' }}>
-            HOSTEL RESIDENCY AGREEMENT
+      {/*
+        The document, and a way into it.
+
+        What stood here was a hardcoded contract: a title, a facts grid
+        numbered "1.", then a jump straight to a fabricated "6. Management
+        Rights" with two invented sentences, and no sections 2-5 at all. None
+        of the owner's actual clauses appeared anywhere, although the backend
+        was already sending them. The real document was not generated until
+        *after* the signature was captured, so there was nothing to preview.
+
+        The agreement is now read on its own screen, composed from the same
+        model the PDF is made from. This card exists to describe it honestly
+        and open it.
+      */}
+      <AgreementDocumentCard
+        token={activationToken}
+        hostelName={String(snapshot.hostel_name || ctx.hostel.name || '')}
+        readCompletedAt={readCompletedAt}
+        facts={facts}
+      />
+
+      {/*
+        No legal notice sits here, deliberately (ADR-219).
+
+        The line removed with the stub read: "Valid under the IT Act. Digital
+        signatures and IP details collected during onboarding are legally
+        binding." A signature captured as a drawn or photographed PNG is an
+        *electronic* signature; a "digital signature" under IT Act s.3 means an
+        asymmetric-crypto signature affixed with a Digital Signature
+        Certificate, which is not what this flow produces. The sentence claimed
+        a legal character the artifact does not have, and asserting
+        enforceability to the person being asked to sign is the wrong place to
+        be approximately right.
+
+        Saying nothing is the deliberate choice: the agreement itself carries
+        the platform attestation and the execution statement, both composed
+        server-side, and neither overstates what happened. Do not reinstate a
+        notice here without legal review.
+      */}
+      {!rulesAccepted && (
+        <div className="mt-3 rounded-[13px] border border-border bg-card p-4">
+          <div className="text-[11.5px] font-extrabold uppercase tracking-[0.04em] text-foreground">
+            Confirm you understand
           </div>
-          <div className="mt-1 text-[11.5px]" style={{ color: '#8A7F75' }}>
-            Hostel: {snapshot.hostel_name || ctx.hostel.name}
+          {/*
+            The same five acknowledgements, with the same keys: they are
+            validated server-side and back existing `tenant_policy_acceptances`
+            rows, so re-deriving them per hostel would make every historical
+            consent record incomparable. What changed is that they now sit
+            *after* a proven read of the real document, so they confirm it
+            rather than stand in for it.
+          */}
+          <div className="mt-2.5 flex flex-col gap-1.5">
+            {REQUIRED_ACKS.map((a) => (
+              <AckRow
+                key={a.key}
+                ackKey={a.key}
+                label={a.label}
+                checked={acks[a.key] === true}
+                onChange={(v) => setAcks({ ...acks, [a.key]: v })}
+              />
+            ))}
           </div>
         </div>
-        <div className="my-3.5 h-px" style={{ background: '#E4DACB' }} />
-        <div className="text-[12.5px] leading-relaxed" style={{ color: '#3A342E' }}>
-          This agreement is made between the Management of <b>{snapshot.hostel_name || ctx.hostel.name}</b> (represented by{' '}
-          <b>{snapshot.owner_name || 'the hostel owner'}</b>) and the Tenant <b>{snapshot.tenant_name || ctx.profile.name}</b>.
-        </div>
-
-        <div className="mt-4 text-[11.5px] font-extrabold uppercase" style={{ color: '#221E1A', letterSpacing: '.04em' }}>
-          1. Room &amp; Financial Summary
-        </div>
-        <div className="mt-2.5 grid grid-cols-2 gap-2.5 rounded-[10px] p-3" style={{ background: '#EFE7DA' }}>
-          {facts.map((f) => (
-            <div key={f.k} className="text-xs leading-snug" style={{ color: '#5A5147' }}>
-              {f.k}: <b style={{ color: '#1A1A1A' }}>{f.v}</b>
-            </div>
-          ))}
-        </div>
-
-        <div className="mt-4 text-[11.5px] font-extrabold uppercase" style={{ color: '#221E1A', letterSpacing: '.04em' }}>
-          6. Management Rights
-        </div>
-        <ul className="mt-2 flex flex-col gap-1.5 pl-4">
-          <li className="text-xs italic leading-relaxed" style={{ color: '#3A342E', fontWeight: 600 }}>
-            Decisions on hostel administration, discipline, and accommodation shall be final and binding.
-          </li>
-          <li className="text-xs leading-relaxed" style={{ color: '#5A5147' }}>
-            Management reserves the right to discontinue accommodation for misconduct, indiscipline, or rule violations.
-          </li>
-        </ul>
-
-        {!rulesAccepted && (
-          <>
-            <div className="mt-4 text-[11.5px] font-extrabold uppercase" style={{ color: '#221E1A', letterSpacing: '.04em' }}>
-              7. Acknowledgements
-            </div>
-            <div className="mt-2.5 flex flex-col gap-1.5">
-              {REQUIRED_ACKS.map((a) => (
-                <AckRow
-                  key={a.key}
-                  ackKey={a.key}
-                  label={a.label}
-                  checked={acks[a.key] === true}
-                  onChange={(v) => setAcks({ ...acks, [a.key]: v })}
-                />
-              ))}
-            </div>
-          </>
-        )}
-
-        <div className="mt-3.5 border-t border-dashed pt-2.5 text-[11px] leading-relaxed" style={{ borderColor: '#D3C8B8', color: '#7A6F63' }}>
-          Valid under the IT Act. Digital signatures and IP details collected during onboarding are legally binding.
-        </div>
-      </div>
+      )}
 
       <div className="mt-3.5 flex items-center gap-2.5 rounded-[11px] px-3 py-2.5" style={{ background: '#E4F3EB', border: '1px solid #BFE3CE' }}>
         <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#1F7A52" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="flex-none">

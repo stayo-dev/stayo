@@ -17,8 +17,7 @@ import {
   addSection,
   removeSection,
   moveSection,
-  parsePastedAgreement,
-} from './agreementDraft';
+  parsePastedAgreement, editTerm, insertToken } from './agreementDraft';
 import type { RulesContent } from './agreements';
 
 const content = (): RulesContent => ({
@@ -289,5 +288,81 @@ Wi-Fi is provided free of cost.`;
   it('survives empty input', () => {
     expect(parsePastedAgreement('').categories).toEqual([]);
     expect(parsePastedAgreement('   \n  ').categories).toEqual([]);
+  });
+});
+
+describe('insertToken', () => {
+  it('inserts at the caret', () => {
+    expect(insertToken('Rent is  per month', 8, '{{MONTHLY_RENT}}'))
+      .toEqual({ value: 'Rent is {{MONTHLY_RENT}} per month', caret: 8 + '{{MONTHLY_RENT}}'.length });
+  });
+
+  it('appends when the caret is at the end', () => {
+    expect(insertToken('Rent is ', 8, '{{X}}').value).toBe('Rent is {{X}}');
+  });
+
+  it('treats a caret past the end as the end', () => {
+    expect(insertToken('abc', 99, '{{X}}').value).toBe('abc{{X}}');
+  });
+
+  it('treats a negative caret as the start', () => {
+    expect(insertToken('abc', -3, '{{X}}').value).toBe('{{X}}abc');
+  });
+
+  it('inserts into an empty line', () => {
+    expect(insertToken('', 0, '{{X}}')).toEqual({ value: '{{X}}', caret: 5 });
+  });
+
+  it('leaves the caret after the token so typing continues naturally', () => {
+    const out = insertToken('ab', 1, '{{X}}');
+    expect(out.value.slice(0, out.caret)).toBe('a{{X}}');
+  });
+});
+
+describe('editTerm', () => {
+  const content: any = {
+    categories: [{ id: 'fees', title: 'Fees', rules: ['Due on the 5th.'] }],
+    terms_and_conditions: [
+      { id: 'rent_payment', title: 'Rent Payment', content: 'Payable in advance.' },
+      { id: 'notice_period', title: 'Notice Period', content: 'Thirty days.' },
+    ],
+  };
+
+  it('rewrites only the named term', () => {
+    const out: any = editTerm(content, 'notice_period', 'Sixty days.');
+    expect(out.terms_and_conditions).toEqual([
+      { id: 'rent_payment', title: 'Rent Payment', content: 'Payable in advance.' },
+      { id: 'notice_period', title: 'Notice Period', content: 'Sixty days.' },
+    ]);
+  });
+
+  it('never changes a title — headings are fixed', () => {
+    const out: any = editTerm(content, 'notice_period', 'Sixty days.');
+    expect(out.terms_and_conditions.map((t: any) => t.title)).toEqual(['Rent Payment', 'Notice Period']);
+  });
+
+  it('preserves order', () => {
+    const out: any = editTerm(content, 'rent_payment', 'Due on the 1st.');
+    expect(out.terms_and_conditions.map((t: any) => t.id)).toEqual(['rent_payment', 'notice_period']);
+  });
+
+  it('leaves the rules band untouched', () => {
+    expect((editTerm(content, 'notice_period', 'x') as any).categories).toEqual(content.categories);
+  });
+
+  it('does not mutate the input', () => {
+    const before = JSON.stringify(content);
+    editTerm(content, 'notice_period', 'Sixty days.');
+    expect(JSON.stringify(content)).toBe(before);
+  });
+
+  it('is a no-op for an id that is not a stored term', () => {
+    expect((editTerm(content, 'invented', 'x') as any).terms_and_conditions)
+      .toEqual(content.terms_and_conditions);
+  });
+
+  it('is a no-op when the document has no terms band at all', () => {
+    const noTerms: any = { categories: [] };
+    expect(editTerm(noTerms, 'notice_period', 'x')).toBe(noTerms);
   });
 });

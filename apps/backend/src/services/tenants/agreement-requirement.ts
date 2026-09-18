@@ -148,3 +148,62 @@ export function completedApplicableSteps(
 
   return requiredActivationSteps(applicability).filter((step) => done[step]);
 }
+
+/**
+ * Whether this hostel insists on a parent/guardian co-signature.
+ *
+ * Mirrors `isAgreementRequired`, with the opposite default: an absent flag
+ * means *not* required. Requiring one is a deliberate choice a hostel makes, so
+ * a hostel predating the setting must not suddenly block its tenants.
+ */
+export function isGuardianSignatureRequired(policy: any): boolean {
+  const rules = policy?.policy?.tenant_rules ?? policy?.tenant_rules ?? policy ?? {};
+  return rules?.guardian_signature_required === true;
+}
+
+export type AgreementSignatureInput = {
+  tenantSignatureUrl: string;
+  tenantSignatureName: string;
+  guardianSignatureUrl: string;
+  guardianSignatureName: string;
+  guardianRelation: string;
+  guardianRequired: boolean;
+};
+
+/**
+ * Who has to sign, as one pure rule.
+ *
+ * Returns the problem, or null when the signatures are acceptable.
+ *
+ * The rule used to be "at least one signature — tenant or parent/guardian",
+ * which meant a tenancy could be activated with no signature from the person
+ * who actually lives there. The tenant now always signs; a guardian is a
+ * genuine co-signature, required only when the hostel asks for one.
+ *
+ * This validates a *submission*. Agreements already signed guardian-only stay
+ * valid — nothing here re-checks stored rows, and retroactively invalidating
+ * live tenancies is not on the table. See ADR-218.
+ */
+export function validateAgreementSignatures(input: AgreementSignatureInput): string | null {
+  const tenantUrl = String(input.tenantSignatureUrl || "").trim();
+  const tenantName = String(input.tenantSignatureName || "").trim();
+  const guardianUrl = String(input.guardianSignatureUrl || "").trim();
+  const guardianName = String(input.guardianSignatureName || "").trim();
+  const guardianRelation = String(input.guardianRelation || "").trim();
+
+  if (!tenantUrl) return "The tenant's signature is required";
+  if (!tenantName) return "The tenant's typed full name is required";
+
+  if (input.guardianRequired && !guardianUrl) {
+    return "This hostel requires a parent or guardian co-signature";
+  }
+
+  // A volunteered guardian signature is validated the same way a required one
+  // is: half-filling it is a mistake worth catching either way.
+  if (guardianUrl) {
+    if (!guardianName) return "The parent or guardian's typed full name is required";
+    if (!guardianRelation) return "The parent or guardian's relationship is required";
+  }
+
+  return null;
+}
