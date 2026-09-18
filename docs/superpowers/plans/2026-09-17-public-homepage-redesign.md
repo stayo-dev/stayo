@@ -1975,6 +1975,10 @@ names a hostel and Stayo approaches the owner. Prong (b) is demand for a place S
 cover. Each is an independent form with its own success state, so submitting one never clears the
 other.
 
+**On a phone only one form is visible at a time**, behind a two-tab switch: side by side they are
+four fields and two buttons, which reads as a wall. Both stay mounted so neither loses what was
+typed; from `lg` up the tabs disappear and both columns show.
+
 ```tsx
 // apps/frontend/src/app/pages/public/home/SupplyRequestSection.tsx
 import { useState, type FormEvent } from 'react';
@@ -2136,6 +2140,8 @@ function AreaRequestForm({ source }: { source: string }) {
   );
 }
 
+type SupplyTab = 'HOSTEL' | 'AREA';
+
 /**
  * The supply engine, and the reason this page earns its keep at two listings.
  *
@@ -2143,8 +2149,20 @@ function AreaRequestForm({ source }: { source: string }) {
  * the hostel they already live in is an owner lead with a phone number attached
  * — the cheapest owner acquisition Stayo has, because the student does the
  * finding and Stayo only has to make the call.
+ *
+ * Both forms are always mounted, so neither loses its state when the other is
+ * shown, but **only one is ever visible on a phone**. Side by side they are four
+ * fields and two buttons — a wall of form on a 390px screen. The tab bar is
+ * hidden from `lg` up, where two columns read fine.
  */
 export function SupplyRequestSection({ source }: SupplyRequestSectionProps) {
+  const [tab, setTab] = useState<SupplyTab>('HOSTEL');
+
+  const tabClass = (value: SupplyTab) =>
+    `h-[42px] flex-1 rounded-[10px] font-display text-[13.5px] transition-colors ${
+      tab === value ? 'bg-primary font-extrabold text-primary-foreground' : 'font-bold text-background/70'
+    }`;
+
   return (
     <section className="bg-card px-4 pb-16 sm:px-6 sm:pb-20">
       <div className="mx-auto max-w-6xl rounded-[28px] bg-foreground p-7 sm:p-12">
@@ -2152,13 +2170,27 @@ export function SupplyRequestSection({ source }: SupplyRequestSectionProps) {
         <h2 className="mt-3.5 font-display text-[clamp(26px,3.6vw,38px)] font-extrabold leading-[1.1] tracking-tight text-background">
           Can't find the hostel you want?
         </h2>
-        <p className="mt-3 max-w-[640px] text-base leading-relaxed text-background/70">
+        <p className="mt-3 hidden max-w-[640px] text-base leading-relaxed text-background/70 lg:block">
           Two ways to fix that. Both take under a minute, and both make the list better for whoever looks next.
         </p>
 
-        <div className="mt-7 grid gap-5 lg:grid-cols-2">
-          <ReferHostelForm source={source} />
-          <AreaRequestForm source={source} />
+        {/* Phone and tablet: pick one, then answer one short form. */}
+        <div className="mt-4 flex gap-1 rounded-[13px] bg-white/[0.07] p-1 lg:hidden" role="tablist" aria-label="How you can help">
+          <button type="button" role="tab" aria-selected={tab === 'HOSTEL'} onClick={() => setTab('HOSTEL')} className={tabClass('HOSTEL')}>
+            Refer a hostel
+          </button>
+          <button type="button" role="tab" aria-selected={tab === 'AREA'} onClick={() => setTab('AREA')} className={tabClass('AREA')}>
+            Request an area
+          </button>
+        </div>
+
+        <div className="mt-4 grid gap-5 lg:mt-7 lg:grid-cols-2">
+          <div className={tab === 'HOSTEL' ? 'block' : 'hidden lg:block'}>
+            <ReferHostelForm source={source} />
+          </div>
+          <div className={tab === 'AREA' ? 'block' : 'hidden lg:block'}>
+            <AreaRequestForm source={source} />
+          </div>
         </div>
       </div>
     </section>
