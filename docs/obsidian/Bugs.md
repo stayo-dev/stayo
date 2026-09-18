@@ -2896,3 +2896,16 @@ The variable picker made it worse: it found its own textarea with `closest('div'
 The storage existed and was persisted; only the editor never touched it.
 
 **Fix:** owners write the body, the headings stay fixed, enforced server-side by `normalizeAgreementTerms`. See [[Decisions#ADR-220|ADR-220]].
+
+## Every lead read as "an owner filled in the form" (fixed 2026-09-18, ADR-223)
+
+**Symptom:** the admin Leads screen gave no way to tell who sourced a lead. An owner who filled in the signup form and a lead **nobody submitted** looked identical.
+
+**Cause:** two things compounding. `buildPlatformLeadFromEnquiry()` (`src/services/marketing/platform-listing-leads.ts`) never set `acquisition_source`, so every demand-evidence lead raised from a Discover enquiry inherited the `WEBSITE` default. And `acquisition_source` was never rendered anywhere in the admin UI — `LeadsPage` filtered on it (`source: 'WEBSITE'`) but displayed nothing.
+
+**Why it mattered:** it changes how the call opens. A `WEBSITE` lead is a callback to someone expecting to hear from us; a demand lead is a cold call to an owner who has never heard of Stayo. Sales had no way to know which they were dialling.
+
+**Fix:** migration 087 adds `DISCOVER_DEMAND` and `STUDENT_REFERRAL`; the enquiry builder sets the former; homepage referrals raise leads with the latter; the leads endpoint accepts a comma-separated `source` so the pipeline can show all three at once; and every row that was **not** owner-submitted carries a badge naming its source. An unrecognised or missing source reads as *Unknown source*, never as a signup — assuming consent that was never given is the more expensive mistake.
+
+Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
+

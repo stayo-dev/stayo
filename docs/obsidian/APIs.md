@@ -865,3 +865,7 @@ Responses: `201 { recorded: true, will_notify }` · `400 { error: "INVALID_AREA"
 
 The decision lives in `src/services/discovery/coverage-request-handler.ts` (dependency-injected, so it is covered by `test:pure`); the route is plumbing. Related: [[Database]], [[Features]], [[Decisions#ADR-223|ADR-223]].
 
+### `GET /api/platform-admin/leads` — `source` now accepts a list (ADR-223)
+
+`source` takes one value or a comma-separated set (`WEBSITE,STUDENT_REFERRAL,DISCOVER_DEMAND`), validated value by value; a single value behaves exactly as before. The Leads screen asks for those three so owner signups sit beside the leads nobody submitted, each badged; `DIRECT_ADMIN` stays out, because the Owners page owns it. Rows already returned `acquisition_source` — it was simply never displayed. See [[Bugs]].
+

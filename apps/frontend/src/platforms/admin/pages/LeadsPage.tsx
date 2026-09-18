@@ -8,6 +8,7 @@ import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
 import { STATUS_LABEL, STATUS_TONE } from '../leads/leadQueue';
 import { stageChips, leadPipelineStats, formatLostReasons } from '../leads/leadPipeline';
 import { ADMIN_CARD, tintForId } from '../theme/palette';
+import { leadSourceBadge, pipelineSourceParam } from '../leads/leadSource';
 
 const TONE_CLASS: Record<string, string> = {
   action: 'bg-[#FBF1DE] text-[#B8792B]',
@@ -43,11 +44,16 @@ export function LeadsPage() {
   // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a manual
   // onboarding action, not a landing-page lead — they never appear here.
   // The Owners page surfaces them in its own "Pending onboarding" panel.
+  //
+  // Everything else does appear, including the leads nobody submitted: a
+  // student referral and a Discover demand lead are both owners worth calling,
+  // and hiding them left them invisible while they sat mislabelled as owner
+  // signups (migration 087). Each row says which it is.
   const leads = useQuery({
     queryKey: ['admin', 'leads', stage, search],
     queryFn: () =>
       platformAdminService.getLeads({
-        source: 'WEBSITE',
+        source: pipelineSourceParam(),
         status: stage === 'all' ? undefined : stage,
         search: search || undefined,
         limit: 100,
@@ -56,7 +62,7 @@ export function LeadsPage() {
   });
   const allCounts = useQuery({
     queryKey: ['admin', 'leads', 'counts'],
-    queryFn: () => platformAdminService.getLeads({ source: 'WEBSITE', limit: 1 }),
+    queryFn: () => platformAdminService.getLeads({ source: pipelineSourceParam(), limit: 1 }),
     staleTime: 30_000,
   });
   const insights = useQuery({
@@ -145,7 +151,23 @@ export function LeadsPage() {
                         radius="rounded-[10px]"
                       />
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold text-[#2A2521]">{r.name}</div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[13px] font-semibold text-[#2A2521]">{r.name}</span>
+                          {(() => {
+                            // Who sent this lead decides how the call opens, so
+                            // it sits on the row rather than inside the drawer.
+                            const badge = leadSourceBadge(r.acquisition_source);
+                            if (badge.ownerSubmitted) return null;
+                            return (
+                              <span
+                                title={badge.hint}
+                                className="flex-none rounded-full bg-[#F2E7DC] px-2 py-[2px] text-[10px] font-bold uppercase tracking-wide text-[#8A5A47]"
+                              >
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
+                        </div>
                         <div className="truncate text-[11px] text-[#9A8F84]">{r.hostel_name}</div>
                       </div>
                     </div>

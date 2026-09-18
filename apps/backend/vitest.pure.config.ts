@@ -231,6 +231,7 @@ export default defineConfig({
       'tests/guardian-verify-request.test.ts',
       'tests/coverage-request-rules.test.ts',
       'tests/coverage-request-handler.test.ts',
+      'tests/lead-acquisition-source.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

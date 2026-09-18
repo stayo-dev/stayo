@@ -3748,6 +3748,10 @@ enum ListingSource {
 enum PlatformLeadAcquisitionSource {
   WEBSITE
   DIRECT_ADMIN
+  /// Tenants enquired about an unclaimed platform listing (migration 087).
+  DISCOVER_DEMAND
+  /// A student named the hostel on the public homepage (migration 087).
+  STUDENT_REFERRAL
 }
 
 enum PlatformLeadStatus {

@@ -890,3 +890,7 @@ A check constraint (`coverage_requests_kind_payload`) keeps each kind from being
 
 **Unapplied in production as of 2026-09-18.** Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
 
+### `PlatformLeadAcquisitionSource` gains two values (migration 087, ADR-223)
+
+`DISCOVER_DEMAND` (tenants enquired about an unclaimed platform listing) and `STUDENT_REFERRAL` (a student named the hostel on the public homepage). Both describe a lead **nobody submitted**, as opposed to `WEBSITE`, where the owner filled in the form. Applied with `ALTER TYPE … ADD VALUE IF NOT EXISTS`, so re-running is a no-op; run it outside an explicit transaction, since a new enum value cannot be used in the transaction that adds it. **Unapplied in production as of 2026-09-18.** See [[Bugs]].
+

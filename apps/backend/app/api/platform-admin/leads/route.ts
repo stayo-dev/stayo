@@ -26,6 +26,22 @@ const MAX_LIMIT = 200;
  * The counts also let the filter chips show the shape of the backlog without
  * one request per status.
  */
+/**
+ * `source` accepts a comma-separated list, so the Leads screen can show owner
+ * signups beside the leads nobody submitted — student referrals and Discover
+ * demand — while still leaving DIRECT_ADMIN to the Owners page. A single value
+ * still works, unchanged.
+ */
+function sourceFilter(source: string | null | undefined) {
+  if (!source) return {};
+  const values = source
+    .split(",")
+    .map((value) => value.trim())
+    .filter(Boolean) as PlatformLeadAcquisitionSource[];
+  if (values.length === 0) return {};
+  return { acquisition_source: values.length === 1 ? values[0] : { in: values } };
+}
+
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
@@ -39,7 +55,11 @@ export async function GET(req: NextRequest) {
     // Lets the Admin Owners page show a "Pending onboarding" panel of
     // DIRECT_ADMIN leads without a second endpoint — see Admin -> Add Owner.
     const source = searchParams.get("source") || undefined;
-    if (source && !VALID_SOURCES.includes(source)) {
+    // A comma-separated list is accepted so one screen can show several
+    // sources at once; every value in it still has to be a real one.
+    const sourceValues = (source ?? "").split(",").map((value) => value.trim()).filter(Boolean);
+    const unknownSource = sourceValues.find((value) => !VALID_SOURCES.includes(value));
+    if (unknownSource) {
       return apiError(`source must be one of ${VALID_SOURCES.join(", ")}`, "VALIDATION_ERROR", 400);
     }
 
@@ -61,7 +81,7 @@ export async function GET(req: NextRequest) {
 
     const where = {
       ...(status ? { status: status as PlatformLeadStatus } : {}),
-      ...(source ? { acquisition_source: source as PlatformLeadAcquisitionSource } : {}),
+      ...sourceFilter(source),
       ...searchWhere,
     };
 
@@ -81,7 +101,7 @@ export async function GET(req: NextRequest) {
       // "New leads: 12" would include Admin -> Add Owner leads it never lists.
       prisma.platform_leads.groupBy({
         by: ["status"],
-        where: { ...searchWhere, ...(source ? { acquisition_source: source as PlatformLeadAcquisitionSource } : {}) },
+        where: { ...searchWhere, ...sourceFilter(source) },
         _count: { _all: true },
       }),
     ]);
