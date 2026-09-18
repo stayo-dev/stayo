@@ -184,7 +184,7 @@ export function variablesUsed(content: RulesContent | null | undefined): string[
 }
 
 /** `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable. */
-export function tokenName(token: string): string {
+function tokenName(token: string): string {
   return String(token ?? '').replace(/[{}]/g, '');
 }
 

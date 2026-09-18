@@ -1,5 +1,5 @@
 import { useRef, useState } from 'react';
-import { ChevronDown, MoreHorizontal } from 'lucide-react';
+import { ChevronDown, Plus } from 'lucide-react';
 import { AGREEMENT_VARIABLES, insertToken } from '../config/agreementDraft';
 
 /**
@@ -26,7 +26,7 @@ export function SectionRow({
   subtitle,
   onToggle,
   onEditLine,
-  onOverflow,
+  onAddLine,
 }: {
   title: string;
   lines: string[];
@@ -35,7 +35,7 @@ export function SectionRow({
   subtitle?: string;
   onToggle: () => void;
   onEditLine: (index: number, text: string) => void;
-  onOverflow?: () => void;
+  onAddLine?: () => void;
 }) {
   const [editing, setEditing] = useState<number | null>(null);
   const refs = useRef<Array<HTMLTextAreaElement | null>>([]);
@@ -64,14 +64,14 @@ export function SectionRow({
             {subtitle ? ` · ${subtitle}` : ''}
           </span>
         </button>
-        {!locked && onOverflow && (
+        {!locked && onAddLine && (
           <button
             type="button"
-            onClick={onOverflow}
-            aria-label={`More actions for ${title}`}
+            onClick={onAddLine}
+            aria-label={`Add a line to ${title}`}
             className="flex h-8 w-8 flex-none items-center justify-center rounded-lg border border-border text-muted-foreground"
           >
-            <MoreHorizontal className="h-4 w-4" strokeWidth={2} />
+            <Plus className="h-4 w-4" strokeWidth={2} />
           </button>
         )}
         <button type="button" onClick={onToggle} aria-label={open ? 'Collapse' : 'Expand'} className="flex-none">

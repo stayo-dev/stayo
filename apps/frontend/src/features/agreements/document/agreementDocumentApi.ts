@@ -16,12 +16,6 @@ export async function fetchActivationAgreementDocument(token: string): Promise<A
   return res.data?.document ?? res.data?.data?.document;
 }
 
-/** An already-activated tenant, or the owner, re-reading an issued agreement. */
-export async function fetchAgreementDocument(agreementId: string): Promise<AgreementDocument> {
-  const res = await api.get(`/agreements/${agreementId}/document`);
-  return res.data?.document ?? res.data?.data?.document;
-}
-
 /**
  * Records the read server-side.
  *
@@ -38,5 +32,4 @@ export async function recordAgreementRead(
 
 export const agreementDocumentKeys = {
   activation: (token: string) => ['agreement', 'document', 'activation', token] as const,
-  byId: (agreementId: string) => ['agreement', 'document', agreementId] as const,
 };

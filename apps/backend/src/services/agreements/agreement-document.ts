@@ -333,15 +333,3 @@ export function pdfTermsList(doc: AgreementDocument): Array<{ number: number; ti
     }));
 }
 
-/** The rules band, as the PDF's incorporated-by-reference section renders it. */
-export function pdfRulesCategories(
-  doc: AgreementDocument,
-): Array<{ title: string; clauses: string[]; severity?: "important" | "standard" }> {
-  return doc.blocks
-    .filter((b): b is Extract<DocBlock, { kind: "section" }> => b.kind === "section" && b.band === "rules")
-    .map((section) => ({
-      title: section.title,
-      clauses: section.clauses.map((clause) => clause.text),
-      severity: section.severity,
-    }));
-}
