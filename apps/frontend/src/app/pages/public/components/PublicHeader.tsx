@@ -6,6 +6,14 @@ import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 
 import { ownerDoor } from '../home/homeHeader';
 
+interface PublicHeaderProps {
+  /**
+   * Opens sign-in in place. When absent the header falls back to `/login`,
+   * which is still the right door for a redirect that needs a real URL.
+   */
+  onSignIn?: () => void;
+}
+
 /**
  * The public site's one header.
  *
@@ -16,7 +24,7 @@ import { ownerDoor } from '../home/homeHeader';
  * already shipped the bug where leaving login out of the mobile menu made
  * signing in impossible on a phone.
  */
-export function PublicHeader() {
+export function PublicHeader({ onSignIn }: PublicHeaderProps = {}) {
   const session = useOwnerSession();
   const door = ownerDoor({
     isLoading: session.isLoading,
@@ -43,12 +51,27 @@ export function PublicHeader() {
 
         <div className="flex-1" />
 
-        <Link
-          to="/login"
-          className="inline-flex h-11 flex-none items-center px-2 text-[13.5px] font-semibold text-foreground/80 hover:text-primary sm:px-3 sm:text-sm"
-        >
-          Log in
-        </Link>
+        {/* In place, not at `/login` — that URL renders the OWNER marketing
+            page with the modal over it, which is exactly the dead end ADR-035's
+            amendment fixed for Discover: a student who wants to sign in should
+            not land on a pitch about occupancy dashboards. Same component,
+            opened here. */}
+        {onSignIn ? (
+          <button
+            type="button"
+            onClick={onSignIn}
+            className="inline-flex h-11 flex-none items-center px-2 text-[13.5px] font-semibold text-foreground/80 hover:text-primary sm:px-3 sm:text-sm"
+          >
+            Log in
+          </button>
+        ) : (
+          <Link
+            to="/login"
+            className="inline-flex h-11 flex-none items-center px-2 text-[13.5px] font-semibold text-foreground/80 hover:text-primary sm:px-3 sm:text-sm"
+          >
+            Log in
+          </Link>
+        )}
 
         <Link
           to={door.to}

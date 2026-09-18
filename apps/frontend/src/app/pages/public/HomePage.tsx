@@ -1,7 +1,13 @@
-import { useEffect, useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 
 import { useHomepageListings } from '@features/homepage/hooks/useHomepageListings';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
+import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
+import {
+  HANDOFF_DELAY_MS,
+  crossSurfaceHandoff,
+  type CrossSurfaceHandoff,
+} from '@shared/lib/crossSurfaceLogin';
 
 import { PublicHeader } from './components/PublicHeader';
 import { MarketingFooter } from './components/MarketingFooter';
@@ -45,13 +51,36 @@ export function HomePage() {
     return faceted.length > 0 ? faceted : liveCities(cards);
   }, [data, cards]);
 
+  // Sign-in opens over the homepage rather than sending anyone to `/login`,
+  // which renders the owner marketing page. `mode="tenant"` is the only mode
+  // with a signup tab, and an owner or admin who signs in here is announced
+  // and handed to their own app by `crossSurfaceHandoff` — the same component
+  // and the same rule Discover uses.
+  const [signInOpen, setSignInOpen] = useState(false);
+  const [handoff, setHandoff] = useState<CrossSurfaceHandoff | null>(null);
+
+  useEffect(() => {
+    if (!handoff) return;
+    // A full page load: the owner and admin apps have their own providers and
+    // session bootstrap.
+    const timer = window.setTimeout(() => window.location.assign(handoff.path), HANDOFF_DELAY_MS);
+    return () => window.clearTimeout(timer);
+  }, [handoff]);
+
+  const handleSignedIn = (user: LoginModalUser) => {
+    setSignInOpen(false);
+    const crossing = crossSurfaceHandoff({ role: user.role, tenantId: (user as any).tenantId }, 'discovery');
+    if (crossing) setHandoff(crossing);
+    // A resident stays on the homepage — they came here to look at hostels.
+  };
+
   const state = homeSupplyState(isLoading, cards.length);
   const city = state === 'ready' ? primaryCity(cities) : null;
 
   return (
     <ThemeProvider theme="marketing">
       <div className="min-h-screen bg-background text-foreground">
-        <PublicHeader />
+        <PublicHeader onSignIn={() => setSignInOpen(true)} />
         {/* While loading, the chip and the lead photo are withheld rather than
             replaced with the zero-supply treatment — see `homeSupplyState`. */}
         <HomeHero
@@ -66,6 +95,24 @@ export function HomePage() {
         <HowItWorks />
         <OwnerBand />
         <MarketingFooter />
+
+        <LoginModal
+          open={signInOpen}
+          mode="tenant"
+          initialTab="login"
+          onClose={() => setSignInOpen(false)}
+          onSuccess={handleSignedIn}
+        />
+
+        {handoff && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/60 p-6" role="status" aria-live="polite">
+            <div className="w-full max-w-[20rem] rounded-[20px] bg-card p-5 text-center shadow-2xl">
+              <p className="font-display text-sm font-bold text-foreground">Signed in</p>
+              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">{handoff.message}</p>
+              <p className="mt-3 text-[11.5px] font-semibold text-primary">Taking you there…</p>
+            </div>
+          </div>
+        )}
       </div>
     </ThemeProvider>
   );
