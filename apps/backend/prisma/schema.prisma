@@ -862,6 +862,7 @@ model profile {
   // Enquiries this person sent from Discover, as the seeker. Distinct from
   // `visitor_leads` above, which is the same table seen as the *owner*.
   seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
+  seeker_coverage_requests                                          coverage_requests[]   @relation("SeekerCoverageRequests")
   saved_hostels                                                     saved_hostels[]
   hostel_reviews                                                    hostel_reviews[]
   // Phase B: the portable half of this account. `identity` is the person's own
@@ -4594,4 +4595,32 @@ model stay_leaves {
   updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
+}
+
+/// Demand for supply Stayo does not have yet. See migration 086 / ADR-223.
+model coverage_requests {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 'AREA' (demand for a place) or 'HOSTEL' (a student naming a hostel to onboard).
+  kind              String    @default("AREA")
+  area_query        String?
+  /// Lower-cased, whitespace-collapsed `area_query`, for aggregation.
+  normalized_query  String?
+  /// The hostel a student referred, for kind = 'HOSTEL'.
+  hostel_name       String?
+  /// The owner's number, when the student knew it. Optional, always.
+  owner_contact     String?
+  city              String?
+  contact_phone     String?
+  contact_email     String?
+  /// Set only when a signed-in seeker submitted it. Null forever otherwise.
+  seeker_profile_id String?   @db.Uuid
+  source            String    @default("HOME")
+  notified_at       DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  seeker profile? @relation("SeekerCoverageRequests", fields: [seeker_profile_id], references: [id], onDelete: SetNull)
+
+  @@index([normalized_query, created_at(sort: Desc)], map: "idx_coverage_requests_normalized")
+  @@index([city, created_at(sort: Desc)], map: "idx_coverage_requests_city")
+  @@index([kind, created_at(sort: Desc)], map: "idx_coverage_requests_kind")
 }

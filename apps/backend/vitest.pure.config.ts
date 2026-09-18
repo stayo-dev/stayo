@@ -229,6 +229,8 @@ export default defineConfig({
       // ADR-212 — the guardian-side confirmation: template contract and the
       // multi-ward resolution. Both pure.
       'tests/guardian-verify-request.test.ts',
+      'tests/coverage-request-rules.test.ts',
+      'tests/coverage-request-handler.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

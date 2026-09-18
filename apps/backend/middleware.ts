@@ -34,6 +34,11 @@ const PUBLIC_ROUTES = [
   // /api/discover/enquiries and /api/discover/saved public too, handing every
   // seeker's enquiry history to anyone who asked.
   "/api/discover/hostels",
+  // Supply requests come from visitors with no account — that is the point of
+  // them. Exact path, never "/api/discover": PUBLIC_ROUTES is prefix-matched,
+  // and the broad entry would expose every seeker's enquiry history and saved
+  // list (ADR-073 point 6).
+  "/api/discover/coverage-requests",
   // The share preview page (`yourstayo.com/h/:slug` rewrites here). Fetched by
   // WhatsApp/Instagram/Telegram crawlers, which carry no session and never
   // will — that is the entire point of a link preview. It renders only what
