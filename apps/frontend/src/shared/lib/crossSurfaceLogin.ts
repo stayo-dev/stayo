@@ -52,6 +52,9 @@ export function crossSurfaceHandoff(
     if (role === 'admin') {
       return { path: '/admin', message: "This is a Stayo admin account — opening the admin console." };
     }
+    if (role === 'manager') {
+      return { path: '/admin', message: "This is a Stayo manager account — opening the admin console." };
+    }
     // A resident signing in on Discovery is exactly where they should be.
     return null;
   }

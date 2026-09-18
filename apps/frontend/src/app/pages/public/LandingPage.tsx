@@ -178,6 +178,10 @@ export function LandingPage() {
       navigate('/owner/home', { replace: true });
       return;
     }
+    if (role === 'manager') {
+      navigate('/admin', { replace: true });
+      return;
+    }
     // The login modal is owner-focused (ADR-049) but never actually gated
     // who can authenticate through it — a real, already-active tenant
     // account (e.g. one activated before this change) still gets a valid
