@@ -10,6 +10,12 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-18**: **A student-first homepage at `/`, with the audience chooser kept beside it** ([[Decisions#ADR-223|ADR-223]], [[Features]], [[APIs]], [[Database]], [[Frontend]]).
+  - `/` was a full-viewport audience chooser that asked "student or owner?" before saying what Stayo is, could not scroll, and clipped both panels on a phone. It is now a scrolling homepage: hero on the lead listing's own photograph, every listing shown as *every* listing, trust, four steps, and the owner band across the seam. The owner door sits in the header at every width; `/owners` is unchanged.
+  - **Nothing was deleted.** `WelcomePage` still ships and `/` picks between them (`?homepage=…` → `VITE_HOMEPAGE` → default), with `/welcome` and `/home-v2` as permanent URLs either way.
+  - New **supply requests**: a student can name an uncovered campus, or name a hostel that should be listed and optionally give the owner's number. One public endpoint, one table (`coverage_requests`, migration **086** — unapplied).
+  - No money claim appears anywhere on the page: a planned per-converted-tenant fee makes "no brokerage" unsafe, so the spine is *no agents — straight to the hostel owner*.
+
 - **2026-09-18**: **Agreement version history — read any past version, and bring its wording back** ([[Decisions#ADR-222|ADR-222]], [[Features]], [[APIs]]).
   - Every version an owner publishes was already kept (publishing archives the outgoing row rather than deleting it, and `Agreement.template_id` pins each signed agreement to the row it was signed under) and had never been shown. A **History** sheet now lists them newest-first with publish date, how many tenants signed that exact wording, and a change summary against the previous version. Opening one renders the **real composed document** via the existing endpoint and view, so two versions are genuinely comparable.
   - **"Use this wording again" is a read, not a write.** It loads the version's `rules_content` into the draft; publishing afterwards creates a new version through the path that already existed. No new write endpoint, archived rows never mutated, and the change still passes the ADR-220 publish review rather than being a one-tap revert from a list.

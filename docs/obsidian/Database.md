@@ -870,3 +870,23 @@ Migration `prisma/migrations/20260916120000_guardian_verification_policy`. **App
 - The index is **not** partial on `tenant_id IS NOT NULL`, even though every lookup lands there: Prisma cannot express a partial index, and a declared index that does not match the applied one is drift nobody notices until it matters.
 
 **Applied to production 2026-09-17** and verified against `information_schema`. Migrations here are applied with `npm run db:apply -- <file>` (`apps/backend/scripts/apply-sql.ts`) — `prisma migrate deploy` is unusable against this project and `prisma db execute` cannot reach the pooler. Never assume a migration has run; the runner's `--dry-run` tells you, and several older migrations are still outstanding.
+
+## `coverage_requests` (migration 086, ADR-223)
+
+Supply Stayo does not have yet, captured from the public homepage. **Not** a `visitor_leads` row: that model requires non-null `hostel_id` *and* `owner_id`, and the whole point of both kinds here is that neither exists.
+
+| Column | Notes |
+|---|---|
+| `kind` | `'AREA'` or `'HOSTEL'`, default `'AREA'` |
+| `area_query`, `normalized_query` | required for `AREA`; normalized is lower-cased and whitespace-collapsed, for aggregation |
+| `hostel_name`, `owner_contact` | `hostel_name` required for `HOSTEL`; the owner's number is optional, always |
+| `city`, `contact_phone`, `contact_email` | optional |
+| `seeker_profile_id` | FK → `profiles(id)` `ON DELETE SET NULL`; set only for a signed-in seeker, null forever otherwise |
+| `source`, `notified_at`, `created_at` | |
+
+A check constraint (`coverage_requests_kind_payload`) keeps each kind from being half-filled. Indexes on `(normalized_query, created_at DESC)` where non-null, `(city, created_at DESC)` where non-null, and `(kind, created_at DESC)`.
+
+**No unique constraint, deliberately** — a student asking twice is signal, not duplication; de-duplication is a reporting concern, and abuse is handled by the endpoint's rate limit and length caps rather than a constraint that would discard genuine repeat demand.
+
+**Unapplied in production as of 2026-09-18.** Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+

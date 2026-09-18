@@ -845,3 +845,23 @@ Rejections from `recordServed`, all `400 INVALID_REQUEST`: a future `serveDate`,
 **Two Stay responses gained a field.** `GET /api/hostels/[id]/stay` and `GET /api/owner/stay/summary` now carry `mealForecast: { expected, basis, samples? } | null` for **tonight's dinner**, composed **in the route** (meals may read Stay; Stay never reads meals) and resolving to `null` if the meals call fails, so Home never breaks on it.
 
 Related: [[Decisions#ADR-195|ADR-195]], [[Database]], [[Business-Rules]]
+
+## `POST /api/discover/coverage-requests` (ADR-223)
+
+Public — no session required, and deliberately so: it fires for visitors with no account and no intention of making one. Allowlisted in `middleware.ts` by its **exact path**, never `/api/discover` (prefix-matched; see [[Decisions#ADR-073|ADR-073]] point 6). Rate limited to **10 per hour per IP**, failing open if Redis is unreachable.
+
+Two kinds share the endpoint:
+
+| Field | AREA | HOSTEL |
+|---|---|---|
+| `kind` | `"AREA"` (default) | `"HOSTEL"` |
+| `area_query` | required, 2–120 chars | — |
+| `hostel_name` | — | required, 3–120 chars |
+| `contact` | optional (phone or email) | — |
+| `owner_contact` | — | optional (the owner's number) |
+| `source` | `HOME` \| `HOME_EMPTY` \| `SEARCH_EMPTY`, coerced to `HOME` when unrecognised | same |
+
+Responses: `201 { recorded: true, will_notify }` · `400 { error: "INVALID_AREA" \| "INVALID_CONTACT" \| "INVALID_HOSTEL" }` · `429 { error: "RATE_LIMITED", retry_after_seconds }`. `will_notify` is only ever true for `AREA` — on a referral the contact held is the *owner's*, and Stayo makes that call.
+
+The decision lives in `src/services/discovery/coverage-request-handler.ts` (dependency-injected, so it is covered by `test:pure`); the route is plumbing. Related: [[Database]], [[Features]], [[Decisions#ADR-223|ADR-223]].
+

@@ -1651,3 +1651,12 @@ See [[Decisions#ADR-212|ADR-212]] and [[Business-Rules#Guardian verification|Bus
 - **What:** per line — move up, move down, delete, revealed on the line being edited alongside the variable picker. Per section — rename, move up/down, mark important, leave out / include again, reset wording, delete section.
 - **Why it is a feature entry and not just a fix:** [[Decisions#ADR-220|ADR-220]]'s rewrite wired four operations and left nine tested ones unreachable, so a clause could be reworded but not removed and a section could not be deleted or reordered at all. See [[Decisions#ADR-221|ADR-221]] and [[Bugs]].
 - **Notes:** "Reset wording" appears only where Stayo ships a default for that section, because resetting an owner's own section does nothing — an action that cannot act is absent rather than inert. Deleting a section is the one destructive operation and carries its confirmation in the action definition, so it cannot be wired without one.
+
+## Public homepage and supply requests (ADR-223)
+
+A student-first homepage at `/`: a live-city chip derived from real listings, the lead listing's own photograph as the hero, every listing shown as *every* listing rather than a selection, trust, four steps, and an owner band. The audience chooser it replaces is kept and switchable (see [[Frontend]]).
+
+**Supply requests** are the engine while supply is thin. A visitor can name an area Stayo does not cover, or name a hostel that should be listed and optionally leave the owner's number — student-led owner acquisition, where the student finds them and Stayo makes the call. Neither is gated on a contact detail. The owner-facing readout ("N students searched near you") is phase 2.
+
+Related: [[APIs]], [[Database]], [[Decisions#ADR-223|ADR-223]], [[Changelog]].
+

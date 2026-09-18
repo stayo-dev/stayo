@@ -561,3 +561,12 @@ Related: [[Features]], [[APIs]], [[Decisions#ADR-194|ADR-194]]
 | `features/stay/stayState.ts` | `boardHeadline` and `tonightCards` prefer a **learned** forecast and otherwise keep the honest headcount. |
 
 Related: [[Features]], [[APIs]], [[Decisions#ADR-195|ADR-195]]
+
+## The public homepage (ADR-223)
+
+`/` is served by `RootHomepage` in `src/app/router/PublicRoutes.tsx`, which calls `resolveHomepageVersion()` (`src/app/pages/public/homepageVersion.ts`): a `?homepage=v2|chooser` query parameter beats `VITE_HOMEPAGE`, which beats the default. **Both front doors ship** — `HomePage` (v2) and `WelcomePage` (ADR-071's chooser) — and each keeps a permanent URL, `/home-v2` and `/welcome`, so a bad flag value cannot make either unreachable. `/owners` (`LandingPage`) is untouched.
+
+`HomePage` composes `PublicHeader` plus `home/{HomeHero, FeaturedHostels, SupplyRequestSection, TrustSection, HowItWorks, OwnerBand}` and the existing `MarketingFooter`, inside `<ThemeProvider theme="marketing">`. Decision logic sits in pure, directly tested modules beside them — `liveCities`, `homeFeatured` (including `homeSupplyState`, which keeps *loading* from rendering as *empty*), `listingPhoto`, `coverageRequest`, `homeHeader` — with the `.tsx` files as thin renderers, per this repo's node-only frontend suite.
+
+Listings are read through the existing Discover browse endpoint; the write goes through `src/features/coverage/api`. Related: [[APIs]], [[Features]], [[Decisions#ADR-223|ADR-223]].
+
