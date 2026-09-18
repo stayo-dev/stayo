@@ -5,6 +5,7 @@ import type { DiscoverCard } from '@features/discover/api';
 import { hostelCardFacts } from '@/app/pages/discover/hostelCardFacts';
 
 import { listingPhotoUrl } from './listingPhoto';
+import { GROUND_LIGHT } from './ground';
 
 interface HomeHeroProps {
   /** "Now live in Pune", or null when there is nothing to promise. */
@@ -35,7 +36,7 @@ export function HomeHero({ cityLabel, ctaCity, lead, loading }: HomeHeroProps) {
   const showPhoto = !loading && lead && facts && photo && lead.slug;
 
   return (
-    <header className="relative px-4 pb-14 pt-12 sm:px-6 sm:pb-20 sm:pt-16 [background-image:linear-gradient(rgba(180,106,85,.11)_1px,transparent_1px),linear-gradient(90deg,rgba(180,106,85,.11)_1px,transparent_1px)] [background-size:52px_52px]">
+    <header className={`relative px-4 pb-14 pt-12 sm:px-6 sm:pb-20 sm:pt-16 ${GROUND_LIGHT}`}>
       <div className="mx-auto grid max-w-6xl items-center gap-10 lg:grid-cols-2 lg:gap-16">
         <div>
           {cityLabel && (

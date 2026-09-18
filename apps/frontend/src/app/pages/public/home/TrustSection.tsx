@@ -1,5 +1,7 @@
 import { CreditCard, FileCheck2, ShieldCheck, Users } from 'lucide-react';
 
+import { GROUND_LIGHT } from './ground';
+
 const FACTS = [
   { Icon: ShieldCheck, title: 'Visited before listed', body: 'Every hostel is verified by us before it can appear here.' },
   { Icon: Users, title: 'Straight to the owner', body: 'Your enquiry goes to the person who runs the hostel, not an agent.' },
@@ -18,7 +20,7 @@ const FACTS = [
  */
 export function TrustSection() {
   return (
-    <section className="px-4 py-16 sm:px-6 sm:py-20">
+    <section className={`px-4 py-16 sm:px-6 sm:py-20 ${GROUND_LIGHT}`}>
       <div className="mx-auto max-w-6xl">
         <div className="max-w-[780px]">
           <span className="font-display text-xs font-bold uppercase tracking-[0.14em] text-primary">Why you can trust this</span>

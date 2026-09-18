@@ -6,6 +6,7 @@ import { hostelCardFacts } from '@/app/pages/discover/hostelCardFacts';
 
 import { listingPhotoUrl } from './listingPhoto';
 import type { FeaturedPlan } from './homeFeatured';
+import { ANCHOR_OFFSET } from './ground';
 
 /**
  * ONE link, not a card containing a button.
@@ -15,21 +16,29 @@ import type { FeaturedPlan } from './homeFeatured';
  * tab stops for one destination. The whole card is the target; "View listing"
  * is an affordance, not a second control.
  */
-function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
+function FeaturedHostelCard({ hostel, wide = false }: { hostel: DiscoverCard; wide?: boolean }) {
   const facts = hostelCardFacts(hostel);
-  const photo = listingPhotoUrl(facts.photo, 560);
+  const photo = listingPhotoUrl(facts.photo, wide ? 760 : 560);
 
   return (
     <Link
       to={hostel.slug ? `/discover/h/${hostel.slug}` : '/discover'}
       aria-label={`${hostel.name}, ${facts.location}`}
-      className="block overflow-hidden rounded-[22px] border border-border bg-card no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary"
+      className={`block overflow-hidden rounded-[22px] border border-border bg-card no-underline focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary ${
+        wide ? 'sm:grid sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)] sm:items-stretch' : ''
+      }`}
     >
       <div className="relative">
         {photo ? (
-          <img src={photo} alt="" width={560} height={240} className="h-[190px] w-full object-cover sm:h-[240px]" />
+          <img
+            src={photo}
+            alt=""
+            width={wide ? 760 : 560}
+            height={wide ? 420 : 240}
+            className={`w-full object-cover ${wide ? 'h-[210px] sm:h-full sm:min-h-[340px]' : 'h-[190px] sm:h-[240px]'}`}
+          />
         ) : (
-          <div className="h-[190px] w-full bg-secondary sm:h-[240px]" />
+          <div className={`w-full bg-secondary ${wide ? 'h-[210px] sm:h-full sm:min-h-[340px]' : 'h-[190px] sm:h-[240px]'}`} />
         )}
         {hostel.verified && (
           <span className="absolute left-4 top-4 inline-flex items-center gap-1.5 rounded-full bg-background px-3 py-1.5 text-[11.5px] font-bold text-[#3F6B50]">
@@ -38,9 +47,9 @@ function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
         )}
       </div>
 
-      <div className="p-5 sm:p-6">
+      <div className={`p-5 sm:p-6 ${wide ? "sm:flex sm:flex-col sm:justify-center sm:p-9" : ""}`}>
         <div className="flex items-baseline gap-3">
-          <h3 className="flex-1 font-display text-lg font-extrabold text-foreground sm:text-xl">{hostel.name}</h3>
+          <h3 className={`flex-1 font-display font-extrabold text-foreground ${wide ? "text-xl sm:text-[26px]" : "text-lg sm:text-xl"}`}>{hostel.name}</h3>
           <span className={facts.price ? 'font-display text-lg font-extrabold text-foreground' : 'text-sm font-bold text-muted-foreground'}>
             {facts.price ?? 'Price on request'}
           </span>
@@ -79,6 +88,17 @@ function FeaturedHostelCard({ hostel }: { hostel: DiscoverCard }) {
  * honesty rather than an apology for size, and it stays true automatically: the
  * heading does not have to change when supply grows, only the layout does.
  */
+/**
+ * One listing is shown as one WIDE card, not as a lonely column beside an
+ * empty one. `sm:grid-cols-2` with a single child left two thirds of the row
+ * blank and read as a page that had failed to load the rest.
+ */
+function gridClass(count: number): string {
+  if (count === 1) return 'grid-cols-1';
+  if (count === 2) return 'sm:grid-cols-2';
+  return 'sm:grid-cols-2 lg:grid-cols-3';
+}
+
 export function FeaturedHostels({ plan, loading, city }: { plan: FeaturedPlan; loading: boolean; city: string | null }) {
   if (loading) {
     return (
@@ -93,7 +113,7 @@ export function FeaturedHostels({ plan, loading, city }: { plan: FeaturedPlan; l
   if (plan.layout === 'none') return null;
 
   return (
-    <section id="listings" className="bg-card px-4 py-16 sm:px-6 sm:py-20">
+    <section id="listings" className={`bg-card px-4 py-16 sm:px-6 sm:py-20 ${ANCHOR_OFFSET}`}>
       <div className="mx-auto max-w-6xl">
         <div className="flex flex-wrap items-end gap-6">
           <div className="flex-1">
@@ -111,9 +131,9 @@ export function FeaturedHostels({ plan, loading, city }: { plan: FeaturedPlan; l
           )}
         </div>
 
-        <div className={`mt-9 grid gap-6 ${plan.layout === 'editorial' ? 'sm:grid-cols-2' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
+        <div className={`mt-9 grid gap-6 ${gridClass(plan.cards.length)}`}>
           {plan.cards.map((hostel) => (
-            <FeaturedHostelCard key={hostel.id} hostel={hostel} />
+            <FeaturedHostelCard key={hostel.id} hostel={hostel} wide={plan.cards.length === 1} />
           ))}
         </div>
       </div>

@@ -1,3 +1,5 @@
+import { ANCHOR_OFFSET, GROUND_LIGHT } from './ground';
+
 const STEPS = [
   { n: '1', title: 'Browse', body: 'Real photos, real prices, and how many beds are actually free.' },
   { n: '2', title: 'Enquire', body: 'Your enquiry goes straight to the owner — no agent in between.' },
@@ -7,7 +9,7 @@ const STEPS = [
 
 export function HowItWorks() {
   return (
-    <section id="how" className="px-4 pb-16 sm:px-6 sm:pb-20">
+    <section id="how" className={`px-4 pb-16 sm:px-6 sm:pb-20 ${GROUND_LIGHT} ${ANCHOR_OFFSET}`}>
       <div className="mx-auto max-w-6xl">
         <h2 className="font-display text-[clamp(26px,3.2vw,32px)] font-extrabold tracking-tight text-foreground">How it works</h2>
         <div className="mt-8 grid gap-6 sm:grid-cols-2 lg:grid-cols-4">

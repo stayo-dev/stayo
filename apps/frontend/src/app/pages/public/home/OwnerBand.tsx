@@ -3,6 +3,8 @@ import { ArrowRight } from 'lucide-react';
 
 import { StayoMark } from '@shared/ui/brand';
 
+import { GROUND_DARK } from './ground';
+
 /**
  * The seam, kept and repurposed.
  *
@@ -15,7 +17,7 @@ import { StayoMark } from '@shared/ui/brand';
 export function OwnerBand() {
   return (
     <section className="relative overflow-hidden">
-      <div className="absolute inset-0 bg-foreground [clip-path:polygon(0_62px,100%_0,100%_100%,0_100%)] sm:[clip-path:polygon(0_88px,100%_0,100%_100%,0_100%)]" />
+      <div className={`absolute inset-0 bg-foreground ${GROUND_DARK} [clip-path:polygon(0_62px,100%_0,100%_100%,0_100%)] sm:[clip-path:polygon(0_88px,100%_0,100%_100%,0_100%)]`} />
 
       <div className="absolute left-1/2 top-[31px] z-10 -translate-x-1/2 -translate-y-1/2 sm:top-[44px]">
         <div className="flex h-12 w-12 items-center justify-center rounded-full bg-background shadow-xl ring-[5px] ring-background/90 sm:h-14 sm:w-14">

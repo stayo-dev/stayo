@@ -4,6 +4,7 @@ import { HousePlus, MapPin } from 'lucide-react';
 import { useSubmitCoverageRequest } from '@features/coverage/hooks/useSubmitCoverageRequest';
 
 import { validateCoverage, validateHostelReferral } from './coverageRequest';
+import { GROUND_DARK } from './ground';
 
 interface SupplyRequestSectionProps {
   /** 'HOME' from the normal page, 'HOME_EMPTY' when there are no listings. */
@@ -207,7 +208,7 @@ export function SupplyRequestSection({ source }: SupplyRequestSectionProps) {
 
   return (
     <section className="bg-card px-4 pb-16 sm:px-6 sm:pb-20">
-      <div className="mx-auto max-w-6xl rounded-[28px] bg-foreground p-7 sm:p-12">
+      <div className={`mx-auto max-w-6xl rounded-[28px] bg-foreground p-7 sm:p-12 ${GROUND_DARK}`}>
         <span className="font-display text-xs font-bold uppercase tracking-[0.14em] text-primary">Help Stayo grow</span>
         <h2 className="mt-3.5 font-display text-[clamp(26px,3.6vw,38px)] font-extrabold leading-[1.1] tracking-tight text-background">
           Can't find the hostel you want?
