@@ -1,19 +1,14 @@
-import { useState } from 'react';
 import { Search } from 'lucide-react';
-import { useQuery, useQueryClient } from '@tanstack/react-query';
+import { useQuery } from '@tanstack/react-query';
 import { useSearchParams } from 'react-router-dom';
 import { platformAdminService } from '@features/platform-admin/api';
-import { DataTable, EmptyState, FilterChips, SegmentedTabs, StatCard, type DataColumn } from '../ui';
-import { AdminDrawer } from '../drawer/AdminDrawer';
-import { LeadDrawerBody } from '../drawer/LeadDrawerBody';
+import { Avatar, DataTable, EmptyState, FilterChips, SegmentedTabs, StatCard, type DataColumn } from '../ui';
+import { LeadPipelineDrawer } from '../leads/LeadPipelineDrawer';
 import { parseDetailParam, serializeDetail } from '../drawer/drawerParam';
 import { STATUS_LABEL, STATUS_TONE } from '../leads/leadQueue';
-import {
-  stageChips, leadPipelineStats, formatLostReasons, nextStage, canAdvance,
-  LOST_REASONS, LOST_REASON_LABEL,
-} from '../leads/leadPipeline';
+import { stageChips, leadPipelineStats, formatLostReasons } from '../leads/leadPipeline';
 import { ADMIN_CARD, tintForId } from '../theme/palette';
-import { useToast } from '../layout/toastContext';
+import { leadSourceBadge, pipelineSourceParam } from '../leads/leadSource';
 
 const TONE_CLASS: Record<string, string> = {
   action: 'bg-[#FBF1DE] text-[#B8792B]',
@@ -27,7 +22,7 @@ const COLUMNS: DataColumn[] = [
   { key: 'city', label: 'City', width: '1.2fr' },
   { key: 'beds', label: 'Beds', width: '0.8fr' },
   { key: 'stage', label: 'Stage', width: '1fr' },
-  { key: 'age', label: 'Age', width: '0.8fr' },
+  { key: 'age', label: 'Created', width: '0.8fr' },
 ];
 
 function timeAgo(iso: string): string {
@@ -43,16 +38,22 @@ export function LeadsPage() {
   const view = params.get('view') === 'insights' ? 'insights' : 'pipeline';
   const stage = params.get('stage') ?? 'all';
   const detail = parseDetailParam(params.get('detail'));
-  const queryClient = useQueryClient();
-  const fireToast = useToast();
-  const [lostFor, setLostFor] = useState<string | null>(null);
 
   const search = params.get('search') ?? '';
 
+  // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a manual
+  // onboarding action, not a landing-page lead — they never appear here.
+  // The Owners page surfaces them in its own "Pending onboarding" panel.
+  //
+  // Everything else does appear, including the leads nobody submitted: a
+  // student referral and a Discover demand lead are both owners worth calling,
+  // and hiding them left them invisible while they sat mislabelled as owner
+  // signups (migration 087). Each row says which it is.
   const leads = useQuery({
     queryKey: ['admin', 'leads', stage, search],
     queryFn: () =>
       platformAdminService.getLeads({
+        source: pipelineSourceParam(),
         status: stage === 'all' ? undefined : stage,
         search: search || undefined,
         limit: 100,
@@ -61,7 +62,7 @@ export function LeadsPage() {
   });
   const allCounts = useQuery({
     queryKey: ['admin', 'leads', 'counts'],
-    queryFn: () => platformAdminService.getLeads({ limit: 1 }),
+    queryFn: () => platformAdminService.getLeads({ source: pipelineSourceParam(), limit: 1 }),
     staleTime: 30_000,
   });
   const insights = useQuery({
@@ -81,49 +82,7 @@ export function LeadsPage() {
     setParams(next, { replace: true });
   };
 
-  const refresh = () => queryClient.invalidateQueries({ queryKey: ['admin', 'leads'] });
-
   const openLead = detail?.kind === 'lead' ? rows.find((r: any) => r.id === detail.id) : undefined;
-
-  const advance = async (lead: any) => {
-    const to = nextStage(lead.status);
-    if (!to) return;
-    try {
-      await platformAdminService.updateLeadStatus(lead.id, to);
-      refresh();
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead', lead.id] });
-      fireToast(`Moved to ${STATUS_LABEL[to] ?? to}`);
-    } catch {
-      fireToast('Could not move that lead', 'no');
-    }
-  };
-
-  const markLost = async (leadId: string, reason: string) => {
-    try {
-      await platformAdminService.markLeadLost(leadId, reason);
-      setLostFor(null);
-      refresh();
-      queryClient.invalidateQueries({ queryKey: ['admin', 'lead', leadId] });
-      fireToast('Lead marked lost', 'no');
-    } catch {
-      fireToast('Could not mark that lead lost', 'no');
-    }
-  };
-
-  const approve = async (lead: any) => {
-    try {
-      const result = await platformAdminService.approveLead(lead.id);
-      refresh();
-      fireToast(
-        result?.whatsapp_sent || result?.email_sent
-          ? 'Approved — activation link sent'
-          : 'Approved, but the invite could not be delivered',
-        result?.whatsapp_sent || result?.email_sent ? 'ok' : 'no',
-      );
-    } catch {
-      fireToast('Could not approve that lead', 'no');
-    }
-  };
 
   return (
     <div className="flex animate-[adFade_.25s_ease] flex-col gap-5">
@@ -184,24 +143,45 @@ export function LeadsPage() {
                 if (key === 'owner') {
                   return (
                     <div className="flex min-w-0 items-center gap-[11px]">
-                      <span
-                        className="flex h-[34px] w-[34px] flex-none items-center justify-center rounded-[10px] font-admin text-[12px] font-bold text-white"
-                        style={{ background: tintForId(r.id) }}
-                      >
-                        {(r.name ?? '?').slice(0, 2).toUpperCase()}
-                      </span>
+                      <Avatar
+                        photoUrl={r.display_photo_url}
+                        initials={(r.name ?? '?').slice(0, 2).toUpperCase()}
+                        tint={tintForId(r.id)}
+                        size={34}
+                        radius="rounded-[10px]"
+                      />
                       <div className="min-w-0">
-                        <div className="truncate text-[13px] font-semibold text-[#2A2521]">{r.name}</div>
+                        <div className="flex min-w-0 items-center gap-1.5">
+                          <span className="truncate text-[13px] font-semibold text-[#2A2521]">{r.name}</span>
+                          {(() => {
+                            // Who sent this lead decides how the call opens, so
+                            // it sits on the row rather than inside the drawer.
+                            const badge = leadSourceBadge(r.acquisition_source);
+                            if (badge.ownerSubmitted) return null;
+                            return (
+                              <span
+                                title={badge.hint}
+                                className="flex-none rounded-full bg-[#F2E7DC] px-2 py-[2px] text-[10px] font-bold uppercase tracking-wide text-[#8A5A47]"
+                              >
+                                {badge.label}
+                              </span>
+                            );
+                          })()}
+                        </div>
                         <div className="truncate text-[11px] text-[#9A8F84]">{r.hostel_name}</div>
                       </div>
                     </div>
                   );
                 }
-                if (key === 'city') return <span className="text-[12.5px] text-[#5A5147]">{r.city || '—'}</span>;
+                if (key === 'city') {
+                  // Falls back to the converted owner's actual hostel city
+                  // when the lead itself was never asked (see route.ts).
+                  return <span className="text-[12.5px] text-[#5A5147]">{r.display_city ?? r.city ?? '—'}</span>;
+                }
                 if (key === 'beds') {
                   return (
                     <span className="font-admin text-[13px] font-bold text-[#221E1A]">
-                      {r.qual_beds ?? r.bed_count ?? '—'}
+                      {r.display_beds ?? r.qual_beds ?? r.bed_count ?? '—'}
                     </span>
                   );
                 }
@@ -226,72 +206,7 @@ export function LeadsPage() {
       )}
 
       {detail?.kind === 'lead' && openLead && (
-        <AdminDrawer
-          title={openLead.name}
-          subtitle={[openLead.hostel_name, openLead.city].filter(Boolean).join(' · ')}
-          initials={(openLead.name ?? '?').slice(0, 2).toUpperCase()}
-          tint={tintForId(openLead.id)}
-          onClose={() => setParam('detail', null)}
-          footer={
-            lostFor === openLead.id ? (
-              <div>
-                <div className="mb-2 font-admin text-[12px] font-bold text-[#221E1A]">
-                  Why is this lead lost?
-                </div>
-                <div className="mb-2.5 flex flex-wrap gap-1.5">
-                  {LOST_REASONS.map((reason) => (
-                    <button
-                      key={reason}
-                      type="button"
-                      onClick={() => markLost(openLead.id, reason)}
-                      className="rounded-full border border-[#E7DDD1] bg-white px-3 py-2 text-[11.5px] font-semibold text-[#5A5147] hover:border-[#B3402F] hover:text-[#B3402F]"
-                    >
-                      {LOST_REASON_LABEL[reason]}
-                    </button>
-                  ))}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => setLostFor(null)}
-                  className="w-full rounded-xl border border-[#E9DFD3] bg-white py-2.5 font-admin text-[13px] font-bold text-[#5A5147]"
-                >
-                  Cancel
-                </button>
-              </div>
-            ) : (
-              <div className="flex items-center gap-3">
-                {openLead.status !== 'LOST' && (
-                  <button
-                    type="button"
-                    onClick={() => setLostFor(openLead.id)}
-                    className="flex-1 rounded-xl border border-[#E6C7BF] bg-[#FBEFE9] py-3 font-admin text-[13.5px] font-bold text-[#B3402F]"
-                  >
-                    Mark lost
-                  </button>
-                )}
-                {canAdvance(openLead.status) ? (
-                  <button
-                    type="button"
-                    onClick={() => advance(openLead)}
-                    className="flex-[1.4] rounded-xl bg-[#B46A55] py-3 font-admin text-[13.5px] font-bold text-white shadow-[0_4px_14px_rgba(180,106,85,.3)]"
-                  >
-                    Move to {STATUS_LABEL[nextStage(openLead.status) as string]}
-                  </button>
-                ) : openLead.status === 'NEGOTIATING' ? (
-                  <button
-                    type="button"
-                    onClick={() => approve(openLead)}
-                    className="flex-[1.4] rounded-xl bg-[#1F7A52] py-3 font-admin text-[13.5px] font-bold text-white shadow-[0_4px_14px_rgba(31,122,82,.3)]"
-                  >
-                    Approve &amp; send invite
-                  </button>
-                ) : null}
-              </div>
-            )
-          }
-        >
-          <LeadDrawerBody leadId={openLead.id} />
-        </AdminDrawer>
+        <LeadPipelineDrawer lead={openLead} onClose={() => setParam('detail', null)} />
       )}
     </div>
   );

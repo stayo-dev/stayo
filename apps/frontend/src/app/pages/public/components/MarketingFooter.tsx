@@ -42,7 +42,10 @@ export function MarketingFooter() {
 
   return (
     <footer id="footer" className="bg-foreground px-4 pb-8.5 pt-14 text-background sm:px-6">
-      <div className="mx-auto grid max-w-5xl gap-10 [grid-template-columns:1.6fr_repeat(auto-fit,minmax(120px,1fr))]">
+      {/* An auto-repeat track list may not contain a flexible size (CSS Grid L1),
+          so `1.6fr repeat(auto-fit, …)` was invalid and the browser dropped the
+          whole declaration — every column stacked, at every width. Fixed count. */}
+      <div className="mx-auto grid max-w-6xl gap-10 sm:[grid-template-columns:1.6fr_repeat(4,minmax(120px,1fr))]">
         {/* ── Brand block: Stayo first, Trishul lockup beneath ── */}
         <div className="min-w-[240px]">
           <div className="mb-3 font-display text-xl font-extrabold text-background">Stayo</div>

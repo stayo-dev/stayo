@@ -40,6 +40,28 @@ A payment-gateway transaction attempt (UPI/QR, PhonePe/Razorpay), `status: Attem
 The central exit-workflow record. Status (`MoveOutStatus` enum) drives a documented transition graph `REQUESTED → SETTLEMENT_PENDING → SETTLEMENT_APPROVED → PHYSICALLY_VACATED → SETTLEMENT_PENDING_PAYMENT → COMPLETED` (branch: `REJECTED`); two legacy enum values `APPROVED`/`VACATED` remain for reading old rows. Satellite 1:1/1:N tables: `move_out_inspections` (room condition + fee breakdown), `move_out_inspection_items` (structured per-item checklist, replacing free-text), `exit_settlement_transactions` (the actual net-settlement computation: deposit + credit − dues − deductions = `net_settlement_amount`, with `settlement_direction`), `exit_disputes` (1:N, disagreements over the settlement), `exit_feedbacks` (1:1 exit survey, 8 rating dimensions).
 
 ### `Agreement` / `AgreementTemplate` / `RenewalOffer` / `BulkRenewalBatch` / `RenewalDecision` / `RenewalTimelineEvent`
+
+**Read-tracking columns (migration `085_agreement_read_tracking.sql`, 2026-09-18):**
+
+| Column | Type | Meaning |
+|---|---|---|
+| `document_content_hash` | `TEXT` | SHA-256 of the block text and order the tenant actually read |
+| `document_opened_at` | `TIMESTAMPTZ` | First open. Never moved backwards by a re-read. |
+| `document_read_completed_at` | `TIMESTAMPTZ` | Reached the end. Gates signing. |
+
+All three are **nullable and additive**: agreements signed before the read gate existed must stay valid, so null means "predates the gate", never "did not read". See [[Decisions#ADR-217|ADR-217]].
+
+> **The table is `"Agreement"`, not `agreements`.** The Prisma model carries no `@@map`, so the physical table is the model name, quoted and PascalCase — as the `$queryRaw` row locks in `agreement-renewal-service.ts` and `agreement-renewal-signing-service.ts` show. A migration written against `agreements` fails outright.
+
+> **Migration `085`, not `084`.** `dev` tops out at `083` but `main` already carries `084_lead_source_tracking.sql`. Both branches must be checked before taking a number.
+
+**Status: UNAPPLIED.** Written and committed, never run — the test database is unreachable from the development environment. Apply **before** the regenerated Prisma client deploys. **Migrate FIRST, then deploy the client.** Not the other way round. Prisma requests *all*
+declared scalar columns on any read that passes no explicit `select`, and `Agreement` has **17
+such reads** — including `rent-generation-service`, `financial-service`,
+`billing-transition-service` and the activation workflow itself. Deploying a client that declares
+`document_content_hash` against a database that lacks it 500s every one of them. This is the exact
+shape of the 2026-08-22 `hostels.navigation` outage.
+
 The tenant-contract subsystem — **entirely undocumented in `docs/data-models/schema.md`** (see gap list below). `AgreementTemplate` is a versioned, publishable contract template per hostel (`TemplateStatus`: DRAFT/PUBLISHED/ARCHIVED). `Agreement` is the signed instance (tenant/guardian/owner signature capture with IP/UA, `AgreementStatus`: DRAFT/SIGNED/EXPIRING_SOON/AGREEMENT_EXPIRED/RENEWED/TERMINATED/VOID), self-referentially linked forward/backward through renewals (`renewed_from_agreement_id`/`renewed_to_agreement_id`). `RenewalOffer` carries the proposed renewal terms and its own status lifecycle (`RenewalOfferStatus`). `RenewalTimelineEvent` (added 2026-07-20, migration `20260720000000_renewal_timeline_events`) is a new append-only audit trail — `RenewalTimelineEventType` (OFFER_CREATED/SENT/DISCUSSED/REVISED/ACCEPTED/DECLINED/EXPIRED, DRAFT_CREATED, RENEWAL_ACTIVATED/ACTIVATION_BLOCKED) × `RenewalTimelineActorType` (OWNER/TENANT/SYSTEM) — written by `renewal-timeline-service.ts`, called from inside the same transaction as the mutation it describes wherever the caller already has one open. Closes the gap where owner-side offer actions previously had no queryable DB record at all (only `logger.info()` lines) and tenant-side actions were only partially captured in `RenewalDecision` (no actor-role, no distinct event vocabulary). See [[Decisions]] ADR-016.
 
 ### `change_requests` / `change_request_events`
@@ -93,6 +115,7 @@ The fourth onboarding field, the security deposit, needed no column — it goes 
 
 **`preferences_config` keys added 2026-08-09** (both JSON-only, no migration):
 - `tenant_rules.agreement_required` — boolean, default `true`. Whether tenants must accept rules and sign before activation ([[Decisions#ADR-059|ADR-059]]). Absent/null reads as `true`.
+- `tenant_rules.guardian_verification` — `'MANDATORY' | 'OPTIONAL'`, default `MANDATORY`. Whether an unverified parent/guardian number is *chased* or merely *recorded* ([[Decisions#ADR-212|ADR-212]]). Absent/null reads as `MANDATORY` — every hostel predating the field was verifying unconditionally, so an absent flag must not read as "stop asking". Neither value blocks activation, and both still collect the number. Coerced on read (`readGuardianVerificationPolicy` / `guardianVerificationPolicy`) but validated **strictly on the patch** in `hostelPolicyService`, because `mergePolicy` ends by re-normalising and would otherwise turn a caller's typo into a silent `MANDATORY`.
 - `billing.deposit.calculation_mode` — `FLAT` | `MONTHS_OF_RENT`. Newly *written* by the UI; the field and its flat mirror `billing_defaults.deposit_calculation_mode` already existed and were already read by `resolveTenantInviteDefaults` ([[Decisions#ADR-060|ADR-060]]). See [[Business-Rules]] for how the amount resolves.
 
 **`preferences_config.meal_timings` key added 2026-08-19** ([[Decisions#ADR-083|ADR-083]], JSON-only, no migration): `{ BREAKFAST: {start, end, enabled}, LUNCH: {...}, SNACKS: {...}, DINNER: {...} }`, `start`/`end` as `"HH:mm"` 24h strings. Permanent per-hostel serving-window config, deliberately separate from `food_schedule_meals` (which still carries only a dish name per day/meal-type, never a time). Absent/malformed reads normalize per-meal to `DEFAULT_MEAL_TIMINGS` (07:00–09:00 / 12:30–14:00 / 17:00–18:00 / 19:00–21:00) via `lib/services/food/meal-timings.ts`'s `normalizeMealTimings` — a hostel that has never configured this has the same experience as one that has, just with the defaults. Written only via `PATCH /api/hostels/[id]/meal-timings` (read-modify-write against the whole blob, same discipline as `billing_defaults` above). See [[APIs]], [[Business-Rules]], [[Food]].
@@ -176,6 +199,19 @@ Added 2026-07-26 for the Platform Admin Console — deliberately reintroduces th
 > **Phase 13 built, then reverted (2026-09-11) — online (GATEWAY) subscription payments.** A Razorpay-based online payment path (order creation, webhook auto-approval, a new `subscription_payment_gateway_events` table, `PENDING`/`FAILED`/`CANCELLED` payment statuses, `gateway_provider`/`gateway_order_id`/`gateway_payment_id` columns) was built and then explicitly deferred by product decision before shipping — manual UPI/CASH remains the only payment method. All application code for it was removed from the branch. Migration `20260911100000_subscription_gateway_payments` had **already been applied to the shared dev/production database** by the time of reversion; reverting it would require an additional production DDL write (Postgres cannot cleanly drop enum values), which was judged unnecessary and out of scope for an unused, harmless, nullable/empty schema addition — so the migration file and these three now-unused enum values / nullable columns / empty table remain in the schema, physically present but read and written by no code path. Do not build new functionality on top of these leftover columns without re-reading this note.
 >
 > **FOUNDING renamed "Founding Partner" + capacity fix (2026-09-12).** `subscription_plans.name` updated in place (live production data, `code` unchanged) from "Founding" to "Founding Partner" — no schema/migration involved, `code: "FOUNDING"` stays the machine constant everywhere. Separately, `effectivePlanCapacity` (`subscription-rules.ts`) no longer treats `max_extra_beds: null` as "the active-tenant ceiling is infinite" — it now always returns `included_beds + extraBeds` (uncapped only in the sense that there's no maximum on how many extra beds Founding Partner can buy; the ceiling itself is real and grows only with beds actually purchased, exactly like every other plan). Fixes the owner's usage view showing bare "Unlimited" regardless of actual tenant count. Verified zero real-world impact: exactly one owner held Founding Partner at the time, `PAUSED`, 1 active tenant against the 250 ceiling. See [[Business-Rules]] "The FOUNDING subscription plan" for the full correction note, [[Changelog]].
+
+### `MANAGER` role / `manager_profiles` / `manager_permission_grants` / `manager_hostel_assignments` (added 2026-09-17, [[Decisions#ADR-214|ADR-214]])
+Super Admin → Manager → hostel-assignment system. `Role` gained a fourth value, `MANAGER`, alongside the existing `OWNER|TENANT|ADMIN`. `manager_profiles` is a 1:1 sidecar on `profile` (role `MANAGER`), mirroring the shape `platform_admins` already uses for `ADMIN`: `status` (`ManagerStatus`: `PENDING_INVITATION|ACTIVE|SUSPENDED`), `invited_by`, `phone_verified_at`, `activated_at`, `suspended_at`/`suspended_by`/`suspended_reason`. No public self-serve signup — created only via `POST /api/platform-admin/managers` (ADMIN only).
+
+`manager_permission_grants` (`manager_profile_id` FK, `permission ManagerPermission`, unique on the pair) is a full-replace permission set — `ManagerPermission` has one value per platform-admin module a manager can be granted (`MANAGE_LEADS|MANAGE_OWNERS|MANAGE_HOSTELS|MANAGE_ONBOARDING|VIEW_REVENUE_ANALYTICS|MANAGE_SUBSCRIPTIONS|SUPPORT_REPORTS_BUGS|MANAGE_BROADCASTS|MANAGE_SETTINGS`). Enforced server-side by `requireAdminOrManagerPermission` (`src/services/managers/manager-authorization.ts`) — never by hiding frontend nav alone.
+
+`manager_hostel_assignments` (`manager_profile_id` FK, `hostel_id` FK → `hostels`, `assigned_by`/`assigned_at`, `unassigned_by`/`unassigned_at`) is the hostel-scoping table. **Reassignment never deletes a row** — it sets `unassigned_at` on the old one and inserts a new one, so activity attributed to the old assignment stays historically intact. A partial unique index (`idx_manager_hostel_assignments_one_active ON manager_hostel_assignments (hostel_id) WHERE unassigned_at IS NULL`, same technique as `tenants_one_live_tenancy_per_profile`) guarantees at most one *active* manager per hostel at the DB level; the service layer (`manager-service.ts`) also checks-then-writes inside a transaction. `scopeHostelIds(session)` resolves a manager's current active hostel-id list fresh per request — `null` for ADMIN (unrestricted), never trusted from the client.
+
+No new audit table: manager (and admin) activity reuses the existing `activity_logs` table and its writer (`lib/services/activity.service.ts`, previously used only by `property-service.ts`/`move-out-service.ts`/`config-change-log-service.ts`/`room-removal-plan.ts`) via a new thin wrapper `recordManagerActivity` (`src/services/managers/manager-activity.ts`). Every entry follows the established `metadata.hostel_id` convention (see the `platform_admins` / `migrations/082_activity_logs_hostel_index.sql` note above) so the Super Admin activity feed (`GET /api/platform-admin/activity`) can filter by hostel using the same expression index the owner-facing feed already relies on. A supporting `idx_activity_logs_user_ts (user_id, timestamp DESC)` index was added for the feed's manager filter.
+
+No new onboarding-state table either — a hostel-setup checklist ("8/12 completed") is derived, not stored, following the same philosophy as `ownerHealth.ts`: see [[Business-Rules]] "Manager permissions, hostel assignment and activity logging" and `docs/obsidian`'s note that a prior attempt at a stored table (`owner_onboarding_states`, in `apps/backend/prisma/migrations_manual/add_onboarding_intelligence.sql`) was never wired to any Prisma model or service and is dead.
+
+Migration: `migrations/085_manager_role.sql` (hand-written, idempotent). See [[APIs]] (`/api/platform-admin/managers/*`, `/api/managers/invitation/*`, `/api/platform-admin/activity`), [[Features]], [[Decisions]] ADR-214.
 
 ### `platform_leads.google_email` / `platform_lead_invitations` / `PlatformLeadStatus` lifecycle replacement
 Owner-acquisition funnel, phases 1–2. **`platform_leads.google_email`** (added 2026-07-28, phase 1) captures the email read from the real Google sign-in the landing page's lead-capture flow uses — never used for authentication, just contact info for the lead. **`platform_lead_invitations`** (added 2026-07-29, phase 2, [[Decisions]] ADR-032) is a single-use activation-token table for an approved lead — deliberately a new table rather than reusing `tenant_invitations` (which is FK'd to `tenant_id`/`hostel_id`/`room_id`, none of which exist for a lead yet), copying its proven shape instead: `id UUID` (PK, never exposed), `lead_id UUID` (FK to `platform_leads`, no formal `@relation`), `token TEXT UNIQUE` (`crypto.randomBytes(32).toString("hex")` — the actual public identifier, separate from `id`, matching `tenant_invitations.token`'s "don't put a DB PK in a URL" discipline), `status TEXT` (free-text state machine — `PENDING → OPENED → ACTIVATED`, or `EXPIRED` — following `tenant_invitations.status`'s convention of a string, not an enum, for workflow sub-state), `expires_at TIMESTAMPTZ` (+7 days from creation). No prefill data is duplicated into this table — the activation-context endpoint joins back to `platform_leads` for name/hostel_name/phone/google_email/city.
@@ -282,6 +318,7 @@ Since ADR-031, new sessions are minted by Supabase (`signInWithSupabasePassword(
 | `HostelVerificationStatus` | PENDING, VERIFIED |
 | `HostelListingStatus` | DRAFT, LIVE, SUSPENDED |
 | `PlatformLeadStatus` | NEW, UNDER_REVIEW, APPROVED, INVITE_SENT, OWNER_ACTIVATED, HOSTEL_CREATED, LIVE, LOST — **replaced outright** 2026-07-29 (ADR-032; was NEW/CONTACTED/DEMO_SCHEDULED/ONBOARDING/ACTIVE/LOST). `APPROVED` onward is system-managed, not manually settable — see [[APIs]] |
+| `PlatformLeadAcquisitionSource` | WEBSITE, DIRECT_ADMIN — added 2026-09-16, see `platform_leads` acquisition-source section below |
 | `SubscriptionBillingCycle` | MONTHLY, YEARLY |
 | `HostelSubscriptionStatus` | TRIAL, ACTIVE, RENEWAL_DUE, PAYMENT_FAILED, CANCELLED |
 | `PlatformInvoiceStatus` | PENDING, PAID, FAILED |
@@ -558,6 +595,10 @@ The existing `docs/` reference pages are **out of date** relative to the live sc
 
 `pain_point TEXT NULL` and `current_tooling TEXT NULL` were added by migration `20260807000000_platform_leads_qualification` for a longer qualification conversation that was then cut back to three questions before shipping. **Nothing currently writes them** — they are live, nullable and unpopulated, kept rather than dropped from a production table so a future qualification pass needs no new migration. This is the same state `city` and `bed_count` were already in. Deliberately free-form TEXT rather than enums: the option lists are marketing copy and get reworded, so these are not safe to aggregate without normalising first. See [[Features]] and [[APIs]].
 
+### `platform_leads.source` / `platform_leads.plan_code` (2026-09-16, migration 084, [[Decisions#ADR-211|ADR-211]])
+
+Both `TEXT NULL`, added for the landing page's new pricing section. `source` records which acquisition surface produced the lead (`"landing_page"` for every existing CTA, `"pricing_plan"` when opened from a plan's "Subscribe" button) — free-form, not an enum, same reasoning as `pain_point`/`current_tooling` above. `plan_code` is the `subscription_plans.code` a visitor clicked "Subscribe" on, when set — **deliberately no foreign key**: a lead is intent to subscribe, not a real `owner_subscriptions` row, and must not be blocked or orphaned by a plan later renamed/retired. `NULL` for every lead captured before this migration. Written only by `POST /api/leads/self-serve` (`LeadSelfServeSchema`). See [[APIs]], [[Features]], [[Decisions#ADR-211|ADR-211]].
+
 ### `platform_leads` — one active lead per phone (2026-08-31, migration 078, [[Decisions#ADR-161|ADR-161]])
 
 A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON platform_leads (phone) WHERE status <> 'LOST' AND phone <> ''`. Not expressible as a declarative Prisma constraint (no `extendedIndexes` preview feature enabled in this schema) — same situation as `tenants_one_live_tenancy_per_profile` (`migrations/062_tenancy_per_row.sql`), documented only as a `///` doc-comment on the `phone` field rather than a schema attribute. Two carve-outs, both deliberate:
@@ -566,6 +607,15 @@ A partial unique index, `platform_leads_one_active_lead_per_phone`, enforces `ON
 - **Empty phone is excluded** because `platform-listing-leads.ts`'s `buildPlatformLeadFromEnquiry` (Discover's "demand evidence" sales leads, one raised per newly-enquired *listed* hostel) deliberately writes `phone: ""` and dedupes by `hostel_name` instead — a bare phone-only index would have let only the very first such row across the whole table succeed, silently breaking that unrelated feature for every hostel after the first.
 
 Enforced at the DB level specifically so a concurrent double-submit (two requests for the same phone racing each other) cannot slip two active rows past an application-level check alone — `POST /api/leads/self-serve` and `POST /api/platform-admin/leads` both still do their own `findFirst` pre-check first as the fast/friendly path, and both catch a `P2002` from losing the race. See [[Business-Rules]], [[APIs]], [[Features]].
+
+### `platform_leads` — acquisition source and admin-set intended plan (2026-09-16)
+
+Two migrations, both idempotent `ADD COLUMN IF NOT EXISTS` / `CREATE TYPE ... EXCEPTION WHEN duplicate_object`:
+
+- **`20260916000000_platform_leads_acquisition_source`** adds `acquisition_source PlatformLeadAcquisitionSource NOT NULL DEFAULT 'WEBSITE'` (new enum `PlatformLeadAcquisitionSource { WEBSITE, DIRECT_ADMIN }`) and `intended_plan_code TEXT NULL`. Every existing/website-originated row defaults to `WEBSITE` — zero behavior change for the public lead-capture form ([[Features]]). `DIRECT_ADMIN` is set only by `POST /api/platform-admin/owners` (the Admin → Add Owner flow, see [[Features]], [[APIs]]).
+- **`20260916000100_platform_leads_intended_plan_admin`** adds `intended_plan_set_by TEXT NULL` — the admin profile id who chose `intended_plan_code`, so the eventual `SUBSCRIPTION_PLAN_CHANGED` audit entry (fired later, at owner-signup completion, not at the admin's action) attributes to a real actor.
+
+`intended_plan_code`/`intended_plan_set_by` are captured before a real owner account (and therefore any `owner_subscriptions` row) exists — a `DIRECT_ADMIN` lead's plan choice is applied for real by `LeadInvitationService.activateInvitationForOwner` once the owner completes signup via the invitation link. Never read for `WEBSITE` leads. See [[Business-Rules]] and [[Decisions#ADR-210|ADR-210]].
 
 ### `visitor_leads` — one active lead per (hostel, phone) (2026-09-01, migration 079, [[Decisions#ADR-162|ADR-162]])
 
@@ -802,3 +852,55 @@ Also missing: migrations **075** (payout promise date + payer attribution — co
 **Reliability of this audit.** Objects with lowercase names are reliable. The run compared table/index names case-sensitively, so mixed-case Prisma names (e.g. `RenewalOffer`, `Agreement_*_idx`) may be reported missing when present — those are excluded above. A re-run with the fix was blocked, so treat mixed-case findings as **Unknown / needs clarification**. Each unique guard can fail to build if production already holds duplicates; check before applying (see [[TODO]]).
 
 See [[TODO]], [[Business-Rules]], [[Decisions#ADR-198|ADR-198]] (082), [[Bugs]].
+
+### Guardian verification columns (2026-09-16, [[Decisions#ADR-212|ADR-212]])
+
+Migration `prisma/migrations/20260916120000_guardian_verification_policy`. **Apply before deploying the code that declares these** — both tables are read by `include:`-only queries in this codebase, and Prisma requests every declared scalar on a `select`-less read. That exact mistake with `hostels.navigation` 500'd every public listing page on 2026-08-22.
+
+**On `tenants`** — deferral state only. There is deliberately **no `guardian_verified` boolean**: verification proof stays in the `phone_verification_otps` audit trail, which is the stance `guardian-access.ts` already documents ("one record of what happened and no second thing to keep in sync with it"). What the trail cannot hold is the promise a tenant made when they deferred.
+
+| Column | Type | Meaning |
+|---|---|---|
+| `guardian_verification_deferred_at` | `timestamptz(6)?` | When the tenant chose to verify later. Starts the fixed 7-day clock in a MANDATORY hostel. NULL = never deferred, which is **not** the same as verified. |
+| `guardian_verification_deferred_reason` | `text?` | `NOT_REACHABLE_NOW \| TRAVELLING \| NO_WHATSAPP \| PREFER_NOT_TO`. A plain string, not a Prisma enum, matching this schema's convention for descriptive statuses; the set is enforced by `isGuardianDeferralReason` at the service boundary. |
+| `guardian_verification_next_prompt_at` | `timestamptz(6)?` | When to ask again. `deferred_at + 7 days` on the first deferral, pushed forward 3 days by each dismissal. The back-off is a **date**, not a counter — see [[Bugs]] for why the counter version could only fire once. |
+| `guardian_verification_prompt_count` | `int` default `0` | How many times the tenant has dismissed the overdue wall. Reporting only; it gates nothing. |
+
+**On `phone_verification_otps`** — `tenant_id uuid?` (FK → `tenants.id`, `ON DELETE SET NULL`, plus index `(tenant_id, purpose, status)`).
+
+- **Why:** the onboarding check was `{ phone, purpose: 'ParentVerify', status: 'VERIFIED' }` — phone-scoped, global, no time window — so any number verified once read as verified for every tenant, for ever. Tolerable while the answer only decided whether to ask for a code about to be typed anyway; not tolerable once a "Verified" badge depends on it.
+- **Deliberately not backfilled.** Nothing in the trail records which tenancy a historical code was sent for. Backfilling by phone would reproduce the exact assumption being removed, dressed as data. `tenant_id IS NULL` is accepted as legacy on the read path; the population stops growing the day this ships.
+- **`ON DELETE SET NULL`, not `CASCADE`** — the trail is an audit record of what was sent to a real handset, and deleting a tenancy must not erase the evidence.
+- The index is **not** partial on `tenant_id IS NOT NULL`, even though every lookup lands there: Prisma cannot express a partial index, and a declared index that does not match the applied one is drift nobody notices until it matters.
+
+**Applied to production 2026-09-17** and verified against `information_schema`. Migrations here are applied with `npm run db:apply -- <file>` (`apps/backend/scripts/apply-sql.ts`) — `prisma migrate deploy` is unusable against this project and `prisma db execute` cannot reach the pooler. Never assume a migration has run; the runner's `--dry-run` tells you, and several older migrations are still outstanding.
+
+## `coverage_requests` (migration 086, ADR-223)
+
+Supply Stayo does not have yet, captured from the public homepage. **Not** a `visitor_leads` row: that model requires non-null `hostel_id` *and* `owner_id`, and the whole point of both kinds here is that neither exists.
+
+| Column | Notes |
+|---|---|
+| `kind` | `'AREA'` or `'HOSTEL'`, default `'AREA'` |
+| `area_query`, `normalized_query` | required for `AREA`; normalized is lower-cased and whitespace-collapsed, for aggregation |
+| `hostel_name`, `owner_contact` | `hostel_name` required for `HOSTEL`; the owner's number is optional, always |
+| `city`, `contact_phone`, `contact_email` | optional |
+| `seeker_profile_id` | FK → `profiles(id)` `ON DELETE SET NULL`; set only for a signed-in seeker, null forever otherwise |
+| `source`, `notified_at`, `created_at` | |
+
+A check constraint (`coverage_requests_kind_payload`) keeps each kind from being half-filled. Indexes on `(normalized_query, created_at DESC)` where non-null, `(city, created_at DESC)` where non-null, and `(kind, created_at DESC)`.
+
+**No unique constraint, deliberately** — a student asking twice is signal, not duplication; de-duplication is a reporting concern, and abuse is handled by the endpoint's rate limit and length caps rather than a constraint that would discard genuine repeat demand.
+
+**Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+
+### `PlatformLeadAcquisitionSource` gains two values (migration 087, ADR-223)
+
+`DISCOVER_DEMAND` (tenants enquired about an unclaimed platform listing) and `STUDENT_REFERRAL` (a student named the hostel on the public homepage). Both describe a lead **nobody submitted**, as opposed to `WEBSITE`, where the owner filled in the form. Applied with `ALTER TYPE … ADD VALUE IF NOT EXISTS`, so re-running is a no-op; run it outside an explicit transaction, since a new enum value cannot be used in the transaction that adds it. **Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). See [[Bugs]].
+
+## `homepage_features` (migration 088, ADR-223)
+
+The admin-curated homepage line-up: `hostel_id` (unique, FK → `hostels` `ON DELETE CASCADE`), `position` (ascending, **not** unique — reordering rewrites the whole list, and a unique constraint would force temporary values for every swap), `created_by` (FK → `profiles` `ON DELETE SET NULL`), `created_at`, `updated_at`. Indexed on `(position ASC, created_at ASC)`.
+
+A row here does **not** override `DISCOVERABLE`; the read path intersects the two. **Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+

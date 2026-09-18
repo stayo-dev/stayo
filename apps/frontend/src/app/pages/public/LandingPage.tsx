@@ -14,6 +14,8 @@ import { TrishulMark } from '@shared/ui-patterns/TrishulMark';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { OwnerEnquiryPrompt } from '@features/owner-onboarding/components/OwnerEnquiryPrompt';
 import { HostelLeadModal } from '@features/owner-onboarding/components/HostelLeadModal';
+import { PricingSection } from './components/PricingSection';
+import type { PublicPlan } from '@features/public-plans/api';
 import { readScrollTop, subscribeToScroll } from '@shared/lib/scroll';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
@@ -46,6 +48,7 @@ const TRUST_ITEMS = [
 const NAV_LINKS = [
   { href: '#why', label: 'Features' },
   { href: '#whatis', label: 'How it works' },
+  { href: '#pricing', label: 'Pricing' },
   { href: '#footer', label: 'Contact' },
 ];
 
@@ -82,6 +85,10 @@ export function LandingPage() {
   const [menuOpen, setMenuOpen] = useState(false);
   const [loginOpen, setLoginOpen] = useState(location.pathname === '/login');
   const [leadModalOpen, setLeadModalOpen] = useState(declaredOwnerIntent);
+  // Set only when the lead conversation was opened from a pricing-plan
+  // "Subscribe" click, so the lead is tagged with which plan they want and
+  // the modal can show them their choice was carried over.
+  const [leadPlan, setLeadPlan] = useState<PublicPlan | null>(null);
 
   // Consume the intent so it can't fire a second time — otherwise going back
   // and forward through history re-opens the conversation unbidden.
@@ -130,6 +137,20 @@ export function LandingPage() {
     // Opens the qualification conversation, NOT Google. Google is offered at
     // the end, after the lead row already exists, so abandoning it still
     // leaves us a lead we can act on.
+    setLeadPlan(null);
+    setLeadModalOpen(true);
+  };
+
+  // Pricing section "Subscribe" — Stayo has no self-serve checkout, so this
+  // opens the same lead conversation as every other CTA, just tagged with
+  // the plan the visitor picked (source: pricing_plan + plan_code). An admin
+  // follows up and activates the real subscription by hand.
+  const openPlanSubscribe = (plan: PublicPlan) => {
+    if (session.isAuthenticated && session.hostels.length > 0) {
+      navigate('/owner/home');
+      return;
+    }
+    setLeadPlan(plan);
     setLeadModalOpen(true);
   };
 
@@ -155,6 +176,10 @@ export function LandingPage() {
     }
     if (role === 'owner') {
       navigate('/owner/home', { replace: true });
+      return;
+    }
+    if (role === 'manager') {
+      navigate('/admin', { replace: true });
       return;
     }
     // The login modal is owner-focused (ADR-049) but never actually gated
@@ -210,7 +235,12 @@ export function LandingPage() {
         }}
         onSuccess={handleAuthSuccess}
       />
-      <HostelLeadModal open={leadModalOpen} onClose={() => setLeadModalOpen(false)} />
+      <HostelLeadModal
+        open={leadModalOpen}
+        onClose={() => setLeadModalOpen(false)}
+        context={leadPlan ? { source: 'pricing_plan', planCode: leadPlan.code } : { source: 'landing_page' }}
+        planLabel={leadPlan ? `${leadPlan.name} plan` : undefined}
+      />
       <OwnerEnquiryPrompt
         isOwnerWithHostel={session.isAuthenticated && session.hostels.length > 0}
         declaredOwnerIntent={declaredOwnerIntent}
@@ -480,6 +510,9 @@ export function LandingPage() {
           ))}
         </div>
       </section>
+
+      {/* ============ PRICING ============ */}
+      <PricingSection onSubscribe={openPlanSubscribe} />
 
       {/* ============ TRUST BADGES ============ */}
       <section className="px-4 py-10 sm:px-6">

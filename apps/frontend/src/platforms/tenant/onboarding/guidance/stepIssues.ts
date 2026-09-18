@@ -42,20 +42,12 @@ export type IdentityState = {
   gender: string;
   dateOfBirth: string;
   profileType: string;
-  guardianName: string;
-  guardianPhone: string;
-  guardianVerified: boolean;
   photoUploaded: boolean;
   docItems: OnboardingDocItem[];
 };
 
-function isStudent(profileType: string): boolean {
-  return String(profileType || 'STUDENT').toUpperCase() === 'STUDENT';
-}
-
 export function identityIssues(state: IdentityState, today: Date = new Date()): Issue[] {
   const issues: Issue[] = [];
-  const student = isStudent(state.profileType);
 
   if (!state.photoUploaded) {
     issues.push({ field: 'photo', label: 'Profile photo', message: 'Add a photo of yourself — tap the circle to take one.' });
@@ -93,21 +85,6 @@ export function identityIssues(state: IdentityState, today: Date = new Date()): 
     issues.push({ field: 'date_of_birth', label: 'Date of birth', message: `${dob.message}.` });
   }
 
-  // A working professional need not name a guardian — but once they start
-  // entering one, the half-filled pair has to be completed and verified.
-  const guardianStarted = Boolean(state.guardianName.trim() || phoneDigits(state.guardianPhone));
-  if (student || guardianStarted) {
-    if (!state.guardianName.trim()) {
-      issues.push({ field: 'guardian_name', label: "Guardian's name", message: "Add your parent or guardian's full name." });
-    }
-    const guardianDigits = phoneDigits(state.guardianPhone);
-    if (guardianDigits.length !== 10) {
-      issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: "Enter your parent or guardian's 10-digit mobile number." });
-    } else if (!state.guardianVerified) {
-      issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: 'Verify this number with the code we send to it.' });
-    }
-  }
-
   for (const docType of requiredKycDocTypes(state.profileType)) {
     const item = state.docItems.find((d) => String(d.doc_type).toUpperCase() === docType);
     const status = String(item?.document_status || 'MISSING').toUpperCase();
@@ -117,6 +94,58 @@ export function identityIssues(state: IdentityState, today: Date = new Date()): 
     } else if (!isDocUploaded(item)) {
       issues.push({ field: `doc:${docType}`, label: kycDocLabel(docType), message: `Upload a photo of your ${kycDocLabel(docType)}.` });
     }
+  }
+
+  return issues;
+}
+
+/**
+ * The GUARDIAN step's own rules (ADR-213).
+ *
+ * These used to live inside `identityIssues`, and were left there when the
+ * screens were split — so pressing Continue on Identity reported things left to
+ * do and then tried to scroll to controls that were no longer rendered. The
+ * tenant saw a count they could not act on. Guidance has to move with the
+ * fields it describes; that is the whole contract between this module and the
+ * anchors.
+ */
+export type GuardianState = {
+  name: string;
+  relation: string;
+  phone: string;
+  verified: boolean;
+  /**
+   * Set when the tenant has said their guardian cannot confirm right now.
+   * Satisfies the step exactly as verification does — ADR-212 made deferral a
+   * legitimate way through, and guidance that kept asking anyway would be
+   * telling them to do something the product has already accepted they cannot.
+   */
+  deferralReason: string | null;
+};
+
+export function guardianIssues(state: GuardianState): Issue[] {
+  const issues: Issue[] = [];
+
+  if (!state.name.trim()) {
+    issues.push({ field: 'guardian_name', label: "Guardian's name", message: "Add your parent or guardian's full name." });
+  }
+
+  if (!state.relation.trim()) {
+    issues.push({ field: 'guardian_relation', label: 'Relationship', message: 'Choose how they are related to you.' });
+  }
+
+  const digits = phoneDigits(state.phone);
+  if (digits.length !== 10) {
+    issues.push({ field: 'guardian_phone', label: "Guardian's mobile", message: "Enter your parent or guardian's 10-digit mobile number." });
+  } else if (!state.verified && !state.deferralReason) {
+    // Names all three ways out, in the order the screen offers them. "Verify
+    // this number" was true and useless to someone whose parent is not picking
+    // up — which is the case this step exists to handle.
+    issues.push({
+      field: 'guardian_phone',
+      label: "Guardian's mobile",
+      message: 'Ask them to confirm on WhatsApp, enter the code they were sent, or tell us they can’t right now.',
+    });
   }
 
   return issues;
@@ -134,34 +163,61 @@ export function passwordIssues(state: { password: string; confirm: string }): Is
 
 export type AgreementState = {
   acknowledgements: Record<string, boolean>;
+  /** Server truth: `agreements.document_read_completed_at` is set. */
+  readCompleted: boolean;
   tenantSignature: boolean;
   tenantSignatureName: string;
   guardianSignature: boolean;
   guardianSignatureName: string;
   guardianRelation: string;
+  /**
+   * `policy.tenant_rules.guardian_signature_required`. Absent means not
+   * required, matching the backend default — a hostel predating the setting
+   * must not suddenly block its tenants.
+   */
+  guardianRequired?: boolean;
 };
 
 export function agreementIssues(state: AgreementState): Issue[] {
   const issues: Issue[] = [];
 
+  // First, because there is no point telling someone to sign a document they
+  // have not opened. Read from the server's record, not from local state, so a
+  // reload cannot skip it.
+  if (!state.readCompleted) {
+    issues.push({
+      field: 'agreement_document',
+      label: 'Your agreement',
+      message: 'Open the agreement and read it to the end before signing.',
+    });
+  }
+
   for (const [key, ticked] of Object.entries(state.acknowledgements)) {
     if (!ticked) issues.push({ field: `ack:${key}`, label: 'House rules', message: 'Tick this to confirm you have read it.' });
   }
 
-  const tenantComplete = state.tenantSignature && Boolean(state.tenantSignatureName.trim());
-  const guardianComplete = state.guardianSignature && Boolean(state.guardianSignatureName.trim()) && Boolean(state.guardianRelation.trim());
-
-  if (state.tenantSignature && !state.tenantSignatureName.trim()) {
+  // The tenant signs. This used to accept "tenant, guardian, or both", which
+  // meant a tenancy could be activated with no signature from the person who
+  // actually lives there. Guardian is now a genuine co-signature.
+  if (!state.tenantSignature) {
+    issues.push({ field: 'tenant_signature', label: 'Signature', message: 'Sign here to accept your agreement.' });
+  } else if (!state.tenantSignatureName.trim()) {
     issues.push({ field: 'tenant_signature_name', label: 'Your name', message: 'Type your full name under your signature.' });
+  }
+
+  // A guardian who signs must be fully identified whether or not they had to.
+  if (state.guardianRequired && !state.guardianSignature) {
+    issues.push({
+      field: 'guardian_signature',
+      label: 'Parent / Guardian',
+      message: 'This hostel needs a parent or guardian to co-sign.',
+    });
   }
   if (state.guardianSignature && !state.guardianSignatureName.trim()) {
     issues.push({ field: 'guardian_signature_name', label: "Guardian's name", message: "Type your parent or guardian's full name under their signature." });
   }
   if (state.guardianSignature && !state.guardianRelation.trim()) {
     issues.push({ field: 'guardian_relation', label: 'Relationship', message: 'Choose how they are related to you.' });
-  }
-  if (!tenantComplete && !guardianComplete && issues.length === 0) {
-    issues.push({ field: 'tenant_signature', label: 'Signature', message: 'Sign here — you or your parent/guardian.' });
   }
 
   return issues;

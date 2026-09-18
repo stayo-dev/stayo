@@ -225,6 +225,21 @@ export async function GET(req: NextRequest) {
       extra.is_profile_completed = profile.is_profile_completed;
     }
 
+    // MANAGER: surfaces the manager's current permission/status snapshot for
+    // frontend nav/tab gating only — this is UX convenience, not
+    // authorization. Every route a manager calls re-derives this itself from
+    // manager_permission_grants/manager_hostel_assignments server-side
+    // (src/services/managers/manager-authorization.ts), so a stale value here
+    // can never grant access to anything the backend wouldn't already allow.
+    if (profile.role === "MANAGER") {
+      const manager = await prisma.manager_profiles.findUnique({
+        where: { profile_id: profile.id },
+        include: { permissions: { select: { permission: true } } },
+      });
+      extra.manager_status = manager?.status ?? null;
+      extra.manager_permissions = manager?.permissions.map((p: { permission: string }) => p.permission) ?? [];
+    }
+
     const response = apiResponse({
       user_id: profile.id,
       owner_id: profile.role === "OWNER" ? profile.id : profile.owner_id,
@@ -235,6 +250,7 @@ export async function GET(req: NextRequest) {
       is_admin: profile.role === "ADMIN",
       is_owner: profile.role === "OWNER",
       is_tenant: profile.role === "TENANT",
+      is_manager: profile.role === "MANAGER",
       phone: profile.phone,
       phone_verified: profile.phone_verified,
       ...extra

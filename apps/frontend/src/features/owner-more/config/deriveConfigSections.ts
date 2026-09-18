@@ -48,7 +48,12 @@ export interface ConfigSource {
     } | null;
     receipts?: { prefix?: string; format?: string; auto_email?: boolean; footer?: string } | null;
     branding?: { logo_url?: string | null; primary_color?: string | null; accent_color?: string | null } | null;
-    tenant_rules?: { invite_expiry_hours?: number; required_profile_fields?: string[] } | null;
+    tenant_rules?: {
+      invite_expiry_hours?: number;
+      required_profile_fields?: string[];
+      /** ADR-212. Absent means chased, matching the backend default. */
+      guardian_verification?: string;
+    } | null;
   } | null;
   counts: { properties: number; floors: number; rooms: number; beds: number };
 }
@@ -168,6 +173,19 @@ export function deriveHostelSections(source: ConfigSource): ConfigSection[] {
           detail: agreementMonths ? `${agreementMonths}-month default lease` : 'Not set',
           state: agreementMonths ? 'configured' : 'attention',
           route: AGREEMENT_DURATION_ROUTE,
+        },
+        {
+          key: 'guardian-verification',
+          title: 'Guardian verification',
+          // Never 'attention'. Both answers are legitimate choices an owner is
+          // entitled to make, and an absent flag means the strict one — so
+          // there is no gap here to nag about, only a setting to read. ADR-212.
+          detail:
+            String(tenantRules?.guardian_verification ?? '').toUpperCase() === 'OPTIONAL'
+              ? 'Recorded, not chased'
+              : 'Chased until verified',
+          state: 'configured',
+          route: '/owner/more/configuration/guardian-verification',
         },
       ],
     },

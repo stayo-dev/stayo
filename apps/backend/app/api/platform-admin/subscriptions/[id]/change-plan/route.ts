@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionAdminService } from "@/src/services/platform-billing/subscription-admin-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/subscriptions/[id]/change-plan
@@ -20,7 +21,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const body = await req.json().catch(() => ({}));
     const result = await subscriptionAdminService.changePlan({
       subscriptionId: id,

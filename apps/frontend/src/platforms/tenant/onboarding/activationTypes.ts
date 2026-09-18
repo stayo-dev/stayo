@@ -7,7 +7,7 @@
  * definition instead of redeclaring it.
  */
 
-export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'ACTIVATE';
+export type ActivationStep = 'ACCOUNT' | 'RULES' | 'AGREEMENT' | 'PROFILE' | 'GUARDIAN' | 'ACTIVATE';
 
 export type RuleCategory = {
   id: string;
@@ -25,6 +25,16 @@ export type ActivationContext = {
     blocked_steps: ActivationStep[];
     /** False when this hostel does not require a signed agreement (ADR-059). */
     agreement_required?: boolean;
+    /** ADR-213 — whether this tenancy is asked for a guardian at all. */
+    guardian_required?: boolean;
+    /** Name, relation and number all on record. Verification does not gate it. */
+    guardian_completed?: boolean;
+    /**
+     * ADR-218 — whether this hostel requires the guardian to *co-sign the
+     * agreement*. Distinct from `guardian_required` above, which is about
+     * collecting guardian contact details at all.
+     */
+    guardian_signature_required?: boolean;
     account_setup_completed: boolean;
     rules_accepted: boolean;
     agreement_signed: boolean;
@@ -33,7 +43,15 @@ export type ActivationContext = {
     activation_completed: boolean;
   };
   current_step: ActivationStep;
-  verification_status?: { guardian_verified?: boolean; emergency_verified?: boolean };
+  verification_status?: {
+    guardian_verified?: boolean;
+    emergency_verified?: boolean;
+    /** ADR-212 — all four computed server-side so the screen never decides policy. */
+    guardian_policy?: 'MANDATORY' | 'OPTIONAL';
+    guardian_state?: 'NOT_APPLICABLE' | 'VERIFIED' | 'PENDING_UNCHASED' | 'PENDING_GRACE' | 'PENDING_OVERDUE';
+    guardian_deadline_at?: string | null;
+    guardian_chased?: boolean;
+  };
   profile: { name?: string; email?: string; phone?: string };
   /**
    * The number the invitation was addressed to, and whether the backend can
@@ -92,6 +110,9 @@ export type ActivationContext = {
     status: string;
     signed_at?: string | null;
     pdf_url?: string | null;
+    /** Set once the tenant has read the document to the end — gates signing. */
+    document_read_completed_at?: string | null;
+    document_opened_at?: string | null;
     content_snapshot: Record<string, any>;
     tenant_signature_url?: string | null;
     tenant_signature_name?: string | null;

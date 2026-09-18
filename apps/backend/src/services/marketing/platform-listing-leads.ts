@@ -47,8 +47,72 @@ export function buildPlatformLeadFromEnquiry(hostel: EnquiredHostel) {
      */
     phone: "",
     status: "NEW" as const,
+    /**
+     * Nobody at this hostel asked to be contacted — the lead exists because
+     * tenants enquired. Without this the row inherits the WEBSITE default and
+     * the Leads screen shows it beside owners who filled in the form
+     * themselves, which is the difference between a cold call and a callback
+     * (migration 087).
+     */
+    acquisition_source: "DISCOVER_DEMAND" as const,
     notes: `${MARKER} · 1 enquiry from Discovery`,
   };
+}
+
+const REFERRAL_MARKER = "Student referral";
+
+export type HostelReferral = {
+  hostelName: string;
+  /** The owner's number, if the student happened to know it. */
+  ownerContact?: string | null;
+};
+
+/**
+ * A student naming a hostel on the public homepage is the same shape as a
+ * Discover enquiry: the OWNER is the prospect and the student is the evidence.
+ *
+ * The student-supplied owner number is written into the notes rather than
+ * `phone`, for two reasons. The owner never opted in to being contacted by
+ * us — putting it in `phone` would let outreach tooling treat it as consent —
+ * and `platform_leads_one_active_lead_per_phone` would collide the moment two
+ * students referred hostels sharing a number. Empty `phone` is excluded from
+ * that index, which is why the Discover path already uses it.
+ */
+export function buildPlatformLeadFromReferral(referral: HostelReferral) {
+  const name = referral.hostelName.trim();
+  return {
+    name,
+    hostel_name: name,
+    city: null as string | null,
+    phone: "",
+    status: "NEW" as const,
+    acquisition_source: "STUDENT_REFERRAL" as const,
+    notes: referralNote(null, referral.ownerContact ?? null),
+  };
+}
+
+/**
+ * Append a referral to a lead's notes, preserving anything an admin wrote.
+ *
+ * The count matters: "four students referred this hostel" is the pitch when we
+ * finally call the owner, exactly as the enquiry tally is for Discover.
+ */
+export function referralNote(existing: string | null | undefined, ownerContact: string | null): string {
+  const text = (existing ?? "").trim();
+  const line = new RegExp(`${REFERRAL_MARKER} · (\\d+) referrals?`);
+  const match = text.match(line);
+
+  const contactSuffix = ownerContact ? ` · owner number given: ${ownerContact} (unverified, not opted in)` : "";
+
+  if (!match) {
+    const prefix = text ? `${text}\n` : "";
+    return `${prefix}${REFERRAL_MARKER} · 1 referral${contactSuffix}`;
+  }
+
+  const next = Number(match[1]) + 1;
+  const bumped = text.replace(line, `${REFERRAL_MARKER} · ${next} referrals`);
+  // A number we did not have before is worth appending even on a repeat.
+  return ownerContact && !bumped.includes(ownerContact) ? `${bumped}${contactSuffix}` : bumped;
 }
 
 /**

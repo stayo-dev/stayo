@@ -3,13 +3,10 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
 import { PlatformLeadLostReason } from "@prisma/client";
 import { canRejectLead } from "@/src/services/platform-leads/lead-transition-guards";
-
-function requireAdmin(session: any): asserts session is { sub: string; role: string } {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 const VALID_REASONS: string[] = Object.values(PlatformLeadLostReason);
 
@@ -31,7 +28,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const body = await req.json();
     const reason = String(body?.reason || "").toUpperCase();
 
@@ -61,6 +58,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     return apiResponse({ lead: updated });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to mark lead lost");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }
@@ -76,7 +74,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const lead = await prisma.platform_leads.findUnique({
       where: { id },
       select: { id: true, status: true },
@@ -93,6 +91,7 @@ export async function DELETE(req: NextRequest, { params }: { params: Promise<{ i
     return apiResponse({ lead: updated });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to re-open lead");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

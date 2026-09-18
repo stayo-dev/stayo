@@ -102,12 +102,22 @@ export interface SupabaseSessionTokens {
   expires_in: number;
 }
 
+const SUPABASE_SIGN_IN_TIMEOUT_MS = 10_000;
+
 /** Mint a real Supabase session for an already-verified (or freshly-linked) credential. */
 export async function signInWithSupabasePassword(email: string, password: string): Promise<SupabaseSessionTokens> {
-  const { data, error } = await getSupabaseAnonClient().auth.signInWithPassword({
+  // auth-js@2.103's signInWithPassword takes no AbortSignal/options.signal, so a
+  // hung upstream request (e.g. Supabase Auth network stall) would otherwise
+  // await forever and hang the whole /api/auth/login request indefinitely.
+  const signInPromise = getSupabaseAnonClient().auth.signInWithPassword({
     email: email.toLowerCase(),
     password,
   });
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    setTimeout(() => reject(new Error("INTERNAL: Supabase sign-in timed out")), SUPABASE_SIGN_IN_TIMEOUT_MS);
+  });
+
+  const { data, error } = await Promise.race([signInPromise, timeoutPromise]);
   if (error || !data.session) {
     throw new Error(`INTERNAL: Supabase sign-in failed: ${error?.message || "no session returned"}`);
   }

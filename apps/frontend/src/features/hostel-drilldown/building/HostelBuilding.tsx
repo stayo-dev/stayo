@@ -5,7 +5,7 @@ import { BuildingLegend } from './BuildingLegend';
 import { BuildingSkeleton } from './BuildingSkeleton';
 import { EmptyBuilding } from './EmptyBuilding';
 import { FloorBand } from './FloorBand';
-import { LiftStrip, type LiftStop } from './LiftStrip';
+import { LiftStrip, type LiftStop } from './LiftStrip.tsx';
 import { countRooms, floorPlate, roomMatches, stackFloors, type Lens } from './buildingModel';
 import { activeFloorId, showLiftStrip } from './liftStrip';
 

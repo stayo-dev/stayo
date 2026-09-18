@@ -81,12 +81,36 @@ describe('continueBlocker', () => {
     expect(continueBlocker('review', { ...base, floorBlocker: 'anything' })).toBeNull();
   });
 
-  it('holds the Agreement step until a choice — and a signature for "Yes" — is made', () => {
+  it('holds the Onboarding rules step until a choice — and a signature for "Yes" — is made', () => {
     expect(continueBlocker('agreement', base)).toBe('Choose whether this hostel uses a tenant agreement');
-    expect(continueBlocker('agreement', { ...base, agreementChoice: 'no' })).toBeNull();
     expect(continueBlocker('agreement', { ...base, agreementChoice: 'yes', hasSignature: false })).toBe(
       'Draw your signature to continue',
     );
-    expect(continueBlocker('agreement', { ...base, agreementChoice: 'yes', hasSignature: true })).toBeNull();
+  });
+
+  it('also holds it until the guardian question is answered (ADR-212)', () => {
+    // The step carries two questions now. Answering only the agreement one is
+    // not enough: an unanswered guardian question would quietly mean "chase
+    // every tenant's parent for ever", which is a decision, not a default.
+    expect(continueBlocker('agreement', { ...base, agreementChoice: 'no' })).toBe(
+      'Choose how guardian numbers are verified',
+    );
+    expect(continueBlocker('agreement', { ...base, agreementChoice: 'yes', hasSignature: true })).toBe(
+      'Choose how guardian numbers are verified',
+    );
+  });
+
+  it('clears the Onboarding rules step once both questions are answered', () => {
+    expect(
+      continueBlocker('agreement', { ...base, agreementChoice: 'no', guardianChoice: 'optional' }),
+    ).toBeNull();
+    expect(
+      continueBlocker('agreement', {
+        ...base,
+        agreementChoice: 'yes',
+        hasSignature: true,
+        guardianChoice: 'mandatory',
+      }),
+    ).toBeNull();
   });
 });

@@ -36,6 +36,14 @@ export interface NormalizedTenant {
   depositStatus: string;
   securityDeposit: number;
   guardianPhone: string | null;
+  /**
+   * ADR-212. Undefined where the list endpoint does not report it — which is
+   * why the chip tests for `=== false` rather than falsiness. "We were not
+   * told" must not render as "not verified".
+   */
+  guardianVerified?: boolean;
+  /** False in a hostel that records the gap without chasing it. */
+  guardianVerificationChased?: boolean;
   advanceBalance: number;
   /** `SELF_SERVE` (default) or `OWNER_MANAGED` — the tenant has no app login yet. */
   accessMode: string | null;
@@ -91,6 +99,9 @@ export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
     hasAgreement: Boolean(s.has_agreement),
     depositStatus: String(s.deposit_status ?? 'UNKNOWN'),
     securityDeposit: Number(s.security_deposit ?? s.advance_deposit ?? 0),
+    guardianVerified: typeof s.guardian_verified === 'boolean' ? s.guardian_verified : undefined,
+    guardianVerificationChased:
+      typeof s.guardian_verification_chased === 'boolean' ? s.guardian_verification_chased : undefined,
     guardianPhone: s.phone_2 != null ? String(s.phone_2) : s.guardian_phone != null ? String(s.guardian_phone) : profile?.emergency_contact != null ? String(profile.emergency_contact) : null,
     advanceBalance: Number(s.advance_balance ?? s.deposit_balance ?? 0),
     accessMode: s.access_mode != null ? String(s.access_mode) : null,

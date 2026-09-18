@@ -50,17 +50,32 @@ function withRules(category: RulesCategory, rules: string[]): RulesCategory {
   return { ...category, rules };
 }
 
-/** Replace one line. Blank text is rejected — use `removeLine` to delete. */
+/**
+ * Replace one line, with the text exactly as typed.
+ *
+ * It used to trim and reject blank, which belonged to an editor that committed
+ * on blur — there, an empty box meant "I want this line gone". `SectionRow`
+ * commits on every keystroke, where both rules are wrong:
+ *
+ * - **Rejecting blank** returned the content unchanged, so React re-rendered
+ *   the controlled textarea with the old value and the last character an owner
+ *   deleted came straight back. A one-character line could not be cleared.
+ * - **Trimming** made a trailing space unenterable for the same reason: the
+ *   space was stripped, state never changed, and the next character landed
+ *   against the previous word.
+ *
+ * Empty is a legitimate line here — `addLine` and `addSection` both create one.
+ * Removing a line is `removeLine`, a separate act.
+ */
 export function editLine(
   content: RulesContent,
   categoryId: string,
   index: number,
   text: string,
 ): RulesContent {
-  const trimmed = String(text ?? '').trim();
-  if (!trimmed) return content;
+  const next = String(text ?? '');
   return mapCategory(content, categoryId, (c) =>
-    withRules(c, (c.rules ?? []).map((rule, i) => (i === index ? trimmed : rule))),
+    withRules(c, (c.rules ?? []).map((rule, i) => (i === index ? next : rule))),
   );
 }
 
@@ -152,18 +167,25 @@ export function resetSection(
  * identifier ships a literal `{MONTLY_RENT}` into a signed agreement, and
  * nothing downstream would catch it.
  */
+/**
+ * Inserted tokens use the double-brace form the backend and the stock template
+ * have always used. The single-brace form these chips used to emit was matched
+ * by nothing server-side, so every variable an owner inserted printed literally
+ * in their tenants' signed agreements. The interpolator now accepts both, so
+ * existing drafts keep working while new writes converge on one spelling.
+ */
 export const AGREEMENT_VARIABLES: { token: string; label: string }[] = [
-  { token: '{TENANT_NAME}', label: "Tenant's name" },
-  { token: '{MONTHLY_RENT}', label: 'Monthly rent' },
-  { token: '{SECURITY_DEPOSIT_AMOUNT}', label: 'Security deposit' },
-  { token: '{MAINTENANCE_CHARGE_AMOUNT}', label: 'Maintenance charge' },
-  { token: '{ROOM_NUMBER}', label: 'Room number' },
-  { token: '{JOINING_DATE}', label: 'Joining date' },
-  { token: '{HOSTEL_NAME}', label: 'Hostel name' },
-  { token: '{OWNER_NAME}', label: 'Owner name' },
+  { token: '{{TENANT_NAME}}', label: "Tenant's name" },
+  { token: '{{MONTHLY_RENT}}', label: 'Monthly rent' },
+  { token: '{{SECURITY_DEPOSIT_AMOUNT}}', label: 'Security deposit' },
+  { token: '{{MAINTENANCE_CHARGE_AMOUNT}}', label: 'Maintenance charge' },
+  { token: '{{ROOM_NUMBER}}', label: 'Room number' },
+  { token: '{{JOINING_DATE}}', label: 'Joining date' },
+  { token: '{{HOSTEL_NAME}}', label: 'Hostel name' },
+  { token: '{{OWNER_NAME}}', label: 'Owner name' },
 ];
 
-const VARIABLE_PATTERN = /\{[A-Z_]+\}/g;
+const VARIABLE_PATTERN = /\{\{[A-Z_]+\}\}|\{[A-Z_]+\}/g;
 
 /** Every variable used anywhere in the document, deduplicated. */
 export function variablesUsed(content: RulesContent | null | undefined): string[] {
@@ -176,20 +198,34 @@ export function variablesUsed(content: RulesContent | null | undefined): string[
   return [...found];
 }
 
+/** `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable. */
+function tokenName(token: string): string {
+  return String(token ?? '').replace(/[{}]/g, '');
+}
+
 /**
  * Variables in the text that Stayo cannot fill.
  *
  * A typo produces a token that looks right and resolves to nothing, so it is
  * worth naming before an owner publishes rather than after a tenant signs.
+ *
+ * Compared by **name**, not by spelling: the backend substitutes both brace
+ * forms, so a draft written with the editor's old single-brace chips resolves
+ * perfectly well and must not be reported as broken.
  */
 export function unknownVariables(content: RulesContent | null | undefined): string[] {
-  const known = new Set(AGREEMENT_VARIABLES.map((v) => v.token));
-  return variablesUsed(content).filter((token) => !known.has(token));
+  const known = new Set(AGREEMENT_VARIABLES.map((v) => tokenName(v.token)));
+  return variablesUsed(content).filter((token) => !known.has(tokenName(token)));
 }
 
 /** Substitute real values, for the tenant-eye preview. */
 export function fillVariables(text: string, values: Record<string, string>): string {
-  return String(text ?? '').replace(VARIABLE_PATTERN, (token) => values[token] ?? token);
+  return String(text ?? '').replace(VARIABLE_PATTERN, (token) => {
+    // Accept a value map keyed either way.
+    if (values[token] !== undefined) return values[token];
+    const byName = values[`{{${tokenName(token)}}}`] ?? values[`{${tokenName(token)}}`];
+    return byName ?? token;
+  });
 }
 
 /**
@@ -307,4 +343,40 @@ export function countEnabledLines(content: RulesContent | null | undefined): num
   return (content?.categories ?? [])
     .filter(isSectionEnabled)
     .reduce((total, c) => total + (c.rules ?? []).length, 0);
+}
+
+/**
+ * Insert a variable token at the caret.
+ *
+ * Replaces a DOM-reaching hack: the editor found its own textarea with
+ * `closest('div')?.parentElement?.querySelector('textarea')` and assigned
+ * `el.value` directly, so React state and the DOM disagreed until blur.
+ */
+export function insertToken(
+  value: string,
+  selectionStart: number,
+  token: string,
+): { value: string; caret: number } {
+  const text = String(value ?? '');
+  const at = Math.max(0, Math.min(selectionStart ?? text.length, text.length));
+  return { value: `${text.slice(0, at)}${token}${text.slice(at)}`, caret: at + token.length };
+}
+
+/**
+ * Rewrite the body of one commercial term.
+ *
+ * Titles are never touched: the headings are fixed, and the server enforces the
+ * same rule (`normalizeAgreementTerms`), so the two agree rather than the UI
+ * merely behaving. An id outside the stored set is a no-op.
+ */
+export function editTerm(content: RulesContent, termId: string, text: string): RulesContent {
+  const terms = (content as any)?.terms_and_conditions;
+  if (!Array.isArray(terms)) return content;
+
+  return {
+    ...content,
+    terms_and_conditions: terms.map((term: any) =>
+      term?.id === termId ? { ...term, content: text } : term,
+    ),
+  } as RulesContent;
 }

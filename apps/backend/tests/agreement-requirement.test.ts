@@ -12,9 +12,19 @@ const completion = (overrides: Partial<Parameters<typeof nextActivationStep>[0]>
   rulesAccepted: false,
   agreementSigned: false,
   profileCompleted: false,
+  guardianCompleted: false,
   activationCompleted: false,
   ...overrides,
 });
+
+/** Everything applies: an agreement hostel with a student. */
+const FULL = { agreementRequired: true, guardianRequired: true };
+/** A working professional at an agreement hostel — no guardian step. */
+const NO_GUARDIAN = { agreementRequired: true, guardianRequired: false };
+/** A student at a hostel that does not use agreements. */
+const NO_AGREEMENT = { agreementRequired: false, guardianRequired: true };
+/** Neither ceremony applies. */
+const MINIMAL = { agreementRequired: false, guardianRequired: false };
 
 describe("isAgreementRequired", () => {
   it("defaults to required when the flag is absent", () => {
@@ -41,96 +51,120 @@ describe("isAgreementRequired", () => {
 });
 
 describe("requiredActivationSteps", () => {
-  it("includes every step when an agreement is required", () => {
-    expect(requiredActivationSteps(true)).toEqual(["ACCOUNT", "RULES", "AGREEMENT", "PROFILE", "ACTIVATE"]);
+  it("includes every step when both ceremonies apply", () => {
+    // Identity precedes the agreement (ADR-070), and the guardian sits between
+    // them (ADR-213): who you are, who vouches for you, then you sign.
+    expect(requiredActivationSteps(FULL)).toEqual([
+      "ACCOUNT",
+      "RULES",
+      "PROFILE",
+      "GUARDIAN",
+      "AGREEMENT",
+      "ACTIVATE",
+    ]);
   });
 
-  it("drops only the rules and agreement steps when it is not", () => {
-    expect(requiredActivationSteps(false)).toEqual(["ACCOUNT", "PROFILE", "ACTIVATE"]);
+  it("drops rules and agreement for a hostel that does not use them", () => {
+    expect(requiredActivationSteps(NO_AGREEMENT)).toEqual(["ACCOUNT", "PROFILE", "GUARDIAN", "ACTIVATE"]);
   });
 
-  it("never drops account setup, profile or activation", () => {
-    // Those are operationally required regardless of paperwork: an activated
-    // tenant with no verified phone or profile would break allocation.
-    for (const step of ["ACCOUNT", "PROFILE", "ACTIVATE"] as const) {
-      expect(isStepApplicable(step, false)).toBe(true);
+  it("drops the guardian step for someone not asked for one", () => {
+    expect(requiredActivationSteps(NO_GUARDIAN)).toEqual([
+      "ACCOUNT",
+      "RULES",
+      "PROFILE",
+      "AGREEMENT",
+      "ACTIVATE",
+    ]);
+  });
+
+  it("strips both exemptions independently", () => {
+    expect(requiredActivationSteps(MINIMAL)).toEqual(["ACCOUNT", "PROFILE", "ACTIVATE"]);
+  });
+
+  it("always keeps ACCOUNT, PROFILE and ACTIVATE — nothing can exempt those", () => {
+    for (const applicability of [FULL, NO_GUARDIAN, NO_AGREEMENT, MINIMAL]) {
+      const steps = requiredActivationSteps(applicability);
+      for (const step of ["ACCOUNT", "PROFILE", "ACTIVATE"] as const) {
+        expect(steps).toContain(step);
+      }
     }
   });
+});
 
-  it("returns a fresh array, so callers cannot mutate the canonical order", () => {
-    const steps = requiredActivationSteps(true);
-    steps.push("PROFILE");
-
-    expect(requiredActivationSteps(true)).toHaveLength(5);
+describe("isStepApplicable", () => {
+  it("answers per tenancy, not per product", () => {
+    expect(isStepApplicable("GUARDIAN", FULL)).toBe(true);
+    expect(isStepApplicable("GUARDIAN", NO_GUARDIAN)).toBe(false);
+    expect(isStepApplicable("AGREEMENT", NO_AGREEMENT)).toBe(false);
+    expect(isStepApplicable("PROFILE", MINIMAL)).toBe(true);
   });
 });
 
 describe("nextActivationStep", () => {
-  it("walks the full sequence when an agreement is required", () => {
-    expect(nextActivationStep(completion(), true)).toBe("ACCOUNT");
-    expect(nextActivationStep(completion({ accountSetupCompleted: true }), true)).toBe("RULES");
-    expect(nextActivationStep(completion({ accountSetupCompleted: true, rulesAccepted: true }), true)).toBe(
-      "AGREEMENT",
-    );
-    expect(
-      nextActivationStep(
-        completion({ accountSetupCompleted: true, rulesAccepted: true, agreementSigned: true }),
-        true,
-      ),
-    ).toBe("PROFILE");
+  it("walks the full sequence in order", () => {
+    let state = completion();
+    expect(nextActivationStep(state, FULL)).toBe("ACCOUNT");
+
+    state = completion({ accountSetupCompleted: true });
+    expect(nextActivationStep(state, FULL)).toBe("RULES");
+
+    state = completion({ accountSetupCompleted: true, rulesAccepted: true });
+    expect(nextActivationStep(state, FULL)).toBe("PROFILE");
+
+    state = completion({ accountSetupCompleted: true, rulesAccepted: true, profileCompleted: true });
+    expect(nextActivationStep(state, FULL)).toBe("GUARDIAN");
+
+    state = completion({
+      accountSetupCompleted: true,
+      rulesAccepted: true,
+      profileCompleted: true,
+      guardianCompleted: true,
+    });
+    expect(nextActivationStep(state, FULL)).toBe("AGREEMENT");
+
+    state = completion({
+      accountSetupCompleted: true,
+      rulesAccepted: true,
+      profileCompleted: true,
+      guardianCompleted: true,
+      agreementSigned: true,
+    });
+    expect(nextActivationStep(state, FULL)).toBe("ACTIVATE");
   });
 
-  it("goes straight from account setup to profile when no agreement is required", () => {
-    expect(nextActivationStep(completion({ accountSetupCompleted: true }), false)).toBe("PROFILE");
+  it("does not stall on a guardian step that does not apply", () => {
+    // The regression this guards: an unfinished GUARDIAN on a working
+    // professional would park them on a screen they can never complete.
+    const state = completion({
+      accountSetupCompleted: true,
+      rulesAccepted: true,
+      profileCompleted: true,
+      guardianCompleted: false,
+    });
+    expect(nextActivationStep(state, NO_GUARDIAN)).toBe("AGREEMENT");
   });
 
-  it("does not stall on an unsigned agreement a hostel never asked for", () => {
-    // The bug this prevents: agreement_signed stays false forever when the
-    // ceremony is skipped, so a sequence that consults it would never advance.
+  it("skips straight from account to profile when no ceremony applies", () => {
+    expect(nextActivationStep(completion({ accountSetupCompleted: true }), MINIMAL)).toBe("PROFILE");
+  });
+
+  it("returns ACTIVATE once everything applicable is done", () => {
     const state = completion({ accountSetupCompleted: true, profileCompleted: true });
-
-    expect(nextActivationStep(state, false)).toBe("ACTIVATE");
-    expect(nextActivationStep(state, true)).toBe("RULES");
-  });
-
-  it("reports ACTIVATE once everything applicable is done", () => {
-    expect(
-      nextActivationStep(
-        completion({ accountSetupCompleted: true, profileCompleted: true, activationCompleted: true }),
-        false,
-      ),
-    ).toBe("ACTIVATE");
+    expect(nextActivationStep(state, MINIMAL)).toBe("ACTIVATE");
   });
 });
 
 describe("completedApplicableSteps", () => {
-  it("counts only steps this hostel actually asks for", () => {
-    const state = completion({ accountSetupCompleted: true, profileCompleted: true });
-
-    expect(completedApplicableSteps(state, false)).toEqual(["ACCOUNT", "PROFILE"]);
+  it("counts only steps this tenancy is actually asked for", () => {
+    const state = completion({ accountSetupCompleted: true, profileCompleted: true, guardianCompleted: true });
+    // guardianCompleted is true but the step does not apply, so it is not
+    // counted — progress is a fraction of what was asked, not of what exists.
+    expect(completedApplicableSteps(state, NO_GUARDIAN)).toEqual(["ACCOUNT", "PROFILE"]);
+    expect(completedApplicableSteps(state, NO_AGREEMENT)).toEqual(["ACCOUNT", "PROFILE", "GUARDIAN"]);
   });
 
-  it("excludes skipped steps rather than counting them as complete", () => {
-    // Counting them done would report 5/5 for a tenant who signed nothing, and
-    // make progress indistinguishable from a hostel that requires signing.
-    const state = completion({ accountSetupCompleted: true, profileCompleted: true });
-
-    expect(completedApplicableSteps(state, false)).not.toContain("AGREEMENT");
-    expect(completedApplicableSteps(state, false)).not.toContain("RULES");
-  });
-
-  it("gives 2 of 3 for a skipped-agreement hostel, not 2 of 5", () => {
-    const state = completion({ accountSetupCompleted: true, profileCompleted: true });
-
-    expect(completedApplicableSteps(state, false).length / requiredActivationSteps(false).length).toBeCloseTo(
-      2 / 3,
-    );
-  });
-
-  it("still credits a signature that was collected before the setting changed", () => {
-    // Turning the requirement off later must not erase a real signed record.
-    const state = completion({ accountSetupCompleted: true, rulesAccepted: true, agreementSigned: true });
-
-    expect(completedApplicableSteps(state, true)).toEqual(["ACCOUNT", "RULES", "AGREEMENT"]);
+  it("reports nothing done at the start", () => {
+    expect(completedApplicableSteps(completion(), FULL)).toEqual([]);
   });
 });

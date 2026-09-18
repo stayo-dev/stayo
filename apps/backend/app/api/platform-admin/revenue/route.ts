@@ -4,7 +4,8 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * GET /api/platform-admin/revenue   (ADR-172, Phase 5 — owner-level)
@@ -21,7 +22,7 @@ import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "VIEW_REVENUE_ANALYTICS");
 
     const monthStart = new Date(new Date().getUTCFullYear(), new Date().getUTCMonth(), 1);
 

@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import type { GuardianDeferralReason } from '@features/guardian-verification/guardianVerification';
 import { Link, useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import { AlertTriangle } from 'lucide-react';
 import { resolveError, toErrorLine } from '@shared/errors';
@@ -10,6 +11,7 @@ import { ActivationLayout } from './ActivationLayout';
 import type { ActivationVisualStep } from './ActivationProgress';
 import { ActivationIntroScreen } from './ActivationIntroScreen';
 import { AgreementStep } from './steps/AgreementStep';
+import { GuardianStep } from './steps/GuardianStep';
 import { WelcomeIdentityStep, type ProfileDraft } from './steps/WelcomeIdentityStep';
 import { PasswordActivateStep } from './steps/PasswordActivateStep';
 import { WelcomeSummaryStep } from './steps/WelcomeSummaryStep';
@@ -18,7 +20,7 @@ import { kycDocLabel, missingKycDocs, type OnboardingDocItem } from './onboardin
 import { prepareImageForUpload } from './compressImage';
 import { isImage, uploadProblem } from './uploadImagePolicy';
 import { Guidance } from './guidance/Guidance';
-import { identityIssues, passwordIssues } from './guidance/stepIssues';
+import { guardianIssues, identityIssues, passwordIssues } from './guidance/stepIssues';
 import {
   activationMessages,
   clearProfileDraft,
@@ -94,6 +96,11 @@ export function ActivationPage() {
   const [guardianOtpVerified, setGuardianOtpVerified] = useState(false);
   const [guardianVerifiedPhone, setGuardianVerifiedPhone] = useState('');
   const [guardianOtpVerifying, setGuardianOtpVerifying] = useState(false);
+  // ADR-212 — the guardian-side confirmation, and the deferral that replaces
+  // the old hard gate.
+  const [askingGuardian, setAskingGuardian] = useState(false);
+  const [guardianRequestSent, setGuardianRequestSent] = useState(false);
+  const [guardianDeferralReason, setGuardianDeferralReason] = useState<GuardianDeferralReason | null>(null);
   const [guardianOverrideUnlocked, setGuardianOverrideUnlocked] = useState(false);
 
   const [profile, setProfile] = useState<ProfileDraft>({
@@ -208,7 +215,6 @@ export function ActivationPage() {
   const currentStep = ctx?.current_step ?? ctx?.activation_state?.current_step;
   const completed = new Set(ctx?.completed_steps ?? ctx?.activation_state?.completed_steps ?? []);
   const activeStep = (visibleStep || currentStep) as ActivationStep | undefined;
-  const isStudent = String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT').toUpperCase() === 'STUDENT';
   const activationStageIndex = activationProgress < 40 ? 0 : activationProgress < 78 ? 1 : 2;
   const activationProgressWidth = `${Math.max(8, Math.round(activationProgress))}%`;
 
@@ -340,6 +346,78 @@ export function ActivationPage() {
     return ok;
   };
 
+  /**
+   * Ask the guardian to confirm, instead of making the tenant relay a code
+   * (ADR-212).
+   *
+   * Falls back to the OTP path rather than erroring when the WhatsApp template
+   * is not live yet — Meta's approval has a lead time, and "we can't do that
+   * right now" is a worse answer than the one that has always worked.
+   */
+  /**
+   * Whether this hostel chases an unverified guardian number, and the date it
+   * would ask again. Both come from the server (ADR-212) — the screen renders
+   * the promise, it does not compute it, so what a tenant is told and what
+   * actually happens cannot drift apart.
+   *
+   * The deadline is derived here rather than read back, because it has to be
+   * shown at the moment of deferring — before anything has been saved and
+   * therefore before any deadline exists on the record.
+   */
+  const guardianChased = ctx?.verification_status?.guardian_chased ?? true;
+  const guardianDeadline = useMemo(() => {
+    const stored = ctx?.verification_status?.guardian_deadline_at;
+    if (stored) return new Date(stored);
+    if (!guardianChased) return null;
+    const date = new Date();
+    date.setDate(date.getDate() + 7);
+    return date;
+  }, [ctx?.verification_status?.guardian_deadline_at, guardianChased]);
+
+  const handleAskGuardianToConfirm = async () => {
+    const phone = (profile.guardian_phone || '').trim();
+    if (!phone) return setError('Please enter a parent/guardian mobile number first.');
+    const invalidMessage = invalidPhoneMessage({ guardian: phone }, ['guardian']);
+    if (invalidMessage) return setError(invalidMessage);
+    const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, guardian: phone });
+    if (duplicateMessage) return setError(duplicateMessage);
+
+    setAskingGuardian(true);
+    setError('');
+    try {
+      /*
+        Saved first, because the message names the guardian and the resident and
+        reads both back off the tenancy — a number typed but not yet submitted
+        would otherwise send a message about the previous one.
+
+        The failure is deliberately swallowed rather than surfaced: the PROFILE
+        step validates the *whole* form, so a tenant who has filled in their
+        guardian but not yet their photo would be shown an unrelated complaint
+        about a photo when all they asked for was a confirmation message.
+        Swallowing it is only safe because the request itself carries the number
+        on screen and the backend refuses to send if it does not match what was
+        actually stored — so a failed save produces a clear "save your details
+        first", never a message to the wrong handset.
+      */
+      await tenantService.updateActivationWorkflow({
+        token,
+        step: 'PROFILE',
+        data: { ...profile, guardian_verification_deferred_reason: null },
+      }).catch(() => undefined);
+
+      const result = await tenantService.sendGuardianConfirmRequest({ token, guardianPhone: phone });
+      if (result?.fallback_to_otp) {
+        await handleSendGuardianOtp();
+        return;
+      }
+      setGuardianRequestSent(true);
+    } catch (err: any) {
+      setError(err?.response?.data?.error?.message || 'Could not reach your guardian. Try the code instead.');
+    } finally {
+      setAskingGuardian(false);
+    }
+  };
+
   const handleSendGuardianOtp = async () => {
     const phone = (profile.guardian_phone || '').trim();
     if (!phone) return setError('Please enter a parent/guardian mobile number first.');
@@ -405,11 +483,22 @@ export function ActivationPage() {
     gender: profile.gender || '',
     dateOfBirth: profile.date_of_birth || '',
     profileType: String(profile.profile_type || ctx?.tenant?.profile_type || 'STUDENT'),
-    guardianName: profile.guardian_name || '',
-    guardianPhone: profile.guardian_phone || '',
-    guardianVerified: Boolean(isGuardianPhoneVerified),
     photoUploaded: Boolean(profilePhotoFile || profilePhotoPreview),
     docItems,
+  };
+
+  /**
+   * The GUARDIAN step's guidance (ADR-213). Separate from `identityState`
+   * because guidance has to move with the fields it describes — leaving the
+   * guardian rules on Identity is what made Continue report things left to do
+   * and then scroll to controls that were no longer on screen.
+   */
+  const guardianState = {
+    name: profile.guardian_name || '',
+    relation: profile.guardian_relation || '',
+    phone: profile.guardian_phone || '',
+    verified: Boolean(isGuardianPhoneVerified),
+    deferralReason: guardianDeferralReason,
   };
 
   /**
@@ -498,20 +587,27 @@ export function ActivationPage() {
     }
   };
 
-  const submitProfile = async (): Promise<boolean> => {
-    if (isStudent) {
-      if (!profile.guardian_name?.trim()) {
-        setError('Parent/Guardian name is required.');
-        return false;
-      }
-      if (!profile.guardian_phone) {
-        setError('Parent/Guardian phone number is required.');
-        return false;
-      }
+  /**
+   * The GUARDIAN step (ADR-213). Validates the three fields this screen owns,
+   * then sends them plus whatever verification evidence exists — a code if one
+   * was entered, a deferral reason if the tenant said they could not.
+   */
+  const submitGuardian = async (): Promise<boolean> => {
+    if (!profile.guardian_name?.trim()) {
+      setError('Parent/Guardian name is required.');
+      return false;
     }
-    const invalidMessage = invalidPhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone }, ['primary', 'guardian']);
-    if (invalidMessage) {
-      setError(invalidMessage);
+    if (!profile.guardian_relation?.trim()) {
+      setError('Tell us how they are related to you.');
+      return false;
+    }
+    if (!profile.guardian_phone) {
+      setError('Parent/Guardian phone number is required.');
+      return false;
+    }
+    const invalidGuardian = invalidPhoneMessage({ guardian: profile.guardian_phone }, ['guardian']);
+    if (invalidGuardian) {
+      setError(invalidGuardian);
       return false;
     }
     const duplicateMessage = duplicatePhoneMessage({ primary: profile.phone, guardian: profile.guardian_phone });
@@ -519,8 +615,48 @@ export function ActivationPage() {
       setError(duplicateMessage);
       return false;
     }
-    if ((isStudent || profile.guardian_phone) && !isGuardianPhoneVerified) {
-      setError('Please verify the parent/guardian phone number first.');
+    /**
+     * ADR-212. Unverified is no longer a dead end — but it is still not the
+     * default way through. The tenant has to have *said* they cannot do it now,
+     * which is one deliberate tap rather than a form they can submit past
+     * without noticing the question.
+     *
+     * The message names the way out rather than only the obstacle. "Verify
+     * first" was true and useless to someone whose parent was not answering.
+     */
+    if (!isGuardianPhoneVerified && !guardianDeferralReason) {
+      setError('Verify the parent/guardian number, or tell us why it can’t be confirmed right now.');
+      return false;
+    }
+
+    setSubmitting(true);
+    setError('');
+    try {
+      return await submitStep('GUARDIAN', {
+        guardian_name: profile.guardian_name,
+        guardian_relation: profile.guardian_relation,
+        guardian_phone: profile.guardian_phone,
+        guardian_otp: guardianOtp,
+        // Sent only when the tenant actually chose to defer — the backend reads
+        // its absence as "no deferral this time", which is what stops a later
+        // save re-stamping a clock that already started.
+        ...(guardianDeferralReason ? { guardian_verification_deferred_reason: guardianDeferralReason } : {}),
+      });
+    } catch (err: any) {
+      setError(toErrorLine(resolveError(err, 'activation')));
+      return false;
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
+  const submitProfile = async (): Promise<boolean> => {
+    // ADR-213: the guardian moved to its own step, so this screen validates the
+    // tenant's own record and nothing else. The primary number is still checked
+    // here; the guardian number is checked where it is now entered.
+    const invalidMessage = invalidPhoneMessage({ primary: profile.phone }, ['primary']);
+    if (invalidMessage) {
+      setError(invalidMessage);
       return false;
     }
     if (!profilePhotoFile && !profilePhotoPreview) {
@@ -543,7 +679,7 @@ export function ActivationPage() {
         const uploadRes = await tenantService.uploadActivationPhoto(token, profilePhotoFile);
         if (uploadRes?.photo_url) photoUrl = uploadRes.photo_url;
       }
-      const saved = await submitStep('PROFILE', { ...profile, photo_url: photoUrl, guardian_otp: guardianOtp });
+      const saved = await submitStep('PROFILE', { ...profile, photo_url: photoUrl });
       if (saved) {
         clearProfileDraft(draftKey);
         setProfileDraftStatus('idle');
@@ -634,6 +770,7 @@ export function ActivationPage() {
       completedSteps={new Set(activationResult ? ['ACCOUNT', 'RULES', 'AGREEMENT', 'PROFILE', 'ACTIVATE'] : ctx.activation_state?.completed_steps || [])}
       onStepClick={(step) => goToStep(step as ActivationStep)}
       agreementRequired={ctx.activation_state?.agreement_required !== false}
+      guardianRequired={ctx.activation_state?.guardian_required !== false}
       hostelName={ctx.hostel.name || 'Stayo'}
       hostelLogoUrl={ctx.hostel.logo_url}
       gender={profile.gender}
@@ -666,16 +803,6 @@ export function ActivationPage() {
             onDocUpload={handleDocUpload}
             profile={profile}
             setProfile={setProfile}
-            isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
-            setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
-            guardianOtp={guardianOtp}
-            setGuardianOtp={setGuardianOtp}
-            guardianOtpSent={guardianOtpSent}
-            guardianOtpSending={guardianOtpSending}
-            guardianOtpCountdown={guardianOtpCountdown}
-            guardianOtpVerifying={guardianOtpVerifying}
-            onSendGuardianOtp={handleSendGuardianOtp}
-            onVerifyGuardianOtp={handleVerifyGuardianOtp}
             profileDraftStatus={profileDraftStatus}
             profilePhotoPreview={profilePhotoPreview}
             profilePhotoFile={profilePhotoFile}
@@ -694,9 +821,44 @@ export function ActivationPage() {
           </Guidance>
         )}
 
+        {!activationResult && activeStep === 'GUARDIAN' && (
+          <Guidance issues={guardianIssues(guardianState)}>
+            <GuardianStep
+              draft={{
+                guardian_name: profile.guardian_name || '',
+                guardian_relation: profile.guardian_relation || '',
+                guardian_phone: profile.guardian_phone || '',
+              }}
+              setDraft={(next) => setProfile({ ...profile, ...next })}
+              tenantName={ctx?.profile?.name || ''}
+              isGuardianPhoneVerified={Boolean(isGuardianPhoneVerified)}
+              setGuardianOverrideUnlocked={setGuardianOverrideUnlocked}
+              guardianOtp={guardianOtp}
+              setGuardianOtp={setGuardianOtp}
+              guardianOtpSent={guardianOtpSent}
+              guardianOtpSending={guardianOtpSending}
+              guardianOtpCountdown={guardianOtpCountdown}
+              guardianOtpVerifying={guardianOtpVerifying}
+              onSendGuardianOtp={handleSendGuardianOtp}
+              onVerifyGuardianOtp={handleVerifyGuardianOtp}
+              onAskGuardianToConfirm={handleAskGuardianToConfirm}
+              askingGuardian={askingGuardian}
+              guardianRequestSent={guardianRequestSent}
+              guardianChased={guardianChased}
+              guardianDeadline={guardianDeadline}
+              guardianDeferralReason={guardianDeferralReason}
+              onGuardianDeferralReasonChange={setGuardianDeferralReason}
+              submitting={submitting}
+              onSubmit={submitGuardian}
+              onBack={() => goToStep('PROFILE')}
+            />
+          </Guidance>
+        )}
+
         {!activationResult && (activeStep === 'RULES' || activeStep === 'AGREEMENT') && (
           <AgreementStep
             ctx={ctx}
+            activationToken={token}
             completedSteps={completed}
             submitting={submitting}
             guardianName={profile.guardian_name}

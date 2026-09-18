@@ -119,7 +119,33 @@ export const platformAdminService = {
    * same search, so the filter chips can show the shape of the backlog
    * without one request per status.
    */
-  getLeads: async (params: { search?: string; status?: string; limit?: number; offset?: number } = {}) => {
+  /**
+   * The homepage line-up (ADR-223) — which hostels the public front page shows
+   * and in what order. Replaced wholesale, never patched per row.
+   */
+  getHomepageFeatures: async () => {
+    const response = await api.get('/platform-admin/homepage-features');
+    return unwrap(response) as {
+      features: Array<{
+        hostel_id: string;
+        position: number;
+        name: string | null;
+        city: string | null;
+        live_on_homepage: boolean;
+        status: string | null;
+        listing_status: string | null;
+        verification_status: string | null;
+      }>;
+      candidates: Array<{ id: string; name: string; city: string | null }>;
+    };
+  },
+
+  setHomepageFeatures: async (hostelIds: string[]) => {
+    const response = await api.put('/platform-admin/homepage-features', { hostel_ids: hostelIds });
+    return unwrap(response) as { accepted: string[]; rejected: string[]; features: any[] };
+  },
+
+  getLeads: async (params: { search?: string; status?: string; source?: string; limit?: number; offset?: number } = {}) => {
     const response = await api.get('/platform-admin/leads', { params });
     const data = unwrap(response);
     return {
@@ -145,6 +171,27 @@ export const platformAdminService = {
   rejectLead: async (id: string, reason: string) => {
     const response = await api.post(`/platform-admin/leads/${id}/reject`, { reason });
     return unwrap(response);
+  },
+  resendInvitation: async (id: string) => {
+    const response = await api.post(`/platform-admin/leads/${id}/resend-invitation`);
+    return unwrap(response) as { lead: any; activationLink?: string; whatsapp_sent: boolean; email_sent: boolean };
+  },
+
+  /**
+   * Admin -> Add Owner (field/direct marketing). Creates a `platform_leads`
+   * row tagged DIRECT_ADMIN — the caller must already have sent+verified the
+   * phone via `authApi.sendPhoneOtp`/`verifyPhoneOtp` (purpose
+   * PHONE_VERIFICATION); this call only checks that a recent verification
+   * exists. Converges into the same approveLead/onboarding pipeline used by
+   * website leads.
+   */
+  createOwnerLead: async (data: { name: string; email: string; phone: string }) => {
+    const response = await api.post('/platform-admin/owners', data);
+    return unwrap(response) as { id: string; status: string; acquisition_source: string; phone_verified: boolean };
+  },
+  setOnboardingPlan: async (leadId: string, planCode: string) => {
+    const response = await api.patch(`/platform-admin/leads/${leadId}/onboarding-setup`, { plan_code: planCode });
+    return unwrap(response) as { id: string; intended_plan_code: string; founding_slots_remaining: number | null };
   },
   updateLeadApplicantMessage: async (id: string, applicant_message: string) => {
     const response = await api.patch(`/platform-admin/leads/${id}`, { applicant_message });
@@ -203,24 +250,12 @@ export const platformAdminService = {
     };
   },
 
-  getOwnerDocuments: async (status: 'PENDING' | 'VERIFIED' | 'REJECTED' = 'PENDING') => {
-    const response = await api.get('/platform-admin/owner-documents', { params: { status } });
-    return unwrap(response).documents as Array<{
-      id: string;
-      doc_type: 'AADHAAR' | 'PAN' | 'PHOTO';
-      file_url: string;
-      mime_type: string;
-      status: string;
-      uploaded_at: string;
-      reviewed_at: string | null;
-      review_note: string | null;
-      profile: { id: string; name: string; phone: string | null; email: string | null };
-    }>;
-  },
-  reviewOwnerDocument: async (id: string, decision: 'VERIFIED' | 'REJECTED', note?: string) => {
-    const response = await api.post(`/platform-admin/owner-documents/${id}/review`, { decision, note });
-    return unwrap(response);
-  },
+  // ── KYC Approvals (REMOVED) ────────────────────────────────────────────
+  // `getOwnerDocuments`/`reviewOwnerDocument` and their
+  // `/platform-admin/owner-documents*` backend routes are gone — the Admin
+  // Console no longer has an owner-document review screen. The owner-facing
+  // upload flow (`/api/owner/kyc-documents`, `document-vault-service.ts`)
+  // never depended on this and is untouched.
 
   /** The Profile → "Raise a Ticket" queue (ADR-079) — Stayo app/website problems, not hostel complaints. */
   getSupportTickets: async (status: 'OPEN' | 'RESOLVED' = 'OPEN') => {
@@ -263,40 +298,14 @@ export const platformAdminService = {
     return unwrap(response);
   },
 
-  /**
-   * Settlements. Stayo pools tenant rent and passes it through in full — every
-   * amount here is computed from captured gateway transactions, never typed.
-   */
-  getSettlementRun: async (date?: string) => {
-    const response = await api.get('/admin/settlements/run', { params: date ? { date } : {} });
-    return unwrap(response) as {
-      date: string;
-      run?: { id: string; date: string; status: string; gross_collected: number; owner_count: number } | null;
-      lanes?: { pending: any[]; processing: any[]; paid: any[]; failed: any[] };
-      totals?: {
-        to_settle: number; settled: number;
-        pending_count: number; done_count: number; total_count: number;
-      };
-      items?: any[];
-    };
-  },
-  createSettlementRun: async (date?: string) => {
-    const response = await api.post('/admin/settlements/run', date ? { date } : {});
-    return unwrap(response);
-  },
-  startSettlementItem: async (id: string) => {
-    const response = await api.post(`/admin/settlements/items/${id}/start`);
-    return unwrap(response);
-  },
-  /** Records a transfer that already happened. Method and reference are both required. */
-  paySettlementItem: async (id: string, method: string, reference: string) => {
-    const response = await api.post(`/admin/settlements/items/${id}/paid`, { method, reference });
-    return unwrap(response);
-  },
-  failSettlementItem: async (id: string, reason: string) => {
-    const response = await api.post(`/admin/settlements/items/${id}/fail`, { reason });
-    return unwrap(response);
-  },
+  // ── Admin Settlements (REMOVED) ────────────────────────────────────────
+  // `getSettlementRun`/`createSettlementRun`/`startSettlementItem`/
+  // `paySettlementItem`/`failSettlementItem` and their `/admin/settlements/
+  // run` + `/admin/settlements/items/*` backend routes are gone — the
+  // Admin Console no longer has an owner-payout screen. The owner-facing
+  // payout backend (`src/services/settlements/owner-payout-read-model.ts`
+  // etc., `/api/owner/payouts/*`) was untouched and still serves the owner
+  // app's Money tab.
 
   // ── Legacy per-hostel platform billing (REMOVED — ADR-172) ────────────────
   // `getPlans`/`createPlan`/`assignSubscription`/`recordInvoice`/`getRevenue`/
@@ -472,5 +481,74 @@ export const platformAdminService = {
     form.append('file', file);
     const response = await api.post('/platform-admin/billing-settings/qr', form);
     return unwrap(response) as { url: string };
+  },
+
+  // ── Managers (Super Admin -> Manager -> hostel assignment, ADR-214) ────────
+  // The frontend never decides what a manager may do — every call below is
+  // re-checked server-side against manager_permission_grants/
+  // manager_hostel_assignments on every request. This layer only shapes
+  // requests/responses, same as every other block in this file.
+
+  getManagers: async (params: { search?: string; status?: string } = {}) => {
+    const response = await api.get('/platform-admin/managers', { params });
+    return unwrap(response).managers as any[];
+  },
+  getManager: async (id: string) => {
+    const response = await api.get(`/platform-admin/managers/${id}`);
+    return unwrap(response).manager;
+  },
+  createManager: async (data: { name: string; phone: string; email: string; permissions: string[] }) => {
+    const response = await api.post('/platform-admin/managers', data);
+    return unwrap(response) as { manager: any; invitation: { activationLink: string; expiresAt: string } };
+  },
+  updateManager: async (id: string, data: { name?: string; phone?: string; permissions?: string[] }) => {
+    const response = await api.patch(`/platform-admin/managers/${id}`, data);
+    return unwrap(response).manager;
+  },
+  suspendManager: async (id: string, reason?: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/suspend`, { reason });
+    return unwrap(response).manager;
+  },
+  reactivateManager: async (id: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/reactivate`);
+    return unwrap(response).manager;
+  },
+  resendManagerInvitation: async (id: string) => {
+    const response = await api.post(`/platform-admin/managers/${id}/resend-invitation`);
+    return unwrap(response).invitation as { activationLink: string; expiresAt: string };
+  },
+  assignManagerHostels: async (id: string, hostelIds: string[]) => {
+    const response = await api.post(`/platform-admin/managers/${id}/hostels`, { hostelIds });
+    return unwrap(response).manager;
+  },
+  unassignManagerHostel: async (id: string, hostelId: string) => {
+    const response = await api.delete(`/platform-admin/managers/${id}/hostels/${hostelId}`);
+    return unwrap(response).manager;
+  },
+  reassignHostel: async (fromManagerId: string, hostelId: string, toManagerId: string) => {
+    const response = await api.post(
+      `/platform-admin/managers/${fromManagerId}/hostels/${hostelId}/reassign`,
+      { toManagerId },
+    );
+    return unwrap(response).manager;
+  },
+
+  /** Super Admin's manager-activity feed — filters: managerId, hostelId, actionType, entityType, from/to. */
+  getManagerActivity: async (params: {
+    managerId?: string; hostelId?: string; actionType?: string; entityType?: string; from?: string; to?: string; limit?: number;
+  } = {}) => {
+    const response = await api.get('/platform-admin/activity', { params });
+    return unwrap(response).activity as Array<{
+      id: string;
+      actionType: string;
+      entityType: string;
+      entityId: string | null;
+      hostelId: string | null;
+      actorProfileId: string;
+      actorName: string | null;
+      actorRole: string | null;
+      metadata: any;
+      timestamp: string;
+    }>;
   },
 };

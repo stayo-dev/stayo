@@ -17,6 +17,8 @@ import { ActivePollCard } from '@features/food/components/ActivePollCard';
 import { formatCellItems } from '@features/owner-food/weekGrid';
 import { PaySheet } from '@features/tenant-financials/components/PaySheet';
 import { ProfileCompletionNudge } from '../components/ProfileCompletionNudge';
+import { GuardianVerificationCard } from '@features/guardian-verification/GuardianVerificationCard';
+import { GuardianVerificationWall } from '@features/guardian-verification/GuardianVerificationWall';
 import { Spotlight, type SpotlightStop } from '@shared/ui-patterns/Spotlight';
 import { useNavAnchor } from '@/app/nav/NavAnchorContext';
 import { useTenantGuide } from '../guide/useTenantGuide';
@@ -119,6 +121,14 @@ export function TenantHomePage() {
    * `fin.amountDue > 0 && (...)` etc. keep their original conditional shape.
    */
   const profileNudge = <ProfileCompletionNudge />;
+  /*
+    ADR-212. Deliberately beside the profile nudge rather than above the rent
+    card: verification belongs with the other "finish setting up" items, where
+    it reads as the last thing left in a nearly-complete set. Both render
+    nothing unless there is genuinely something outstanding — and the card
+    renders nothing at all in a hostel that has chosen not to chase it.
+  */
+  const guardianNudge = <GuardianVerificationCard />;
 
   const rentCard = fin.amountDue > 0 && (
     <div ref={rentCardRef} className={`${card} p-[18px]`}>
@@ -322,9 +332,18 @@ export function TenantHomePage() {
         </div>
       </div>
 
+      {/*
+        Rendered once, outside both layouts — it is an overlay, and it decides
+        for itself whether it is due (the server applies the back-off rule). It
+        never blocks entry; see the component's own note on why "Not now" is
+        plain, immediate and always present.
+      */}
+      <GuardianVerificationWall />
+
       {isDesktop ? (
         <div className="mx-auto flex w-full max-w-[1100px] flex-col gap-6 px-8 pt-2">
           {profileNudge}
+          {guardianNudge}
           <div className="grid grid-cols-[1fr_380px] items-start gap-6">
             <div className="flex min-w-0 flex-col gap-6">
               {rentCard}
@@ -344,6 +363,7 @@ export function TenantHomePage() {
       ) : (
         <div className="flex flex-col gap-6 px-4 sm:px-6">
           {profileNudge}
+          {guardianNudge}
           {rentCard}
           {stayBlock}
           {pushCard}

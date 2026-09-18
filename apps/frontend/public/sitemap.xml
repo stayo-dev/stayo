@@ -5,21 +5,21 @@
           http://www.sitemaps.org/schemas/sitemap/0.9/sitemap.xsd">
 
   <!-- ── Core public pages ────────────────────────────────────────────── -->
-  <!-- ADR-071 split the front door in two: `/` is now an audience chooser
-       (thin, client-rendered, nothing to rank on) and `/owners` carries the
-       owner-acquisition copy that used to live at the root. `/owners` is
-       therefore the page worth crawling, and takes the 1.0. -->
+  <!-- ADR-223: `/` is a student-first homepage with real listings, trust copy
+       and supply capture — the page worth crawling. ADR-071's chooser (thin,
+       nothing to rank on) is kept at /welcome but no longer the default, and
+       the 0.7 demotion goes with it. -->
   <url>
     <loc>https://yourstayo.com/</loc>
-    <lastmod>2026-08-14</lastmod>
-    <changefreq>monthly</changefreq>
-    <priority>0.7</priority>
+    <lastmod>2026-09-18</lastmod>
+    <changefreq>weekly</changefreq>
+    <priority>1.0</priority>
   </url>
   <url>
     <loc>https://yourstayo.com/owners</loc>
-    <lastmod>2026-08-14</lastmod>
+    <lastmod>2026-09-18</lastmod>
     <changefreq>weekly</changefreq>
-    <priority>1.0</priority>
+    <priority>0.9</priority>
   </url>
   <url>
     <loc>https://yourstayo.com/about</loc>

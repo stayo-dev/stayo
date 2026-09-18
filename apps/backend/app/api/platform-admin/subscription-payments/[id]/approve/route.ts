@@ -5,14 +5,15 @@ import { NextRequest } from "next/server";
 import { getSession, apiResponse } from "@/lib/auth";
 import { subscriptionPaymentService } from "@/src/services/platform-billing/subscription-payment-service";
 import { subscriptionInvoiceDocumentService } from "@/src/services/platform-billing/subscription-invoice-document-service";
-import { requireAdmin, subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { subscriptionErrorResponse } from "@/src/services/platform-billing/subscription-http";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 
 /**
  * POST /api/platform-admin/subscription-payments/[id]/approve
  *
- * Admin-only (ADR-172, Phase 2). Follows the same review posture as
- * `app/api/platform-admin/owner-documents/[id]/review/route.ts`: the uploader
- * (owner) can never do this, and a payment can be approved only once.
+ * Admin-only (ADR-172, Phase 2). Follows the same review posture the (now
+ * removed) owner-document review route used: the uploader (owner) can never
+ * do this, and a payment can be approved only once.
  *
  * One transaction: payment → APPROVED, subscription activated/updated (billing
  * period, next renewal, plan applied — upgrade immediate, downgrade deferred to
@@ -22,7 +23,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_SUBSCRIPTIONS");
     const result = await subscriptionPaymentService.reviewPayment({
       paymentId: id,
       decision: "APPROVE",

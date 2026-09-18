@@ -4,12 +4,13 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any) {
-  if (!session || session.role !== "ADMIN") {
-    throw new Error("FORBIDDEN: Admin access only");
-  }
-}
+import { AdminAddOwnerSchema } from "@/lib/validators";
+import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
+import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
+import { profilePhoneCandidates } from "@/lib/services/auth/auth-otp-service";
+import { createPlatformLead } from "@/src/services/platform-leads/create-platform-lead";
+import { requireAdminOrManagerPermission, scopeHostelIds } from "@/src/services/managers/manager-authorization";
+import { PLATFORM_OWNER_EMAIL } from "@/src/services/marketing/platform-owner";
 
 const REQUIRED_DOCS = ["AADHAAR", "PAN"];
 
@@ -34,7 +35,8 @@ const REQUIRED_DOCS = ["AADHAAR", "PAN"];
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_OWNERS");
+    const restrictToHostelIds = await scopeHostelIds(session);
 
     const { searchParams } = new URL(req.url);
     const search = searchParams.get("search")?.trim();
@@ -43,6 +45,15 @@ export async function GET(req: NextRequest) {
 
     const where = {
       role: "OWNER" as const,
+      // The sentinel "Stayo Platform" profile (platform-owner.ts) owns
+      // PLATFORM_LISTED hostels until a real owner claims one — it satisfies
+      // `role: OWNER` for the foreign key but is not an account anyone
+      // manages, so it must never appear in the real owner roster.
+      email: { not: PLATFORM_OWNER_EMAIL },
+      // A manager only sees owners who run at least one hostel assigned to
+      // them — resolved server-side from manager_hostel_assignments, never
+      // trusted from the request.
+      ...(restrictToHostelIds ? { hostels: { some: { id: { in: restrictToHostelIds } } } } : {}),
       ...(search
         ? {
             // City is matched through the owner's hostels: an admin searching
@@ -81,7 +92,7 @@ export async function GET(req: NextRequest) {
     // be rolled up without a second round trip per owner.
     const hostels = await prisma.hostels.findMany({
       where: { owner_id: { in: ownerIds } },
-      select: { id: true, owner_id: true, name: true, listing_status: true, verification_status: true },
+      select: { id: true, owner_id: true, name: true, city: true, listing_status: true, verification_status: true },
     });
     const hostelIds = hostels.map((h: { id: string }) => h.id);
 
@@ -92,6 +103,7 @@ export async function GET(req: NextRequest) {
       collectionSums,
       duesSums,
       documents,
+      identities,
       subscriptions,
       lastActivity,
     ] = await Promise.all([
@@ -120,6 +132,13 @@ export async function GET(req: NextRequest) {
         where: { profile_id: { in: ownerIds }, is_active: true },
         select: { profile_id: true, doc_type: true, status: true },
       }),
+      // The owner's profile picture — stored on `profile_identity.photo_url`,
+      // never on `profile` (see app/api/owner/me/photo/route.ts). Not every
+      // owner has a row here; only those who uploaded a photo.
+      prisma.profile_identity.findMany({
+        where: { profile_id: { in: ownerIds } },
+        select: { profile_id: true, photo_url: true },
+      }),
       // ADR-172: billing is owner-level. One subscription per owner; MRR is the
       // current plan price (paise) of an ACTIVE subscription.
       prisma.owner_subscriptions.findMany({
@@ -128,7 +147,7 @@ export async function GET(req: NextRequest) {
           owner_id: true,
           status: true,
           next_renewal_at: true,
-          subscription_plans: { select: { price_paise: true } },
+          subscription_plans: { select: { price_paise: true, code: true, name: true } },
         },
       }),
       // Real, but sparse: only a few services write activity_logs, so this is
@@ -151,6 +170,7 @@ export async function GET(req: NextRequest) {
     const duesByHostel = byOwner(duesSums, "hostel_id", (r) => Number(r._sum.amount ?? 0));
     const lastActivityByOwner = byOwner(lastActivity, "owner_id", (r) => r._max.timestamp as Date | null);
     const subscriptionByOwner = new Map(subscriptions.map((s: any) => [s.owner_id, s] as const));
+    const photoByOwner = new Map(identities.map((i: any) => [i.profile_id, i.photo_url] as const));
 
     const result = owners.map((owner: any) => {
       const own = hostels.filter((h: any) => h.owner_id === owner.id);
@@ -180,8 +200,12 @@ export async function GET(req: NextRequest) {
         name: owner.name,
         email: owner.email,
         phone: owner.phone,
+        // profile.city is essentially never filled in for an owner — the
+        // real city lives on their hostel (matches the detail route).
+        city: own[0]?.city ?? null,
         joined_at: owner.created_at,
         is_active: owner.is_active,
+        photo_url: photoByOwner.get(owner.id) ?? null,
 
         hostels: own.length,
         hostels_live: own.filter((h: any) => String(h.listing_status) === "LIVE").length,
@@ -201,6 +225,13 @@ export async function GET(req: NextRequest) {
         documents_submitted: ownerDocs.length,
 
         mrr,
+        // Whatever plan the owner is on right now, active or not — a paused
+        // or expired subscription still names a real plan, and showing
+        // "Unassigned" for it would misreport a billing lapse as never having
+        // signed up. `Unassigned` is reserved for owners with no
+        // `owner_subscriptions` row at all (pre-ADR-172 backfill gap).
+        plan_name: ownerSub?.subscription_plans?.name ?? null,
+        plan_code: ownerSub?.subscription_plans?.code ?? null,
         subscription_statuses: ownerSub ? [String(ownerSub.status)] : [],
         next_renewal_at: renewals.length > 0 ? new Date(Math.min(...renewals.map((d: Date) => d.getTime()))) : null,
 
@@ -216,8 +247,109 @@ export async function GET(req: NextRequest) {
       has_more: offset + owners.length < total,
     });
   } catch (error: any) {
-    const msg = String(error?.message || "Failed to fetch owners");
-    if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
-    return apiError(msg);
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
+    return apiError(String(error?.message || "Failed to fetch owners"));
+  }
+}
+
+const ADD_OWNER_OTP_PURPOSE = "PHONE_VERIFICATION";
+
+/**
+ * POST /api/platform-admin/owners
+ *
+ * Admin -> Add Owner (field/direct marketing). Creates a `platform_leads`
+ * row tagged `acquisition_source: DIRECT_ADMIN` and converges into the
+ * exact same invitation/onboarding/subscription pipeline the public lead
+ * form uses (see docs/obsidian/Features.md) — this route does not create an
+ * owner account itself; the account is created later, when the owner opens
+ * the invitation link, exactly like the website channel.
+ *
+ * Requires the admin to have already run the owner's phone through the
+ * existing public OTP endpoints (POST /api/auth/send-phone-otp then
+ * verify-phone-otp, purpose PHONE_VERIFICATION) — this route only checks
+ * that a recent verification record exists (resolveSignupPhoneVerification),
+ * it never marks a phone verified on the admin's say-so.
+ */
+export async function POST(req: NextRequest) {
+  const session = await getSession(req);
+  try {
+    await requireAdminOrManagerPermission(session, "MANAGE_OWNERS");
+
+    const body = await req.json().catch(() => ({}));
+    const validated = AdminAddOwnerSchema.safeParse(body);
+    if (!validated.success) {
+      return apiError("Validation error", "VALIDATION_ERROR", 400);
+    }
+    const { name, email, phone } = validated.data;
+    const normalizedEmail = email.trim().toLowerCase();
+    const normalizedPhone = normalizeWhatsAppPhone(phone);
+
+    // Existing owner/tenant/admin account with this email or phone already —
+    // do not create a second lead/account for someone already on the
+    // platform. Phone is matched across every historical storage shape
+    // (see profilePhoneCandidates), since profile.phone predates today's
+    // normalization.
+    const existingProfile = await prisma.profile.findFirst({
+      where: {
+        OR: [
+          { email: normalizedEmail },
+          { phone: { in: profilePhoneCandidates(normalizedPhone) } },
+        ],
+      },
+      select: { id: true, name: true, email: true, role: true },
+    });
+    if (existingProfile) {
+      return apiError(
+        `An account already exists for this email/phone (${existingProfile.name}, ${existingProfile.role}).`,
+        "OWNER_EXISTS",
+        409,
+        { existing_profile_id: existingProfile.id },
+      );
+    }
+
+    const verification = await resolveSignupPhoneVerification(normalizedPhone, ADD_OWNER_OTP_PURPOSE);
+    if (!verification.ok) {
+      return apiError(
+        "Verify the owner's phone number (send + confirm the OTP) before creating this owner.",
+        "PHONE_NOT_VERIFIED",
+        400,
+      );
+    }
+
+    const result = await createPlatformLead({
+      name,
+      // Real hostel name is collected later, during the owner's own
+      // onboarding — the Add Owner form deliberately only asks for name,
+      // email, phone. `platform_leads.hostel_name` is NOT NULL, so this is a
+      // display-only placeholder until the owner names their hostel for real.
+      hostel_name: name,
+      phone: normalizedPhone,
+      google_email: normalizedEmail,
+      phone_verified: verification.phoneVerified,
+      acquisition_source: "DIRECT_ADMIN",
+    });
+
+    if (result.duplicate) {
+      return apiError(
+        `A pending onboarding already exists for this phone (status ${result.lead.status}).`,
+        "DUPLICATE_PHONE",
+        409,
+        { existing_lead_id: result.lead.id, status: result.lead.status },
+      );
+    }
+
+    return apiResponse(
+      {
+        id: result.lead.id,
+        status: result.lead.status,
+        acquisition_source: result.lead.acquisition_source,
+        phone_verified: result.lead.phone_verified,
+      },
+      201,
+    );
+  } catch (error: any) {
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
+    console.error("Detailed API Error [platform-admin.owners.POST]:", error);
+    return apiError("Could not create this owner. Please try again.", "INTERNAL_ERROR", 500);
   }
 }

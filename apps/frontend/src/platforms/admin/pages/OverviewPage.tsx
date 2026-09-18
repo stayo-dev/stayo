@@ -2,7 +2,7 @@ import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
 import { platformAdminService } from '@features/platform-admin/api';
 import { ADMIN_CARD } from '../theme/palette';
-import { buildKpis, buildFunnel, buildReviewQueue, conversionRate } from '../overview/overviewModel';
+import { buildKpis, buildFunnel, conversionRate } from '../overview/overviewModel';
 
 const POLL = { staleTime: 30_000, refetchInterval: 60_000 } as const;
 
@@ -14,19 +14,16 @@ export function OverviewPage() {
     queryFn: () => platformAdminService.getDashboard(),
     ...POLL,
   });
+  // Admin -> Add Owner leads never appear in this funnel — it's explicitly
+  // "From landing-page leads", not manual onboarding.
   const leads = useQuery({
     queryKey: ['admin', 'leads', 'counts'],
-    queryFn: () => platformAdminService.getLeads({ limit: 1 }),
+    queryFn: () => platformAdminService.getLeads({ source: 'WEBSITE', limit: 1 }),
     ...POLL,
   });
-  const pendingDocs = useQuery({
-    queryKey: ['admin', 'owner-documents', 'PENDING'],
-    queryFn: () => platformAdminService.getOwnerDocuments('PENDING'),
-    ...POLL,
-  });
-  const pendingHostels = useQuery({
-    queryKey: ['admin', 'hostels', { verification: 'PENDING' }],
-    queryFn: () => platformAdminService.getHostels({ verification: 'PENDING' }),
+  const openTickets = useQuery({
+    queryKey: ['admin', 'support-tickets', 'OPEN'],
+    queryFn: () => platformAdminService.getSupportTickets('OPEN'),
     ...POLL,
   });
   const activity = useQuery({
@@ -36,24 +33,35 @@ export function OverviewPage() {
   });
 
   const counts = leads.data?.counts ?? {};
-  const kpis = buildKpis(dashboard.data?.kpis);
+  const openReportsCount = openTickets.data?.length;
+  const kpis = buildKpis(dashboard.data?.kpis, openReportsCount);
   const funnel = buildFunnel(counts);
-  const reviewQueue = buildReviewQueue({
-    kyc: new Set((pendingDocs.data ?? []).map((d) => d.profile.id)).size,
-    listings: pendingHostels.data?.length ?? 0,
-  });
 
   return (
     <div className="flex animate-[adFade_.25s_ease] flex-col gap-[22px]">
       {/* ── KPI row ─────────────────────────────────────────────── */}
-      <div className="grid gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+      {/* Two-up even at phone widths — a single full-width card per metric
+          reads as ten separate screens' worth of scrolling; two per row
+          keeps the grid dashboard-shaped everywhere. */}
+      <div className="grid grid-cols-2 gap-2.5 sm:gap-3.5 xl:grid-cols-3">
         {kpis.map((k) => (
-          <div key={k.key} className={`${ADMIN_CARD} px-[18px] py-[17px]`}>
-            <div className="flex items-center justify-between gap-2.5">
-              <div className="text-[12px] font-semibold text-[#8A7F75]">{k.label}</div>
+          <div
+            key={k.key}
+            role={k.to ? 'button' : undefined}
+            tabIndex={k.to ? 0 : undefined}
+            onClick={k.to ? () => navigate(k.to!) : undefined}
+            onKeyDown={k.to ? (e) => { if (e.key === 'Enter') navigate(k.to!); } : undefined}
+            className={`${ADMIN_CARD} px-3 py-3 sm:px-[18px] sm:py-[17px] ${
+              k.to ? 'cursor-pointer transition-colors hover:border-[#DCC9BE] hover:bg-[#FCFAF7]' : ''
+            }`}
+          >
+            <div className="flex items-start justify-between gap-1.5">
+              <div className="text-[10.5px] font-semibold leading-tight text-[#8A7F75] sm:text-[12px]">
+                {k.label}
+              </div>
               {k.delta ? (
                 <span
-                  className={`rounded-full px-2 py-[3px] font-admin text-[10.5px] font-bold ${
+                  className={`shrink-0 rounded-full px-1.5 py-[2px] font-admin text-[9.5px] font-bold sm:px-2 sm:py-[3px] sm:text-[10.5px] ${
                     k.deltaTone === 'amber' ? 'bg-[#FBF1DE] text-[#B8792B]' : 'bg-[#EAF3EE] text-[#1F7A52]'
                   }`}
                 >
@@ -62,20 +70,26 @@ export function OverviewPage() {
               ) : null}
             </div>
             <div
-              className={`mt-[9px] font-admin text-[27px] font-extrabold tracking-[-0.03em] ${
+              className={`mt-1.5 font-admin text-[20px] font-extrabold tracking-[-0.03em] sm:mt-[9px] sm:text-[27px] ${
                 k.unavailable ? 'text-[#C9BFB4]' : 'text-[#221E1A]'
               }`}
             >
               {k.value}
             </div>
-            <div className="mt-0.5 text-[11.5px] text-[#A2978B]">{k.sub}</div>
+            <div className="mt-0.5 text-[10.5px] text-[#A2978B] sm:text-[11.5px]">{k.sub}</div>
           </div>
         ))}
       </div>
 
       {/* ── revenue trend + acquisition funnel ──────────────────── */}
       <div className="grid gap-4 xl:grid-cols-[1.55fr_1fr]">
-        <div className={`${ADMIN_CARD} px-[22px] py-5`}>
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/revenue')}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate('/admin/revenue'); }}
+          className={`${ADMIN_CARD} cursor-pointer px-[22px] py-5 transition-colors hover:border-[#DCC9BE] hover:bg-[#FCFAF7]`}
+        >
           <div className="flex items-start justify-between gap-4">
             <div>
               <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
@@ -83,6 +97,7 @@ export function OverviewPage() {
               </div>
               <div className="mt-0.5 text-[12px] text-[#8A7F75]">Daily gross · last 14 days</div>
             </div>
+            <span className="flex-none text-[12px] font-semibold text-[#B46A55]">View ›</span>
           </div>
           {/* The design charts 14 days of daily gross. No endpoint returns a
               date series — /platform-admin/revenue is point-in-time only — so
@@ -99,11 +114,22 @@ export function OverviewPage() {
           </div>
         </div>
 
-        <div className={`${ADMIN_CARD} px-[22px] py-5`}>
-          <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
-            Owner acquisition funnel
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => navigate('/admin/leads')}
+          onKeyDown={(e) => { if (e.key === 'Enter') navigate('/admin/leads'); }}
+          className={`${ADMIN_CARD} cursor-pointer px-[22px] py-5 transition-colors hover:border-[#DCC9BE] hover:bg-[#FCFAF7]`}
+        >
+          <div className="flex items-start justify-between gap-4">
+            <div>
+              <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
+                Owner acquisition funnel
+              </div>
+              <div className="mt-0.5 text-[12px] text-[#8A7F75]">From landing-page leads</div>
+            </div>
+            <span className="flex-none text-[12px] font-semibold text-[#B46A55]">View ›</span>
           </div>
-          <div className="mt-0.5 text-[12px] text-[#8A7F75]">From landing-page leads</div>
 
           <div className="mt-[18px] flex flex-col gap-2.5">
             {funnel.map((row) => (
@@ -133,71 +159,35 @@ export function OverviewPage() {
         </div>
       </div>
 
-      {/* ── review queue + live activity ────────────────────────── */}
-      <div className="grid gap-4 xl:grid-cols-2">
-        <div className={`${ADMIN_CARD} px-[22px] py-5`}>
-          <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
-            Waiting on your review
-          </div>
-          <div className="mt-[15px] flex flex-col gap-2.5">
-            {reviewQueue.map((row) => (
-              <button
-                key={row.key}
-                type="button"
-                disabled={row.unavailable}
-                onClick={() => navigate(row.to)}
-                className={`flex items-center gap-3.5 rounded-[14px] border px-3.5 py-[13px] text-left ${
-                  row.unavailable ? 'cursor-default opacity-60' : 'cursor-pointer'
-                }`}
-                style={{ background: row.tint, borderColor: row.border }}
+      {/* ── live activity ────────────────────────────────────────── */}
+      <div className={`${ADMIN_CARD} px-[22px] py-5`}>
+        <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
+          Live activity
+        </div>
+        <div className="mt-2 flex flex-col">
+          {activity.isLoading ? (
+            <div className="py-8 text-center text-[12px] text-[#8A7F75]">Loading activity…</div>
+          ) : (activity.data ?? []).length === 0 ? (
+            <div className="py-8 text-center text-[12px] text-[#8A7F75]">
+              Nothing has happened on the platform yet today.
+            </div>
+          ) : (
+            (activity.data ?? []).slice(0, 6).map((a, index) => (
+              <div
+                key={a.id}
+                className={`flex gap-3 py-[11px] ${index > 0 ? 'border-t border-[#F2ECE5]' : ''}`}
               >
                 <span
-                  className="flex h-[38px] w-[38px] flex-none items-center justify-center rounded-[11px] bg-white font-admin text-[15px] font-extrabold"
-                  style={{ color: row.ink }}
-                >
-                  {row.count}
-                </span>
-                <span className="min-w-0 flex-1">
-                  <span className="block text-[13.5px] font-semibold text-[#2A2521]">{row.title}</span>
-                  <span className="block text-[11.5px] text-[#8A7F75]">{row.sub}</span>
-                </span>
-                {!row.unavailable && (
-                  <span className="flex-none text-[12px] font-semibold text-[#B46A55]">Review ›</span>
-                )}
-              </button>
-            ))}
-          </div>
-        </div>
-
-        <div className={`${ADMIN_CARD} px-[22px] py-5`}>
-          <div className="font-admin text-[15px] font-bold tracking-[-0.01em] text-[#221E1A]">
-            Live activity
-          </div>
-          <div className="mt-2 flex flex-col">
-            {activity.isLoading ? (
-              <div className="py-8 text-center text-[12px] text-[#8A7F75]">Loading activity…</div>
-            ) : (activity.data ?? []).length === 0 ? (
-              <div className="py-8 text-center text-[12px] text-[#8A7F75]">
-                Nothing has happened on the platform yet today.
-              </div>
-            ) : (
-              (activity.data ?? []).slice(0, 6).map((a, index) => (
-                <div
-                  key={a.id}
-                  className={`flex gap-3 py-[11px] ${index > 0 ? 'border-t border-[#F2ECE5]' : ''}`}
-                >
-                  <span
-                    className="mt-[5px] h-2 w-2 flex-none rounded-full"
-                    style={{ background: a.color }}
-                  />
-                  <div className="min-w-0 flex-1">
-                    <div className="text-[12.5px] font-medium text-[#2A2521]">{a.title}</div>
-                    <div className="mt-px text-[11px] text-[#9A8F84]">{a.sub}</div>
-                  </div>
+                  className="mt-[5px] h-2 w-2 flex-none rounded-full"
+                  style={{ background: a.color }}
+                />
+                <div className="min-w-0 flex-1">
+                  <div className="text-[12.5px] font-medium text-[#2A2521]">{a.title}</div>
+                  <div className="mt-px text-[11px] text-[#9A8F84]">{a.sub}</div>
                 </div>
-              ))
-            )}
-          </div>
+              </div>
+            ))
+          )}
         </div>
       </div>
     </div>

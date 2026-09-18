@@ -333,6 +333,7 @@ model hostels {
   history_disclosures            residency_history_disclosures[]
   marketing_revisions            hostel_marketing_revisions[]
   tenant_owner_attestations      tenant_owner_attestations[]
+  homepage_feature                  homepage_features?
 }
 
 model identity_tokens {
@@ -862,12 +863,15 @@ model profile {
   // Enquiries this person sent from Discover, as the seeker. Distinct from
   // `visitor_leads` above, which is the same table seen as the *owner*.
   seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
+  seeker_coverage_requests                                          coverage_requests[]   @relation("SeekerCoverageRequests")
+  curated_homepage_features                                         homepage_features[]   @relation("HomepageCurator")
   saved_hostels                                                     saved_hostels[]
   hostel_reviews                                                    hostel_reviews[]
   // Phase B: the portable half of this account. `identity` is the person's own
   // record; the two share relations are this profile acting as an *owner* who
   // verified or rejected someone else's document.
   identity                                                          profile_identity?
+  manager_profile                                                   manager_profiles?
   // Meet your host (ADR-200). Relation fields add no scalar columns to
   // `profiles`, so `getSession()`'s profile reads are unaffected.
   host_profile                                                      owner_host_profile?   @relation("OwnerHostProfile")
@@ -975,6 +979,22 @@ model users {
 model PhoneVerificationOtp {
   id              String    @id @default(uuid()) @db.Uuid
   phone           String
+  /// ADR-212. Which tenancy this verification was taken for.
+  ///
+  /// The onboarding check used to be `{ phone, purpose, status }` with no
+  /// tenant link and no time window, so any number ever verified for any
+  /// tenant read as verified for every tenant. Harmless while verification was
+  /// an unconditional gate everyone passed on the spot; not harmless once the
+  /// product renders a "Verified" badge an owner decides from.
+  ///
+  /// NULL on rows predating ADR-212 — deliberately not backfilled, because
+  /// there is no honest way to attribute a historical OTP row to a tenancy.
+  /// The read path accepts NULL as legacy rather than regressing a guardian who
+  /// really did verify. `guardian-access.ts` keeps its phone-wide 90-day
+  /// lookup: it asks whether a handset is a verified guardian at all, which is
+  /// a different question and would be wrong to scope per tenant.
+  tenant_id       String?   @db.Uuid
+  tenants         tenants?  @relation(fields: [tenant_id], references: [id], onDelete: SetNull)
   otp_hash        String
   purpose         String
   status          String    @default("PENDING")
@@ -993,6 +1013,7 @@ model PhoneVerificationOtp {
   @@index([status])
   @@index([meta_message_id])
   @@index([request_ip, created_at])
+  @@index([tenant_id, purpose, status])
   @@map("phone_verification_otps")
 }
 
@@ -1892,6 +1913,24 @@ model tenants {
   guardian_name                     String?
   guardian_phone                    String?
   guardian_relation                 String?
+  /// ADR-212. When the tenant chose to verify their guardian later, which is
+  /// what starts the 7-day grace clock in a MANDATORY hostel. NULL means never
+  /// deferred — which is not the same as verified, and not the same as refused.
+  guardian_verification_deferred_at     DateTime? @db.Timestamptz(6)
+  /// ADR-212. NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO.
+  /// A plain string rather than a Prisma enum, matching this schema's existing
+  /// convention for descriptive statuses; the set is enforced by
+  /// `isGuardianDeferralReason` at the service boundary.
+  guardian_verification_deferred_reason String?
+  /// ADR-212. When to ask again. Set to `deferred_at + 7 days` on the first
+  /// deferral and pushed forward 3 days by each "Not now", so the wall's
+  /// back-off is a date rather than a counter — a counter incremented only on
+  /// dismissal cannot gate the very prompt that produces dismissals.
+  guardian_verification_next_prompt_at  DateTime? @db.Timestamptz(6)
+  /// ADR-212. How many times the tenant has dismissed the overdue wall. Kept
+  /// for reporting and for any future escalation rule; it does not gate the
+  /// prompt itself.
+  guardian_verification_prompt_count    Int       @default(0)
   personal_email                    String?
   college_name                      String?
   roll_number                       String?
@@ -1959,6 +1998,7 @@ model tenants {
   renewal_offers                    RenewalOffer[]
   renewal_decisions                 RenewalDecision[]
   tenant_notes                      tenant_notes[]
+  phone_verifications               PhoneVerificationOtp[]
   owner_attestations                tenant_owner_attestations[]
   change_requests                   change_requests[]
   renewal_timeline_events           RenewalTimelineEvent[]
@@ -2284,6 +2324,81 @@ enum Role {
   OWNER
   TENANT
   ADMIN
+  MANAGER
+}
+
+enum ManagerStatus {
+  PENDING_INVITATION
+  ACTIVE
+  SUSPENDED
+}
+
+/// One value per platform-admin module a manager can be granted access to.
+/// Enforced server-side by `requireManagerPermission` — never by hiding
+/// frontend nav alone. See manager-authorization.ts.
+enum ManagerPermission {
+  MANAGE_LEADS
+  MANAGE_OWNERS
+  MANAGE_HOSTELS
+  MANAGE_ONBOARDING
+  VIEW_REVENUE_ANALYTICS
+  MANAGE_SUBSCRIPTIONS
+  SUPPORT_REPORTS_BUGS
+  MANAGE_BROADCASTS
+  MANAGE_SETTINGS
+}
+
+/// A platform staff account scoped below ADMIN — profile.role = MANAGER,
+/// created only by a Super Admin (no self-serve signup, mirrors
+/// `platform_admins`). Permissions and hostel assignments live in the two
+/// sidecar tables below so they can change over the manager's lifetime
+/// without touching this row.
+model manager_profiles {
+  id               String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id       String                     @unique @db.Uuid
+  status           ManagerStatus              @default(PENDING_INVITATION)
+  invited_by       String?                    @db.Uuid
+  phone_verified_at DateTime?                 @db.Timestamptz(6)
+  activated_at     DateTime?                  @db.Timestamptz(6)
+  suspended_at     DateTime?                  @db.Timestamptz(6)
+  suspended_by     String?                    @db.Uuid
+  suspended_reason String?
+  created_at       DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at       DateTime?                  @db.Timestamptz(6)
+  profile          profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  permissions      manager_permission_grants[]
+  hostel_assignments manager_hostel_assignments[]
+}
+
+model manager_permission_grants {
+  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id String           @db.Uuid
+  permission        ManagerPermission
+  granted_by        String?           @db.Uuid
+  granted_at        DateTime          @default(now()) @db.Timestamptz(6)
+  manager           manager_profiles  @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+
+  @@unique([manager_profile_id, permission])
+}
+
+/// Which hostels a manager may operate on. Reassignment never deletes a row
+/// — it sets `unassigned_at` on the old one and inserts a new one, so
+/// historical activity attributed to the old assignment stays intact. At
+/// most one *active* (unassigned_at IS NULL) row may exist per hostel; see
+/// the partial unique index added by migrations/0XX_manager_role.sql
+/// (Prisma cannot express a partial index directly here).
+model manager_hostel_assignments {
+  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id  String           @db.Uuid
+  hostel_id           String           @db.Uuid
+  assigned_by         String?          @db.Uuid
+  assigned_at         DateTime         @default(now()) @db.Timestamptz(6)
+  unassigned_at       DateTime?        @db.Timestamptz(6)
+  unassigned_by       String?          @db.Uuid
+  manager             manager_profiles @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+
+  @@index([manager_profile_id, unassigned_at])
+  @@index([hostel_id, unassigned_at])
 }
 
 enum ExpenseScope {
@@ -2729,6 +2844,16 @@ model Agreement {
 
   generated_at           DateTime  @default(now()) @db.Timestamptz(6)
   signed_at              DateTime? @db.Timestamptz(6)
+
+  // What the tenant actually read, and evidence that they read it. The
+  // document a tenant signs used to be generated only *after* signing, and the
+  // screen they signed from showed a hardcoded stub containing none of the
+  // owner's clauses. These record the read that now precedes the signature.
+  // All nullable: agreements predating the read gate must stay valid.
+  // See ADR-217.
+  document_content_hash      String?
+  document_opened_at         DateTime? @db.Timestamptz(6)
+  document_read_completed_at DateTime? @db.Timestamptz(6)
   voided_at              DateTime? @db.Timestamptz(6)
   expiry_notified_30d_at DateTime? @db.Timestamptz(6)
   expiry_notified_15d_at DateTime? @db.Timestamptz(6)
@@ -3619,6 +3744,18 @@ enum ListingSource {
 /// historical row; migration 067 moved every row to CONTACTED and no code
 /// path writes it. Postgres cannot drop an enum value without recreating the
 /// type, so it stays.
+/// How a lead entered the acquisition funnel. WEBSITE is the public lead
+/// form (docs/obsidian ADR context: self-serve capture); DIRECT_ADMIN is an
+/// admin-started field/direct-marketing onboarding (Admin -> Add Owner).
+enum PlatformLeadAcquisitionSource {
+  WEBSITE
+  DIRECT_ADMIN
+  /// Tenants enquired about an unclaimed platform listing (migration 087).
+  DISCOVER_DEMAND
+  /// A student named the hostel on the public homepage (migration 087).
+  STUDENT_REFERRAL
+}
+
 enum PlatformLeadStatus {
   NEW
   UNDER_REVIEW
@@ -3728,8 +3865,32 @@ model platform_leads {
   /// Admin's estimate of annual contract value. Not a billed amount.
   estimated_value      Decimal? @db.Decimal(12, 2)
 
+  /// Where this lead entered the funnel — e.g. "landing_page", "pricing_plan",
+  /// "book_a_demo". Free-form and admin-facing (console filter/segmentation),
+  /// not an enum: acquisition surfaces get added/renamed without a migration.
+  /// NULL for leads captured before this column existed.
+  source             String?
+  /// `subscription_plans.code` the visitor clicked "Subscribe" on (landing
+  /// page pricing section), e.g. "GROWTH". Not a foreign key — a lead is not
+  /// a real subscription yet, and the plan may be renamed/retired by the time
+  /// admin reviews the lead; this is intent, not commitment.
+  plan_code          String?
+
   created_at         DateTime           @default(now()) @db.Timestamptz(6)
   updated_at         DateTime?          @db.Timestamptz(6)
+
+  /// Defaults every existing/website row to WEBSITE — zero behavior change
+  /// for the public lead form. Set to DIRECT_ADMIN only by
+  /// POST /api/platform-admin/owners (Admin -> Add Owner).
+  acquisition_source PlatformLeadAcquisitionSource @default(WEBSITE)
+  /// Admin's plan choice for a DIRECT_ADMIN lead, captured before the owner
+  /// account (and therefore any owner_subscriptions row) exists. Applied by
+  /// LeadInvitationService.activateInvitationForOwner once signup completes;
+  /// never read for WEBSITE leads.
+  intended_plan_code String?
+  /// Admin profile id who set intended_plan_code, for SUBSCRIPTION_PLAN_CHANGED
+  /// audit attribution when the plan is actually applied at signup completion.
+  intended_plan_set_by String?
 
   activities platform_lead_activities[]
   lead_notes platform_lead_notes[]
@@ -4440,4 +4601,48 @@ model stay_leaves {
   updated_at           DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
 
   @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
+}
+
+/// Demand for supply Stayo does not have yet. See migration 086 / ADR-223.
+model coverage_requests {
+  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  /// 'AREA' (demand for a place) or 'HOSTEL' (a student naming a hostel to onboard).
+  kind              String    @default("AREA")
+  area_query        String?
+  /// Lower-cased, whitespace-collapsed `area_query`, for aggregation.
+  normalized_query  String?
+  /// The hostel a student referred, for kind = 'HOSTEL'.
+  hostel_name       String?
+  /// The owner's number, when the student knew it. Optional, always.
+  owner_contact     String?
+  city              String?
+  contact_phone     String?
+  contact_email     String?
+  /// Set only when a signed-in seeker submitted it. Null forever otherwise.
+  seeker_profile_id String?   @db.Uuid
+  source            String    @default("HOME")
+  notified_at       DateTime? @db.Timestamptz(6)
+  created_at        DateTime  @default(now()) @db.Timestamptz(6)
+
+  seeker profile? @relation("SeekerCoverageRequests", fields: [seeker_profile_id], references: [id], onDelete: SetNull)
+
+  @@index([normalized_query, created_at(sort: Desc)], map: "idx_coverage_requests_normalized")
+  @@index([city, created_at(sort: Desc)], map: "idx_coverage_requests_city")
+  @@index([kind, created_at(sort: Desc)], map: "idx_coverage_requests_kind")
+}
+
+/// Admin-curated homepage line-up. See migration 088 / ADR-223.
+model homepage_features {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id  String   @unique @db.Uuid
+  /// Ascending. Not unique — reordering rewrites the whole list.
+  position   Int
+  created_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  hostel  hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  curator profile? @relation("HomepageCurator", fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([position, created_at], map: "idx_homepage_features_position")
 }

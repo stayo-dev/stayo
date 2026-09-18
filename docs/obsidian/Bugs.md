@@ -8,6 +8,38 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## 2026-09-18 — Every owner-added tenant ate two beds, so rooms filled at half capacity (fixed)
+
+**Symptom.** Reported by the owner from the Rooms tab. Room 505 of Sri Adithya Boys Hostel — capacity 4, two residents — read **"4/4 beds taken · 2 held for invites"**, offered **0 beds free**, and refused a third tenant with `CAPACITY_EXCEEDED: Room is already at full capacity`. The two held beds showed as nameless dashed placeholders, so there was no invite on screen to cancel and no way out of it from the UI.
+
+**Root cause — a bed counted by rows, and a lifecycle that legitimately writes two.** `roomCapacityService` derived holds as `Math.max(count(ACTIVE reservations), count(live invitations))`. That `Math.max` predates the current invitation model: it reads "an invitation without a reservation row still holds a bed", which is right, but it counts *rows*, and [[Decisions#ADR-165|ADR-165]] made one person legitimately occupy two of them. `createInvitation` now stands the tenancy up immediately — `ACTIVE` tenant, real `room_allocations` row, bed genuinely occupied — releases the reservation as `INVITE_LINKED`, and **deliberately leaves the invitation `PENDING`/`OPENED`** until the tenant personally accepts (the expiry ladder, the nudge cron and re-invite dedup all key on it staying live). So each owner-added tenant was counted once as occupied and once as reserved. A 4-bed room reached "full" at two people.
+
+Confirmed against production before the fix: room 505 had `occupied = 2`, `active_reservations = 0`, `active_invitations = 2` — and those two invitations were M Sai Vikas and N Manoj Kumar, the same two people already in the beds. Across the 44 live rooms, 4 were miscounted, 7 phantom beds were held, and all 3 rooms reading "full" were falsely full.
+
+**Why the held beds were invisible.** `property-service` builds the invited faces from ACTIVE `tenant_invitation_reservations` only, while the bed *count* came from the capacity service. Every phantom hold had a released reservation, so it produced a reserved bed with nobody attached to it — a placeholder the owner could neither identify nor cancel.
+
+**Fix.** Occupancy and holds are both counted as **sets of tenancies**: held beds are the union of the room's ACTIVE reservations and live invitations *minus* the tenancies already occupying a bed in that room (`heldBedCount`). The `Math.max` intent survives — either record alone still holds a bed — and two records naming one person now hold one. Read-side only: no migration, nothing backfilled, no write path changed. `QUEUED` stays a bed-holding status, and `OCCUPYING_ALLOCATION_WHERE` ([[Decisions#ADR-194|ADR-194]]) is untouched, so Stay Status still agrees with `occupied`.
+
+**Lesson.** When a lifecycle change makes one person legitimately present in two tables, every count expressed over rows silently becomes a count of records rather than of people. ADR-165 documented exactly why the invitation stays open; the counting rule that assumption broke was three files away and nobody re-read it.
+
+**Not verified.** Never opened in a browser — the corrected numbers were checked by replaying both the old and new rules as SQL over live production data, not by loading the Rooms tab. The capacity block itself (`createInvitation`'s `SELECT … FOR UPDATE` + snapshot) is unchanged and was not re-exercised against a real database, since the test project is still down.
+
+**See:** [[Business-Rules]], [[Decisions#ADR-165|ADR-165]], [[Backend]], [[Changelog]]
+## 2026-09-18 — A clause's last character could not be deleted, and Publish sat behind the tab bar (fixed)
+
+**Symptom.** Reported by the owner using Configuration › Agreements. Two faults on the same screen: deleting a clause backwards stopped at the final character — it reappeared as fast as it was deleted, so a line could never be emptied — and after changing anything, the "Review and publish" bar showed only as a sliver above Home/Tenants/Money and could not be tapped.
+
+**Root cause 1 — a guard that outlived its editor.** `editLine` (`config/agreementDraft.ts`) trimmed its input and returned the content *unchanged* when the result was blank, documented as "deleting is a separate, deliberate act". That was right for the editor it was written for, which committed on `onBlur` — a whole-value commit, where an empty box really did mean "remove this line". [[Decisions#ADR-220|ADR-220]]'s `SectionRow` replaced it with a **controlled textarea that commits on every keystroke**, and there both rules invert: the intermediate empty string is a normal moment mid-edit, and refusing it left React to re-render the textarea with the previous value, putting the deleted character straight back. The same guard made a *trailing space* unenterable — it was trimmed away, state never changed, and the next character landed against the previous word. `editTerm`, written for the new screen, stores its text verbatim and has neither fault; the two had silently disagreed since the rewrite.
+
+**Root cause 2 — a fixed bar with no offset and no z-index.** The workspace's publish bar was `fixed inset-x-0 bottom-0` with no `z-`, while `OwnerAppShell`'s tab bar is `fixed inset-x-0 bottom-0 z-40`. The bar rendered underneath it; only the part taller than the nav showed. The editor this replaced had used `bottom-[68px]`, and `owner-more`'s own [[Frontend|SaveBar]] already carried the right offset — the rewrite reused neither.
+
+**Fix.** `editLine` stores the text exactly as typed, empty included (which `addLine` and `addSection` already create); removing a line stays `removeLine`. The bar adopts `SaveBar`'s positioning verbatim — `bottom-[calc(4.5rem+env(safe-area-inset-bottom,0px))] z-20 … lg:bottom-0`, 4.5rem being the nav height `OwnerAppShell` already pads its `main` by, and `lg` being where the console shell drops the nav — and the page's bottom padding goes `pb-32` → `pb-40` to match the other bar-bearing config screens.
+
+**Lesson.** When an editor changes *when* it commits, every purity rule written for the old commit point has to be re-read. A validation that assumes a whole-value commit becomes a typing bug the moment the same function is called per keystroke.
+
+**Found alongside, fixed the same day.** The workspace wired only `editLine`, `addLine`, `addSection` and `editTerm`. `removeLine`, `removeSection`, `moveLine`, `moveSection`, `renameSection`, `toggleSection`, `toggleImportant`, `resetSection` and `isSectionEnabled` all existed and were tested, but no control on the screen called them — so a line could be *emptied* but not removed, and a section could not be deleted, renamed or reordered at all. A live regression against the editor ADR-220 replaced, since an emptied line still prints as a numbered blank clause. Now wired, under [[Decisions#ADR-221|ADR-221]].
+
+**See:** [[Decisions#ADR-220|ADR-220]], [[Decisions#ADR-221|ADR-221]], [[Frontend]], [[Changelog]]
 ## 2026-09-14 — Any owner could take over any account, ADMIN included (fixed)
 
 **Symptom.** Found by the 2026-09-14 authentication/authorization audit (finding C1), not by an incident. Reproduced in `tests/supabase-session-linking.test.ts` before the fix: a Supabase token that no profile was linked to resolved `ok: true` as the profile sharing its email.
@@ -2808,3 +2840,89 @@ So a migrated frontend rendered a button that a stale backend refused 100% of th
 **Not verified.** The edit has never been executed — no DB-backed test covers it and it was not run against a real backend.
 
 **See:** [[Decisions#ADR-208|ADR-208]], [[Decisions#ADR-165|ADR-165]], [[APIs]], [[Changelog]]
+
+## 2026-09-18 — Every variable an owner inserted printed literally in signed agreements (fixed)
+
+The agreement editor's insert chips wrote `{TENANT_NAME}`. The backend interpolator only matched `{{TENANT_NAME}}`. So an owner who used the feature as designed produced clauses reading "Rent is {MONTHLY_RENT}." on a document somebody then signed.
+
+Three modules disagreed: `config/agreementDraft.ts` wrote single braces, `config/agreements.ts` read double, the backend substituted double.
+
+**The design gap:** the token vocabulary was defined independently in three places with nothing asserting they matched, and no test ever rendered an owner-authored clause end to end.
+
+**Fix:** `interpolateText` accepts both forms, written as two explicit alternatives rather than optional braces (`\{\{?…\}\}?`), which would also match mismatched pairs like `{VAR}}` and silently "repair" malformed input instead of leaving it visible. No data migration — templates already saved with single braces started working immediately. See [[Decisions#ADR-216|ADR-216]].
+
+## 2026-09-18 — The tenant was shown a hardcoded document containing none of the owner's clauses (fixed)
+
+`AgreementStep.tsx` rendered a fixed contract: a title, a facts grid numbered "1.", then a jump straight to "6. Management Rights" with two invented sentences, then acknowledgements as "7.". Sections 2–5 did not exist. None of the owner's drafted clauses appeared anywhere.
+
+They were not missing from the payload — `ctx.rules.content.categories` reached the client with the correct content and **zero consumers**. The frozen legacy portal (`portal/pages/ActivateAccountPage.tsx:834`) rendered them correctly, so this was a **regression** introduced by the rebuilt tenant platform, not a feature never built.
+
+Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI that did render it would have shown raw `{{MONTHLY_RENT}}`.
+
+**The design gap:** a design-fidelity rebuild reproduced a mockup's *appearance* of a document, and nothing tested that the rendered document had any relationship to the stored one.
+
+**Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
+
+## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
+
+"Leave out" set `enabled: false` on a rule category. The owner's editor honoured it and the tenant's view honoured it, but `generatePdfBuffer` iterated `data.hostelRules.categories` **raw** — so a section an owner had deliberately withdrawn still appeared on the PDF their tenant signed and the business filed.
+
+**The design gap:** the enabled-flag predicate existed in the frontend only. The PDF had no notion of it.
+
+**Fix:** the PDF's rules section is filtered through the same predicate the composer uses.
+## 2026-09-18 — Manager login succeeded but never reached the manager dashboard (fixed)
+
+**Symptom.** Reported by the user: logging in with a MANAGER account's email/password returned a successful response, but the app never navigated to `/admin`/the manager dashboard. Depending on which page the login modal was opened from, the manager was either bounced to the marketing `/owners` page or the modal just closed with no navigation at all, leaving them stranded on the landing page.
+
+**Root cause.** The single owner/admin login surface's post-login handler, `handleAuthSuccess` in `apps/frontend/src/app/pages/public/LandingPage.tsx`, only branched on `role === 'admin'` and `role === 'owner'` (predating [[Decisions#ADR-214|ADR-214]]'s introduction of the `MANAGER` role). A manager's role matched neither branch, so it fell through to `crossSurfaceHandoff(..., 'owner')` (`apps/frontend/src/shared/lib/crossSurfaceLogin.ts`), which also only special-cased `role === 'tenant'` for that surface and returned `null` for `'manager'` — and from there to the final fallback, `if (isLoginRoute) navigate('/owners', ...)`, or nothing at all if the modal wasn't opened from the literal `/login` route. `AuthContext.tsx`'s own `role === 'admin' || role === 'manager'` redirect effect only fires on the `/login` path and races with `LandingPage`'s explicit navigate, so it didn't reliably rescue this either. Everything downstream — `/api/auth/me`'s `role`/`is_manager`/`manager_status`/`manager_permissions` fields, `AuthContext.buildAuthUser`, `RequireAdminSession`, and `AdminHomeDispatch` — was already correct; only the login-success routing switch was missing the new role.
+
+**Fix.** Added a `role === 'manager'` branch to `handleAuthSuccess` (navigates to `/admin`, mirroring the `admin` branch), and the symmetric case to `crossSurfaceHandoff`'s discovery branch in `crossSurfaceLogin.ts` (a manager who signs in on the Discovery surface is now handed off to `/admin` instead of being treated as a resident).
+
+**Lesson.** Adding a new `Role` value requires updating every place that switches on role, not just the backend session/permission plumbing — the frontend's login-success router and the Discovery/owner cross-surface handoff are both plain `if (role === ...)` chains with no exhaustiveness check, so a new role silently falls through to the last `else` rather than failing loudly.
+
+**Verified:** existing `crossSurfaceLogin.test.ts` (7 tests) still passes. No component-level test exists for `LandingPage.tsx` per this repo's frontend testing convention (pure `.ts` logic only, no `.tsx` rendering); not verified via a live login click-through in this session.
+
+**See:** [[Decisions#ADR-214|ADR-214]], [[Changelog]]
+
+## 2026-09-17 — Super Admin Activity feed showed every owner's routine actions, not manager/admin activity (fixed)
+
+## 2026-09-18 — A tenancy could be activated with no signature from the tenant (fixed)
+
+The rule was "at least one signature is required — add tenant or parent/guardian". A guardian-only signature satisfied it, so a person could be moved in, billed and held to a contract they never signed.
+
+An existing test even pinned the behaviour, named *"accepts either signature, but wants a name with it"*.
+
+**The design gap:** "at least one" was written to be accommodating and nobody asked which one.
+
+**Fix:** the tenant always signs; a guardian co-signature is required only when the hostel asks for one. Agreements already signed guardian-only stay valid. See [[Decisions#ADR-218|ADR-218]].
+
+## 2026-09-18 — The agreement editor could lose the line you were writing (fixed)
+
+Lines committed on `onBlur`. Tapping straight from one line to another dropped the edit in progress, because focus moved before the change was ever handed to React.
+
+The variable picker made it worse: it found its own textarea with `closest('div')?.parentElement?.querySelector('textarea')` and assigned `el.value` directly, so React state and the DOM disagreed until blur — and an inserted token could be lost entirely by the next keystroke.
+
+**The design gap:** an editor for a legal document was built with uncontrolled inputs and DOM reads, so "what is on screen" and "what will be saved" were two different things with no test able to tell them apart.
+
+**Fix:** lines commit `onChange`; token insertion is a pure `insertToken(value, caret, token)` against a ref, unit-tested. See [[Decisions#ADR-220|ADR-220]].
+
+## 2026-09-18 — Owners could not change their own notice period (fixed)
+
+`rules_content.terms_and_conditions` — Residential Use Only, Rent Payment, Security Deposit, Notice Period, Hostel Rules Compliance — had no editing surface at all. Every hostel on Stayo therefore shipped the same notice period in Stayo's wording, for terms that are genuinely per-hostel commercial decisions.
+
+The storage existed and was persisted; only the editor never touched it.
+
+**Fix:** owners write the body, the headings stay fixed, enforced server-side by `normalizeAgreementTerms`. See [[Decisions#ADR-220|ADR-220]].
+
+## Every lead read as "an owner filled in the form" (fixed 2026-09-18, ADR-223)
+
+**Symptom:** the admin Leads screen gave no way to tell who sourced a lead. An owner who filled in the signup form and a lead **nobody submitted** looked identical.
+
+**Cause:** two things compounding. `buildPlatformLeadFromEnquiry()` (`src/services/marketing/platform-listing-leads.ts`) never set `acquisition_source`, so every demand-evidence lead raised from a Discover enquiry inherited the `WEBSITE` default. And `acquisition_source` was never rendered anywhere in the admin UI — `LeadsPage` filtered on it (`source: 'WEBSITE'`) but displayed nothing.
+
+**Why it mattered:** it changes how the call opens. A `WEBSITE` lead is a callback to someone expecting to hear from us; a demand lead is a cold call to an owner who has never heard of Stayo. Sales had no way to know which they were dialling.
+
+**Fix:** migration 087 adds `DISCOVER_DEMAND` and `STUDENT_REFERRAL`; the enquiry builder sets the former; homepage referrals raise leads with the latter; the leads endpoint accepts a comma-separated `source` so the pipeline can show all three at once; and every row that was **not** owner-submitted carries a badge naming its source. An unrecognised or missing source reads as *Unknown source*, never as a signup — assuming consent that was never given is the more expensive mistake.
+
+Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
+

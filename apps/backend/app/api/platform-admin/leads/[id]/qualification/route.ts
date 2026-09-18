@@ -3,11 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any): asserts session is { sub: string; role: string } {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /** Blank string means "clear this field"; absent means "leave it alone". */
 function optionalInt(value: unknown): number | null | undefined {
@@ -48,7 +45,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
   const session = await getSession(req);
   const { id } = await params;
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
     const body = await req.json();
 
     const data: Record<string, unknown> = {
@@ -88,6 +85,7 @@ export async function PATCH(req: NextRequest, { params }: { params: Promise<{ id
     return apiResponse({ lead });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to save qualification");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     if (msg.startsWith("VALIDATION")) return apiError(msg.split(": ")[1] ?? msg, "VALIDATION_ERROR", 400);
     return apiError(msg);

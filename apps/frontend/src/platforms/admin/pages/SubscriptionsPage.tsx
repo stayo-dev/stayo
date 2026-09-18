@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { platformAdminService } from '@features/platform-admin/api';
-import { DataTable, EmptyState, FilterChips, SegmentedTabs, StatCard, type DataColumn } from '../ui';
+import { Avatar, DataTable, EmptyState, Field, FilterChips, Modal, MODAL_INPUT, ModalFooter, SegmentedTabs, StatCard, type DataColumn } from '../ui';
+import { ADMIN_CARD, tintForId } from '../theme/palette';
 import { useToast } from '../layout/toastContext';
 import {
   adminError,
@@ -10,6 +11,7 @@ import {
   capacityText,
   formatDate,
   formatPaise,
+  initialsOf,
   isReviewablePayment,
   overrideActive,
   paymentMethodLabel,
@@ -33,17 +35,6 @@ const Pill = ({ label, tone }: { label: string; tone: string }) => (
     {label}
   </span>
 );
-
-const SUB_COLUMNS: DataColumn[] = [
-  { key: 'owner', label: 'Owner', width: '1.6fr' },
-  { key: 'status', label: 'Status', width: '1fr' },
-  { key: 'plan', label: 'Plan', width: '1fr' },
-  { key: 'usage', label: 'Usage', width: '0.8fr' },
-  { key: 'amount', label: 'Amount', width: '0.8fr' },
-  { key: 'renewal', label: 'Renewal', width: '1fr' },
-  { key: 'latest', label: 'Latest payment', width: '1fr' },
-  { key: 'actions', label: '', width: '1.4fr' },
-];
 
 const PAY_COLUMNS: DataColumn[] = [
   { key: 'owner', label: 'Owner', width: '1.4fr' },
@@ -77,6 +68,15 @@ export function SubscriptionsPage() {
   );
 }
 
+type SubModal =
+  | null
+  | { type: 'pause'; row: any }
+  | { type: 'resume'; row: any }
+  | { type: 'extend'; row: any }
+  | { type: 'plan'; row: any }
+  | { type: 'cash'; row: any }
+  | { type: 'activateFounding'; row: any };
+
 // ── Subscriptions list + actions ──────────────────────────────────────────
 function SubscriptionsTab() {
   const qc = useQueryClient();
@@ -85,6 +85,7 @@ function SubscriptionsTab() {
   // Founding / Starter / Growth / Professional / Portfolio (business rules, 2026-09-10).
   const [planCode, setPlanCode] = useState('ALL');
   const [search, setSearch] = useState('');
+  const [modal, setModal] = useState<SubModal>(null);
 
   const list = useQuery({
     queryKey: ['admin', 'subscriptions', status, planCode, search],
@@ -112,106 +113,11 @@ function SubscriptionsTab() {
     try {
       await fn();
       refresh();
+      setModal(null);
       toast(okMsg, 'ok');
     } catch (e) {
       toast(adminError(e), 'no');
     }
-  };
-
-  const doPause = (id: string) => {
-    const reason = window.prompt('Reason for pausing this subscription:')?.trim();
-    if (!reason) return toast('A reason is required', 'no');
-    if (!window.confirm('Pause this subscription? The owner will lose platform access.')) return;
-    run(() => platformAdminService.pauseSubscription(id, reason), 'Subscription paused');
-  };
-  const doResume = (id: string) => {
-    const reason = window.prompt('Reason for resuming:')?.trim();
-    if (!reason) return toast('A reason is required', 'no');
-    run(
-      () => platformAdminService.resumeSubscription(id, reason),
-      'Resumed — owner is now PENDING_PAYMENT (they must pay, or use Extend to grant access)',
-    );
-  };
-  const doExtend = (id: string) => {
-    const daysStr = window.prompt('Extend access by how many days? (1–30)');
-    const days = Number(daysStr);
-    if (!Number.isInteger(days) || days < 1 || days > 30) return toast('Enter a whole number of days, 1–30', 'no');
-    const reason = window.prompt('Reason for the extension:')?.trim();
-    if (!reason) return toast('A reason is required', 'no');
-    run(() => platformAdminService.extendSubscription(id, { days, reason }), `Access extended ${days} day(s)`);
-  };
-  // Extra beds (business rules, 2026-09-10) — the backend validates the count
-  // against the plan's allowance regardless of what's typed here.
-  const promptExtraBeds = (plan: any): number | undefined => {
-    const allowance =
-      plan.max_extra_beds == null ? 'no limit' : plan.max_extra_beds === 0 ? 'not offered on this plan' : `up to ${plan.max_extra_beds}`;
-    const raw = window.prompt(`Extra beds beyond the ${plan.included_beds ?? '—'} included (${allowance}, ₹${(plan.extra_bed_price_paise ?? 0) / 100}/bed)? Leave blank for 0.`);
-    if (!raw || !raw.trim()) return undefined;
-    const n = Number(raw);
-    return Number.isFinite(n) && n >= 0 ? Math.floor(n) : undefined;
-  };
-
-  const doChangePlan = (id: string) => {
-    const codes = plans.map((p: any) => p.code).join(', ');
-    const code = window.prompt(`New plan code (${codes}):`)?.trim().toUpperCase();
-    const plan = plans.find((p: any) => p.code === code);
-    if (!plan) return toast('Unknown plan code', 'no');
-    const effective = window.confirm('OK = apply IMMEDIATELY. Cancel = apply at NEXT_PERIOD.')
-      ? 'IMMEDIATE'
-      : 'NEXT_PERIOD';
-    const extraBeds = effective === 'IMMEDIATE' ? promptExtraBeds(plan) : undefined;
-    const reason = window.prompt('Reason for the plan change:')?.trim();
-    if (!reason) return toast('A reason is required', 'no');
-    run(
-      () => platformAdminService.changeSubscriptionPlan(id, { plan_id: plan.id, effective, reason, extra_beds: extraBeds }),
-      `Plan change (${effective}) recorded`,
-    );
-  };
-  const doCash = (row: any) => {
-    const codes = plans.map((p: any) => p.code).join(', ');
-    const code = window.prompt(`Cash payment — plan code (${codes}):`)?.trim().toUpperCase();
-    const plan = plans.find((p: any) => p.code === code);
-    if (!plan) return toast('Unknown plan code', 'no');
-    const extraBeds = promptExtraBeds(plan);
-    const extraCostPaise = (extraBeds ?? 0) * (plan.extra_bed_price_paise ?? 0);
-    const defaultRupees = (plan.price_paise + extraCostPaise) / 100;
-    const amtStr = window.prompt(
-      `Amount in ₹ (plan ${formatPaise(plan.price_paise)}${extraBeds ? ` + ${extraBeds} extra beds` : ''}):`,
-      String(defaultRupees),
-    );
-    const rupees = Number(amtStr);
-    if (!Number.isFinite(rupees) || rupees <= 0) return toast('Enter a valid amount', 'no');
-    const reference = window.prompt('Cash reference / note (optional):')?.trim() || undefined;
-    if (!window.confirm(`Record a CASH payment of ₹${rupees} for ${row.owner?.name ?? 'this owner'}? It will be SUBMITTED for your review.`)) return;
-    run(async () => {
-      const created = await platformAdminService.recordCashSubscriptionPayment({
-        owner_id: row.owner.id,
-        plan_id: plan.id,
-        amount_paise: Math.round(rupees * 100),
-        reference,
-        extra_beds: extraBeds,
-      });
-      if (window.confirm('Cash payment recorded as SUBMITTED. Approve it now?')) {
-        await platformAdminService.approveSubscriptionPayment(created.id);
-      }
-    }, 'Cash payment recorded');
-  };
-  const doActivateFounding = (row: any) => {
-    // Server-computed from LIVE active-bed usage (business rules, 2026-09-12) —
-    // never the flat plan price alone, in case the owner already has active
-    // tenants past the 250 included beds at the moment of first activation.
-    const amount = formatPaise(row.founding_calculated_amount_paise ?? row.plan?.price_paise ?? row.amount_paise);
-    if (
-      !window.confirm(
-        `Mark as Paid & Activate?\n\nOwner: ${row.owner?.name ?? row.owner?.id}\nFounding Partner #${row.founding_partner_number ?? '—'}\nActive beds: ${row.usage?.used ?? 0} (${row.plan?.included_beds ?? 250} included, ₹${(row.plan?.extra_bed_price_paise ?? 1000) / 100}/extra bed)\nAmount to activate: ${amount}\n\nOnly confirm once the client has actually paid ${amount} outside Stayo. This activates a one-month subscription immediately.`,
-      )
-    )
-      return;
-    const reference = window.prompt('Payment reference / note (optional):')?.trim() || undefined;
-    run(
-      () => platformAdminService.activateFoundingSubscription(row.id, reference),
-      'Founding Partner subscription activated',
-    );
   };
 
   const rows = (list.data?.subscriptions ?? []).map((s: any) => ({ ...s, id: s.id }));
@@ -241,7 +147,7 @@ function SubscriptionsTab() {
           value={search}
           onChange={(e) => setSearch(e.target.value)}
           placeholder="Search owner name / email / phone"
-          className="ml-auto w-full max-w-[280px] rounded-[10px] border border-[#EAE1D8] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#221E1A]"
+          className="w-full rounded-[10px] border border-[#EAE1D8] bg-white px-3 py-2 text-[12.5px] outline-none focus:border-[#221E1A] sm:ml-auto sm:w-auto sm:max-w-[280px]"
         />
       </div>
 
@@ -249,103 +155,339 @@ function SubscriptionsTab() {
         <p className="text-[13px] text-[#8A7F75]">Loading subscriptions…</p>
       ) : list.isError ? (
         <EmptyState title="Could not load subscriptions" message={adminError(list.error)} />
+      ) : rows.length === 0 ? (
+        <EmptyState title="No subscriptions" message="No subscriptions match this filter." />
       ) : (
-        <DataTable
-          columns={SUB_COLUMNS}
-          rows={rows}
-          empty="No subscriptions match this filter."
-          renderCell={(row: any, key) => {
-            const sv = subStatusView(row.status);
-            switch (key) {
-              case 'owner':
-                return (
-                  <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
-                    <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? row.owner?.phone ?? ''}</div>
-                  </div>
-                );
-              case 'status':
-                return (
-                  <div className="flex flex-col gap-1">
-                    <Pill label={sv.label} tone={sv.tone} />
-                    {overrideActive(row.admin_override_until) && (
-                      <span className="text-[10px] font-semibold text-[#2E5D77]">Override → {formatDate(row.admin_override_until)}</span>
-                    )}
-                  </div>
-                );
-              case 'plan':
-                return (
-                  <div className="min-w-0">
-                    <div className="truncate text-[12px] text-[#221E1A]">
-                      {row.plan?.name ?? '—'}
-                      {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
-                    </div>
-                    {row.founding_partner_number != null && (
-                      <div className="truncate text-[10.5px] font-bold text-[#8A6410]">Founding Partner #{row.founding_partner_number}</div>
-                    )}
-                    {row.pending_plan && (
-                      <div className="truncate text-[10.5px] text-[#8A6410]">→ {row.pending_plan.name} next period</div>
-                    )}
-                  </div>
-                );
-              case 'usage':
-                return <span className="text-[12px] text-[#5A5147]">{capacityText(row.usage)}</span>;
-              case 'amount':
-                return (
-                  <div className="min-w-0">
-                    <span className="text-[12px] font-semibold text-[#221E1A]">
-                      {formatPaise(row.recurring_amount_paise ?? row.amount_paise)}
-                    </span>
-                    {row.extra_beds > 0 && (
-                      <div className="truncate text-[10.5px] text-[#8A7F75]">
-                        {formatPaise(row.amount_paise)} plan + {formatPaise((row.recurring_amount_paise ?? row.amount_paise) - row.amount_paise)} extra beds
-                      </div>
-                    )}
-                  </div>
-                );
-              case 'renewal':
-                return <span className="text-[12px] text-[#5A5147]">{formatDate(row.next_renewal_at)}</span>;
-              case 'latest':
-                return row.latest_payment ? (
-                  <div className="flex flex-col gap-0.5">
-                    <Pill label={paymentStatusView(row.latest_payment.status).label} tone={paymentStatusView(row.latest_payment.status).tone} />
-                    <span className="text-[10.5px] text-[#8A7F75]">{formatPaise(row.latest_payment.amount_paise)}</span>
-                  </div>
-                ) : (
-                  <span className="text-[11px] text-[#B4A99C]">none</span>
-                );
-              case 'actions': {
-                const acts = availableActions(row.status);
-                return (
-                  <div className="flex flex-wrap gap-1">
-                    {canActivateFounding(row.status, row.plan?.code) && (
-                      <ActBtn onClick={() => doActivateFounding(row)} primary>
-                        Mark as Paid & Activate
-                      </ActBtn>
-                    )}
-                    {acts.includes('pause') && <ActBtn onClick={() => doPause(row.id)}>Pause</ActBtn>}
-                    {acts.includes('resume') && <ActBtn onClick={() => doResume(row.id)}>Resume</ActBtn>}
-                    {acts.includes('extend') && <ActBtn onClick={() => doExtend(row.id)}>Extend</ActBtn>}
-                    {acts.includes('change-plan') && <ActBtn onClick={() => doChangePlan(row.id)}>Plan</ActBtn>}
-                    {acts.includes('cash') && <ActBtn onClick={() => doCash(row)}>Cash</ActBtn>}
-                  </div>
-                );
-              }
-              default:
-                return null;
-            }
-          }}
-        />
+        <div className="grid grid-cols-1 gap-3.5 sm:grid-cols-2 xl:grid-cols-3">
+          {rows.map((row: any) => (
+            <SubscriptionCard key={row.id} row={row} onOpen={setModal} />
+          ))}
+        </div>
       )}
+
+      {modal?.type === 'pause' && <PauseModal row={modal.row} onClose={() => setModal(null)} run={run} />}
+      {modal?.type === 'resume' && <ResumeModal row={modal.row} onClose={() => setModal(null)} run={run} />}
+      {modal?.type === 'extend' && <ExtendModal row={modal.row} onClose={() => setModal(null)} run={run} />}
+      {modal?.type === 'plan' && <ChangePlanModal row={modal.row} plans={plans} onClose={() => setModal(null)} run={run} />}
+      {modal?.type === 'cash' && <CashModal row={modal.row} plans={plans} onClose={() => setModal(null)} run={run} />}
+      {modal?.type === 'activateFounding' && <ActivateFoundingModal row={modal.row} onClose={() => setModal(null)} run={run} />}
     </div>
   );
 }
 
+function SubscriptionCard({ row, onOpen }: { row: any; onOpen: (m: SubModal) => void }) {
+  const sv = subStatusView(row.status);
+  return (
+    <div className={`${ADMIN_CARD} flex flex-col gap-2.5 p-4`}>
+      <div className="flex items-start justify-between gap-2">
+        <div className="flex min-w-0 items-center gap-2.5">
+          <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={36} />
+          <div className="min-w-0">
+            <div className="truncate text-[13.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
+            <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? row.owner?.phone ?? ''}</div>
+          </div>
+        </div>
+        <Pill label={sv.label} tone={sv.tone} />
+      </div>
+
+      <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5A5147]">
+        <span className="font-semibold text-[#221E1A]">
+          {row.plan?.name ?? '—'}
+          {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
+        </span>
+        <span className="text-[#D8CFC3]">·</span>
+        <span>{capacityText(row.usage)}</span>
+        {row.founding_partner_number != null && (
+          <span className="font-bold text-[#8A6410]">· Founding #{row.founding_partner_number}</span>
+        )}
+        {row.pending_plan && <span className="text-[#8A6410]">· → {row.pending_plan.name} next period</span>}
+        {overrideActive(row.admin_override_until) && (
+          <span className="font-semibold text-[#2E5D77]">· Override → {formatDate(row.admin_override_until)}</span>
+        )}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 rounded-[10px] bg-[#FAF6F1] px-3 py-2">
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount</div>
+          <div className="text-[13.5px] font-bold text-[#221E1A]">{formatPaise(row.recurring_amount_paise ?? row.amount_paise)}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Renewal</div>
+          <div className="text-[12px] text-[#5A5147]">{formatDate(row.next_renewal_at)}</div>
+        </div>
+        <div className="min-w-0">
+          <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Latest payment</div>
+          {row.latest_payment ? (
+            <Pill label={paymentStatusView(row.latest_payment.status).label} tone={paymentStatusView(row.latest_payment.status).tone} />
+          ) : (
+            <span className="text-[11px] text-[#B4A99C]">none</span>
+          )}
+        </div>
+      </div>
+
+      <SubscriptionActions row={row} onOpen={onOpen} compact />
+    </div>
+  );
+}
+
+function SubscriptionActions({ row, onOpen, compact }: { row: any; onOpen: (m: SubModal) => void; compact?: boolean }) {
+  const acts = availableActions(row.status);
+  const showFounding = canActivateFounding(row.status, row.plan?.code);
+  if (!showFounding && acts.length === 0) return null;
+  return (
+    <div className={`flex flex-wrap gap-1 ${compact ? 'gap-1.5 border-t border-[#F2ECE5] pt-2.5' : ''}`}>
+      {showFounding && (
+        <ActBtn onClick={() => onOpen({ type: 'activateFounding', row })} primary>
+          Mark as Paid & Activate
+        </ActBtn>
+      )}
+      {acts.includes('pause') && <ActBtn onClick={() => onOpen({ type: 'pause', row })}>Pause</ActBtn>}
+      {acts.includes('resume') && <ActBtn onClick={() => onOpen({ type: 'resume', row })}>Resume</ActBtn>}
+      {acts.includes('extend') && <ActBtn onClick={() => onOpen({ type: 'extend', row })}>Extend</ActBtn>}
+      {acts.includes('change-plan') && <ActBtn onClick={() => onOpen({ type: 'plan', row })}>Plan</ActBtn>}
+      {acts.includes('cash') && <ActBtn onClick={() => onOpen({ type: 'cash', row })}>Cash</ActBtn>}
+    </div>
+  );
+}
+
+// ── Subscription action modals ────────────────────────────────────────────
+function PauseModal({ row, onClose, run }: { row: any; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title="Pause this subscription" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <div className="rounded-xl bg-[#FBEFE9] px-3.5 py-3 text-[11.5px] leading-relaxed text-[#A5402F]">
+          The owner will lose platform access immediately.
+        </div>
+        <Field label="Reason for pausing">
+          <textarea className={`${MODAL_INPUT} min-h-[80px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this subscription being paused?" autoFocus />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() => run(() => platformAdminService.pauseSubscription(row.id, reason.trim()), 'Subscription paused')}
+        confirmLabel="Pause subscription"
+        confirmTone="red"
+        disabled={!reason.trim()}
+      />
+    </Modal>
+  );
+}
+
+function ResumeModal({ row, onClose, run }: { row: any; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title="Resume this subscription" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <Field label="Reason for resuming">
+          <textarea className={`${MODAL_INPUT} min-h-[80px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is this subscription being resumed?" autoFocus />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() =>
+          run(
+            () => platformAdminService.resumeSubscription(row.id, reason.trim()),
+            'Resumed — owner is now PENDING_PAYMENT (they must pay, or use Extend to grant access)',
+          )
+        }
+        confirmLabel="Resume subscription"
+        confirmTone="green"
+        disabled={!reason.trim()}
+      />
+    </Modal>
+  );
+}
+
+function ExtendModal({ row, onClose, run }: { row: any; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [days, setDays] = useState('7');
+  const [reason, setReason] = useState('');
+  const n = Number(days);
+  const validDays = Number.isInteger(n) && n >= 1 && n <= 30;
+  return (
+    <Modal title="Extend access" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <Field label="Extend by how many days?" hint="1–30 days">
+          <input type="number" min={1} max={30} className={MODAL_INPUT} value={days} onChange={(e) => setDays(e.target.value)} autoFocus />
+        </Field>
+        <Field label="Reason for the extension">
+          <textarea className={`${MODAL_INPUT} min-h-[70px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is access being extended?" />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() => run(() => platformAdminService.extendSubscription(row.id, { days: n, reason: reason.trim() }), `Access extended ${n} day(s)`)}
+        confirmLabel={`Extend ${validDays ? `${n} day(s)` : ''}`}
+        disabled={!validDays || !reason.trim()}
+      />
+    </Modal>
+  );
+}
+
+/** Extra-beds field, shared by Change Plan (IMMEDIATE only) and Cash — the
+ * backend validates the count against the plan's allowance regardless of
+ * what's entered here (business rules, 2026-09-10). */
+function ExtraBedsField({ plan, value, onChange }: { plan: any; value: string; onChange: (v: string) => void }) {
+  if (!plan) return null;
+  const allowance =
+    plan.max_extra_beds == null ? 'no limit' : plan.max_extra_beds === 0 ? 'not offered on this plan' : `up to ${plan.max_extra_beds}`;
+  if (plan.max_extra_beds === 0) return null;
+  return (
+    <Field label="Extra beds" hint={`Beyond the ${plan.included_beds ?? '—'} included (${allowance}, ₹${(plan.extra_bed_price_paise ?? 0) / 100}/bed). Leave blank for 0.`}>
+      <input type="number" min={0} className={MODAL_INPUT} value={value} onChange={(e) => onChange(e.target.value)} placeholder="0" />
+    </Field>
+  );
+}
+
+function ChangePlanModal({ row, plans, onClose, run }: { row: any; plans: any[]; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [planId, setPlanId] = useState(row.plan?.id ?? '');
+  const [effective, setEffective] = useState<'IMMEDIATE' | 'NEXT_PERIOD'>('IMMEDIATE');
+  const [extraBeds, setExtraBeds] = useState('');
+  const [reason, setReason] = useState('');
+  const plan = plans.find((p: any) => p.id === planId);
+
+  return (
+    <Modal title="Change plan" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <Field label="New plan">
+          <select className={MODAL_INPUT} value={planId} onChange={(e) => setPlanId(e.target.value)}>
+            <option value="" disabled>Choose a plan…</option>
+            {plans.map((p: any) => <option key={p.id} value={p.id}>{planLabel(p)}</option>)}
+          </select>
+        </Field>
+        <Field label="When should this take effect?">
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => setEffective('IMMEDIATE')} className={`flex-1 rounded-[10px] border px-3 py-2 text-[12px] font-semibold ${effective === 'IMMEDIATE' ? 'border-[#221E1A] bg-[#221E1A] text-white' : 'border-[#E7DDD1] bg-white text-[#5A5147]'}`}>
+              Immediately
+            </button>
+            <button type="button" onClick={() => setEffective('NEXT_PERIOD')} className={`flex-1 rounded-[10px] border px-3 py-2 text-[12px] font-semibold ${effective === 'NEXT_PERIOD' ? 'border-[#221E1A] bg-[#221E1A] text-white' : 'border-[#E7DDD1] bg-white text-[#5A5147]'}`}>
+              Next period
+            </button>
+          </div>
+        </Field>
+        {effective === 'IMMEDIATE' && <ExtraBedsField plan={plan} value={extraBeds} onChange={setExtraBeds} />}
+        <Field label="Reason for the plan change">
+          <textarea className={`${MODAL_INPUT} min-h-[70px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="Why is the plan changing?" />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() => {
+          const beds = extraBeds.trim() ? Math.max(0, Math.floor(Number(extraBeds))) : undefined;
+          run(
+            () => platformAdminService.changeSubscriptionPlan(row.id, { plan_id: plan.id, effective, reason: reason.trim(), extra_beds: effective === 'IMMEDIATE' ? beds : undefined }),
+            `Plan change (${effective}) recorded`,
+          );
+        }}
+        confirmLabel="Change plan"
+        disabled={!plan || !reason.trim()}
+      />
+    </Modal>
+  );
+}
+
+function CashModal({ row, plans, onClose, run }: { row: any; plans: any[]; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [planId, setPlanId] = useState(row.plan?.id ?? '');
+  const [extraBeds, setExtraBeds] = useState('');
+  const [rupees, setRupees] = useState('');
+  const [reference, setReference] = useState('');
+  const [approveNow, setApproveNow] = useState(true);
+  const plan = plans.find((p: any) => p.id === planId);
+  const beds = extraBeds.trim() ? Math.max(0, Math.floor(Number(extraBeds))) : 0;
+  const defaultRupees = plan ? (plan.price_paise + beds * (plan.extra_bed_price_paise ?? 0)) / 100 : 0;
+  const amount = rupees.trim() ? Number(rupees) : defaultRupees;
+  const validAmount = Number.isFinite(amount) && amount > 0;
+
+  return (
+    <Modal title="Record a cash payment" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <Field label="Plan">
+          <select className={MODAL_INPUT} value={planId} onChange={(e) => { setPlanId(e.target.value); setRupees(''); }}>
+            <option value="" disabled>Choose a plan…</option>
+            {plans.map((p: any) => <option key={p.id} value={p.id}>{planLabel(p)}</option>)}
+          </select>
+        </Field>
+        <ExtraBedsField plan={plan} value={extraBeds} onChange={(v) => { setExtraBeds(v); setRupees(''); }} />
+        <Field label="Amount (₹)" hint={plan ? `Plan default: ₹${defaultRupees.toLocaleString('en-IN')}` : undefined}>
+          <input type="number" min={1} className={MODAL_INPUT} value={rupees} onChange={(e) => setRupees(e.target.value)} placeholder={plan ? String(defaultRupees) : '0'} />
+        </Field>
+        <Field label="Reference / note" hint="Optional">
+          <input className={MODAL_INPUT} value={reference} onChange={(e) => setReference(e.target.value)} placeholder="e.g. cash handed to field agent" />
+        </Field>
+        <label className="flex items-center gap-2 text-[12.5px] font-semibold text-[#5A5147]">
+          <input type="checkbox" checked={approveNow} onChange={(e) => setApproveNow(e.target.checked)} className="h-4 w-4 accent-[#B46A55]" />
+          Approve this payment immediately after recording it
+        </label>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() =>
+          run(async () => {
+            const created = await platformAdminService.recordCashSubscriptionPayment({
+              owner_id: row.owner.id,
+              plan_id: plan.id,
+              amount_paise: Math.round(amount * 100),
+              reference: reference.trim() || undefined,
+              extra_beds: beds || undefined,
+            });
+            if (approveNow) await platformAdminService.approveSubscriptionPayment(created.id);
+          }, approveNow ? 'Cash payment recorded and approved' : 'Cash payment recorded — awaiting your approval')
+        }
+        confirmLabel="Record payment"
+        disabled={!plan || !validAmount}
+      />
+    </Modal>
+  );
+}
+
+function ActivateFoundingModal({ row, onClose, run }: { row: any; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [reference, setReference] = useState('');
+  // Server-computed from LIVE active-bed usage (business rules, 2026-09-12) —
+  // never the flat plan price alone, in case the owner already has active
+  // tenants past the 250 included beds at the moment of first activation.
+  const amount = formatPaise(row.founding_calculated_amount_paise ?? row.plan?.price_paise ?? row.amount_paise);
+  return (
+    <Modal title="Mark as paid & activate" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF6F1] px-3.5 py-3 text-[12px]">
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Founding Partner</div>
+            <div className="font-semibold text-[#221E1A]">#{row.founding_partner_number ?? '—'}</div>
+          </div>
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Active beds</div>
+            <div className="font-semibold text-[#221E1A]">{row.usage?.used ?? 0} ({row.plan?.included_beds ?? 250} included, ₹{(row.plan?.extra_bed_price_paise ?? 1000) / 100}/extra)</div>
+          </div>
+          <div className="col-span-2">
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount to activate</div>
+            <div className="text-[15px] font-bold text-[#221E1A]">{amount}</div>
+          </div>
+        </div>
+        <div className="rounded-xl bg-[#FBF1DE] px-3.5 py-3 text-[11.5px] leading-relaxed text-[#8A6410]">
+          Only confirm once the client has actually paid {amount} outside Stayo. This activates a one-month subscription immediately.
+        </div>
+        <Field label="Payment reference / note" hint="Optional">
+          <input className={MODAL_INPUT} value={reference} onChange={(e) => setReference(e.target.value)} autoFocus />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() => run(() => platformAdminService.activateFoundingSubscription(row.id, reference.trim() || undefined), 'Founding Partner subscription activated')}
+        confirmLabel="Mark as paid & activate"
+        confirmTone="dark"
+      />
+    </Modal>
+  );
+}
+
 // ── Payment review queue ──────────────────────────────────────────────────
+type PayModal = null | { type: 'approve'; row: any } | { type: 'reject'; row: any };
+
 function PaymentQueueTab() {
   const qc = useQueryClient();
   const toast = useToast();
   const [filter, setFilter] = useState('REVIEWABLE');
+  const [modal, setModal] = useState<PayModal>(null);
 
   const queue = useQuery({
     queryKey: ['admin', 'subscription-payments', filter],
@@ -359,37 +501,29 @@ function PaymentQueueTab() {
     qc.invalidateQueries({ queryKey: ['admin', 'subscriptions'] });
   };
 
-  const approve = useMutation({
+  const run = async (fn: () => Promise<unknown>, okMsg: string) => {
+    try {
+      await fn();
+      refresh();
+      setModal(null);
+      toast(okMsg, 'ok');
+    } catch (e) {
+      toast(adminError(e), 'no');
+    }
+  };
+
+  const onApprove = (row: any) => setModal({ type: 'approve', row });
+  const onReject = (row: any) => setModal({ type: 'reject', row });
+
+  const approveNow = useMutation({
     mutationFn: (id: string) => platformAdminService.approveSubscriptionPayment(id),
     onSuccess: (res) => {
       refresh();
+      setModal(null);
       toast(`Approved — subscription is now ${res.subscription?.status ?? 'updated'}${res.invoice?.invoice_number ? `, invoice ${res.invoice.invoice_number}` : ''}`, 'ok');
     },
     onError: (e) => toast(adminError(e), 'no'),
   });
-  const reject = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason: string }) => platformAdminService.rejectSubscriptionPayment(id, reason),
-    onSuccess: () => {
-      refresh();
-      toast('Payment rejected — the owner is told the reason and can resubmit', 'ok');
-    },
-    onError: (e) => toast(adminError(e), 'no'),
-  });
-
-  const onApprove = (row: any) => {
-    if (
-      window.confirm(
-        `Approve this payment?\n\nOwner: ${row.owner?.name ?? row.owner?.id}\nPlan: ${row.plan?.name ?? row.plan?.code}${row.extra_beds > 0 ? ` (+${row.extra_beds} extra beds)` : ''}\nAmount: ${formatPaise(row.amount_paise)}\nMethod: ${paymentMethodLabel(row.payment_method)}\nRef: ${row.transaction_reference ?? '—'}\n\nThis runs the atomic backend transaction: payment → APPROVED, subscription activated/updated, invoice issued.`,
-      )
-    ) {
-      approve.mutate(row.id);
-    }
-  };
-  const onReject = (row: any) => {
-    const reason = window.prompt('Reason for rejecting (shown to the owner):')?.trim();
-    if (!reason) return toast('A reason is required to reject', 'no');
-    reject.mutate({ id: row.id, reason });
-  };
 
   const downloadInvoice = useMutation({
     mutationFn: (invoiceId: string) => platformAdminService.downloadSubscriptionInvoice(invoiceId),
@@ -433,9 +567,12 @@ function PaymentQueueTab() {
             switch (key) {
               case 'owner':
                 return (
-                  <div className="min-w-0">
-                    <div className="truncate text-[12.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
-                    <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? ''}</div>
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={32} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[12.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
+                      <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? ''}</div>
+                    </div>
                   </div>
                 );
               case 'plan':
@@ -483,24 +620,88 @@ function PaymentQueueTab() {
                   </div>
                 );
               case 'actions':
-                if (isReviewablePayment(row.status)) {
-                  return (
-                    <div className="flex gap-1">
-                      <ActBtn onClick={() => onApprove(row)} primary>
-                        Approve
-                      </ActBtn>
-                      <ActBtn onClick={() => onReject(row)}>Reject</ActBtn>
-                    </div>
-                  );
-                }
-                return row.invoice ? (
-                  <ActBtn onClick={() => downloadInvoice.mutate(row.invoice.id)}>
-                    {downloadInvoice.isPending ? 'Preparing…' : 'Invoice'}
-                  </ActBtn>
-                ) : null;
+                return (
+                  <PaymentActions
+                    row={row}
+                    onApprove={onApprove}
+                    onReject={onReject}
+                    onDownloadInvoice={(id) => downloadInvoice.mutate(id)}
+                    downloadPending={downloadInvoice.isPending}
+                  />
+                );
               default:
                 return null;
             }
+          }}
+          renderMobileCard={(row: any) => {
+            const sv = paymentStatusView(row.status);
+            return (
+              <div className="flex flex-col gap-2.5">
+                <div className="flex items-start justify-between gap-2">
+                  <div className="flex min-w-0 items-center gap-2.5">
+                    <Avatar photoUrl={row.owner?.photo_url} initials={initialsOf(row.owner?.name)} tint={tintForId(String(row.owner?.id ?? row.id))} size={36} />
+                    <div className="min-w-0">
+                      <div className="truncate text-[13.5px] font-semibold text-[#221E1A]">{row.owner?.name ?? '—'}</div>
+                      <div className="truncate text-[11px] text-[#8A7F75]">{row.owner?.email ?? ''}</div>
+                    </div>
+                  </div>
+                  <div className="flex flex-col items-end gap-0.5">
+                    <Pill label={sv.label} tone={sv.tone} />
+                    {row.status === 'REJECTED' && row.rejection_reason && (
+                      <span className="max-w-[140px] truncate text-[10px] text-[#A5402F]" title={row.rejection_reason}>{row.rejection_reason}</span>
+                    )}
+                  </div>
+                </div>
+
+                <div className="flex flex-wrap items-center gap-x-1.5 gap-y-0.5 text-[12px] text-[#5A5147]">
+                  <span className="font-semibold text-[#221E1A]">
+                    {row.plan?.name ?? row.plan?.code ?? '—'}
+                    {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
+                  </span>
+                  <span className="text-[#D8CFC3]">·</span>
+                  <span>{paymentMethodLabel(row.payment_method)}</span>
+                  {row.transaction_reference && (
+                    <>
+                      <span className="text-[#D8CFC3]">·</span>
+                      <span className="truncate">{row.transaction_reference}</span>
+                    </>
+                  )}
+                </div>
+
+                <div className="flex items-center justify-between gap-3 rounded-[10px] bg-[#FAF6F1] px-3 py-2">
+                  <div className="min-w-0">
+                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount</div>
+                    <div className="text-[13.5px] font-bold text-[#221E1A]">{formatPaise(row.amount_paise)}</div>
+                    {row.amount_mismatch && (
+                      <div className="text-[10px] font-semibold text-[#A5402F]">⚠ expected {formatPaise(row.expected_amount_paise)}</div>
+                    )}
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Submitted</div>
+                    <div className="text-[12px] text-[#5A5147]">{formatDate(row.submitted_at)}</div>
+                  </div>
+                  <div className="min-w-0 text-right">
+                    <div className="text-[9px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Proof</div>
+                    {row.proof_file ? (
+                      <a href={row.proof_file} target="_blank" rel="noreferrer" className="text-[11.5px] font-semibold text-[#2E5D77] underline">
+                        View
+                      </a>
+                    ) : (
+                      <span className="text-[11px] text-[#B4A99C]">—</span>
+                    )}
+                  </div>
+                </div>
+
+                <PaymentActions
+                  row={row}
+                  onApprove={onApprove}
+                  onReject={onReject}
+                  onDownloadInvoice={(id) => downloadInvoice.mutate(id)}
+                  downloadPending={downloadInvoice.isPending}
+                  compact
+                />
+              </div>
+            );
           }}
         />
       )}
@@ -509,7 +710,102 @@ function PaymentQueueTab() {
         reviewed once; a second attempt returns a clear error.
       </p>
       <StatsRow />
+
+      {modal?.type === 'approve' && (
+        <ApprovePaymentModal row={modal.row} onClose={() => setModal(null)} onConfirm={() => approveNow.mutate(modal.row.id)} pending={approveNow.isPending} />
+      )}
+      {modal?.type === 'reject' && <RejectPaymentModal row={modal.row} onClose={() => setModal(null)} run={run} />}
     </div>
+  );
+}
+
+function PaymentActions({
+  row, onApprove, onReject, onDownloadInvoice, downloadPending, compact,
+}: {
+  row: any;
+  onApprove: (row: any) => void;
+  onReject: (row: any) => void;
+  onDownloadInvoice: (invoiceId: string) => void;
+  downloadPending: boolean;
+  compact?: boolean;
+}) {
+  if (isReviewablePayment(row.status)) {
+    return (
+      <div className={`flex gap-1.5 ${compact ? 'border-t border-[#F2ECE5] pt-2.5' : ''}`}>
+        <ActBtn onClick={() => onApprove(row)} primary>
+          Approve
+        </ActBtn>
+        <ActBtn onClick={() => onReject(row)}>Reject</ActBtn>
+      </div>
+    );
+  }
+  if (!row.invoice) return null;
+  return (
+    <div className={compact ? 'border-t border-[#F2ECE5] pt-2.5' : ''}>
+      <ActBtn onClick={() => onDownloadInvoice(row.invoice.id)}>{downloadPending ? 'Preparing…' : 'Invoice'}</ActBtn>
+    </div>
+  );
+}
+
+function ApprovePaymentModal({
+  row, onClose, onConfirm, pending,
+}: { row: any; onClose: () => void; onConfirm: () => void; pending: boolean }) {
+  return (
+    <Modal title="Approve this payment" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <div className="grid grid-cols-2 gap-3 rounded-xl bg-[#FAF6F1] px-3.5 py-3 text-[12px]">
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Plan</div>
+            <div className="font-semibold text-[#221E1A]">
+              {row.plan?.name ?? row.plan?.code ?? '—'}
+              {row.extra_beds > 0 ? ` +${row.extra_beds}` : ''}
+            </div>
+          </div>
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Amount</div>
+            <div className="font-semibold text-[#221E1A]">{formatPaise(row.amount_paise)}</div>
+          </div>
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Method</div>
+            <div className="text-[#221E1A]">{paymentMethodLabel(row.payment_method)}</div>
+          </div>
+          <div>
+            <div className="text-[9.5px] font-bold uppercase tracking-[.05em] text-[#A2978B]">Reference</div>
+            <div className="text-[#221E1A]">{row.transaction_reference ?? '—'}</div>
+          </div>
+        </div>
+        {row.amount_mismatch && (
+          <div className="rounded-xl bg-[#FBEFE9] px-3.5 py-3 text-[11.5px] leading-relaxed text-[#A5402F]">
+            ⚠ The declared amount doesn't match what the server calculates (expected {formatPaise(row.expected_amount_paise)}) — the invoice will
+            still use the server-calculated amount regardless of what's approved here. Review the proof before approving.
+          </div>
+        )}
+        <div className="text-[11.5px] leading-relaxed text-[#8A7F75]">
+          This runs the atomic backend transaction: payment → APPROVED, subscription activated/updated, invoice issued.
+        </div>
+      </div>
+      <ModalFooter onCancel={onClose} onConfirm={onConfirm} confirmLabel="Approve payment" confirmTone="green" pending={pending} />
+    </Modal>
+  );
+}
+
+function RejectPaymentModal({ row, onClose, run }: { row: any; onClose: () => void; run: (fn: () => Promise<unknown>, okMsg: string) => void }) {
+  const [reason, setReason] = useState('');
+  return (
+    <Modal title="Reject this payment" subtitle={row.owner?.name} onClose={onClose}>
+      <div className="flex flex-col gap-3.5 px-5 py-5 sm:px-6">
+        <Field label="Reason for rejecting" hint="Shown to the owner">
+          <textarea className={`${MODAL_INPUT} min-h-[80px] resize-y`} value={reason} onChange={(e) => setReason(e.target.value)} placeholder="What's wrong with this payment?" autoFocus />
+        </Field>
+      </div>
+      <ModalFooter
+        onCancel={onClose}
+        onConfirm={() => run(() => platformAdminService.rejectSubscriptionPayment(row.id, reason.trim()), 'Payment rejected — the owner is told the reason and can resubmit')}
+        confirmLabel="Reject payment"
+        confirmTone="red"
+        disabled={!reason.trim()}
+      />
+    </Modal>
   );
 }
 

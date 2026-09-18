@@ -18,6 +18,9 @@ export type OwnerRow = {
   statusTone: 'green' | 'muted';
   initials: string;
   tint: string;
+  /** The owner's uploaded KYC photo, when one exists — the initials tint is
+   *  the fallback, never the other way around. */
+  photoUrl: string | null;
 };
 
 /**
@@ -49,16 +52,23 @@ export function toOwnerRows(apiOwners: any[]): OwnerRow[] {
       id: String(o.id),
       name: String(o.name ?? 'Unnamed owner'),
       // An em dash, not a blank — a missing city should read as "we don't
-      // know", not as an empty column the reader glosses over.
+      // know", not as an empty column the reader glosses over. The owners
+      // endpoint doesn't surface one today (an owner can hold hostels in
+      // several cities), so this is always the fallback for now.
       city: o.city ? String(o.city) : '—',
       hostels: Number(o.hostels ?? 0),
-      beds: Number(o.beds ?? 0),
-      gmv: formatInr(Number(o.monthly_revenue ?? 0)),
-      plan: o.plan ? String(o.plan) : 'Unassigned',
+      // `/platform-admin/owners` names this `capacity` (summed active-room
+      // capacity across the owner's hostels), not `beds`.
+      beds: Number(o.capacity ?? 0),
+      // ...and this month's collections `collected_this_month`, not
+      // `monthly_revenue`.
+      gmv: formatInr(Number(o.collected_this_month ?? 0)),
+      plan: o.plan_name ? String(o.plan_name) : 'Unassigned',
       status: active ? 'Active' : 'Paused',
       statusTone: active ? 'green' : 'muted',
       initials: initialsOf(String(o.name ?? '?')),
       tint: tintForId(String(o.id)),
+      photoUrl: o.photo_url ? String(o.photo_url) : null,
     };
   });
 }

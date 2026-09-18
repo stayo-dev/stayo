@@ -4,6 +4,9 @@ import { frontendUrl } from "../../../lib/config/domains";
 import { EmailService } from "../../../lib/services/email-service";
 import { eventLog } from "../../../lib/services/event-log-service";
 import { platformLeadNotificationService } from "./platform-lead-notification-service";
+import { subscriptionService } from "../platform-billing/subscription-service";
+import { subscriptionAdminService } from "../platform-billing/subscription-admin-service";
+import { isSubscriptionError } from "../platform-billing/subscription-errors";
 
 /**
  * Owner-acquisition funnel, phase 2: admin-approve a `platform_leads` row →
@@ -54,6 +57,8 @@ export function mapInvitationError(error: any) {
     ALREADY_ACTIVE: 409,
     CANCELLED: 410,
     NOT_FOUND: 404,
+    PHONE_NOT_VERIFIED: 400,
+    INVALID_TRANSITION: 409,
     INTERNAL_ERROR: 500,
   };
   return { message, code, status: statusMap[code] || 500 };
@@ -72,18 +77,20 @@ export class LeadInvitationService {
     if (!APPROVABLE_STATUSES.includes(lead.status)) {
       throw new Error(`INVALID_TRANSITION: Lead is already ${lead.status} — cannot approve again`);
     }
+    // Admin-added owners (field/direct marketing) must have a real,
+    // OTP-verified phone on file before an invitation goes out — the admin
+    // cannot self-attest verification for someone else's number. Website
+    // leads are unaffected: their phone_verified reflects the same OTP flow
+    // at self-serve time but has never been a hard gate for approval, and
+    // this branch does not change that.
+    if (lead.acquisition_source === "DIRECT_ADMIN" && !lead.phone_verified) {
+      throw new Error("PHONE_NOT_VERIFIED: This owner's phone has not been verified yet");
+    }
 
     await prisma.platform_leads.update({ where: { id: leadId }, data: { status: "APPROVED", updated_at: new Date() } });
     await eventLog.log("LEAD_APPROVED", null, { lead_id: leadId, hostel_name: lead.hostel_name });
 
-    const token = generateToken();
-    const expiresAt = addDays(DEFAULT_INVITE_DAYS);
-    await prisma.platform_lead_invitations.create({
-      data: { lead_id: leadId, token, status: "PENDING", expires_at: expiresAt },
-    });
-
-    const activationLink = frontendUrl(`/activation/${token}`);
-    const delivery = await this.dispatchActivationNotification(leadId, lead, activationLink, token);
+    const { activationLink, delivery } = await this.mintAndDispatchInvitation(leadId, lead);
 
     if (delivery.whatsapp_sent || delivery.email_sent) {
       await prisma.platform_leads.update({ where: { id: leadId }, data: { status: "INVITE_SENT", updated_at: new Date() } });
@@ -96,6 +103,52 @@ export class LeadInvitationService {
 
     const updated = await prisma.platform_leads.findUnique({ where: { id: leadId } });
     return { lead: updated, activationLink, ...delivery };
+  }
+
+  /**
+   * Resend the onboarding link for a lead that was already approved/invited.
+   * `approveLead` only allows a retry while stuck at APPROVED (a failed
+   * send) — once a send succeeds and the lead reaches INVITE_SENT, there was
+   * previously no way to send a fresh link (unlike the tenant-invitation
+   * system's dedicated resend route). Mints a new 7-day token exactly like
+   * approveLead does; does not change status (it's already at the furthest
+   * pre-signup status it can be).
+   */
+  async resendInvitation(leadId: string) {
+    const lead = await prisma.platform_leads.findUnique({ where: { id: leadId } });
+    if (!lead) throw new Error("NOT_FOUND: Lead not found");
+    if (!["APPROVED", "INVITE_SENT"].includes(lead.status)) {
+      throw new Error(`INVALID_TRANSITION: Lead is ${lead.status} — nothing to resend`);
+    }
+
+    const { activationLink, delivery } = await this.mintAndDispatchInvitation(leadId, lead);
+
+    if (delivery.whatsapp_sent || delivery.email_sent) {
+      if (lead.status !== "INVITE_SENT") {
+        await prisma.platform_leads.update({ where: { id: leadId }, data: { status: "INVITE_SENT", updated_at: new Date() } });
+      }
+      await eventLog.log("LEAD_INVITE_RESENT", null, {
+        lead_id: leadId,
+        whatsapp_sent: delivery.whatsapp_sent,
+        email_sent: delivery.email_sent,
+      });
+    }
+
+    const updated = await prisma.platform_leads.findUnique({ where: { id: leadId } });
+    return { lead: updated, activationLink, ...delivery };
+  }
+
+  /** Shared by approveLead and resendInvitation: mint a fresh token, dispatch it. */
+  private async mintAndDispatchInvitation(leadId: string, lead: { name: string; hostel_name: string; phone: string; google_email: string | null; tracking_token: string }) {
+    const token = generateToken();
+    const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+    await prisma.platform_lead_invitations.create({
+      data: { lead_id: leadId, token, status: "PENDING", expires_at: expiresAt },
+    });
+
+    const activationLink = frontendUrl(`/activation/${token}`);
+    const delivery = await this.dispatchActivationNotification(leadId, lead, activationLink, token);
+    return { activationLink, delivery };
   }
 
   private async dispatchActivationNotification(
@@ -198,11 +251,50 @@ export class LeadInvitationService {
     });
     if (updated.count !== 1) throw new Error("ALREADY_ACTIVE: This invitation has already been used");
 
-    await prisma.platform_leads.update({
+    const lead = await prisma.platform_leads.update({
       where: { id: invitation.lead_id },
       data: { status: "OWNER_ACTIVATED", converted_owner_id: profileId, updated_at: new Date() },
     });
     await eventLog.log("LEAD_OWNER_ACTIVATED", profileId, { lead_id: invitation.lead_id, profile_id: profileId });
+
+    // Admin -> Add Owner convergence point: this is the one place both
+    // acquisition channels pass through, with both the lead and the new
+    // owner's id in scope. Website leads take none of this — for them,
+    // ensureForOwner still only fires at first hostel creation
+    // (POST /api/owner/hostels), exactly as before this feature existed.
+    // DIRECT_ADMIN leads reserve a subscription immediately: the admin
+    // already chose the plan by hand at Add-Owner time, so there is nothing
+    // to defer until a hostel exists (unlike the organic "first 10 owners"
+    // auto-Founding-assignment inside ensureForOwner, whose timing is
+    // deliberately pinned to hostel creation and is untouched here).
+    if (lead.acquisition_source === "DIRECT_ADMIN") {
+      try {
+        const sub = await subscriptionService.ensureForOwner(profileId);
+        if (lead.intended_plan_code) {
+          const intendedPlan = await prisma.subscription_plans.findFirst({
+            where: { code: lead.intended_plan_code, is_active: true },
+          });
+          if (intendedPlan && intendedPlan.id !== sub.plan_id) {
+            await subscriptionAdminService.changePlan({
+              subscriptionId: sub.id,
+              adminId: lead.intended_plan_set_by || "system:direct-admin-onboarding",
+              planId: intendedPlan.id,
+              effective: "IMMEDIATE",
+              reason: "Admin-assigned at direct/field-marketing lead creation",
+            });
+          }
+        }
+      } catch (err) {
+        if (isSubscriptionError(err) && err.code === "FOUNDING_FULL") {
+          console.warn("[lead-invitation-service] Founding slot filled before signup completed; owner kept on default plan", { profileId, leadId: invitation.lead_id });
+        } else {
+          // Non-fatal: the owner account and lead conversion must succeed
+          // even if plan assignment fails — an admin can still fix the plan
+          // later from the Subscriptions page.
+          console.error("[lead-invitation-service] direct-admin subscription setup failed (non-fatal)", err);
+        }
+      }
+    }
   }
 
   /** Called right after a new hostel is created — never blocks hostel creation on failure. */

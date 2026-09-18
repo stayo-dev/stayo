@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { PLATFORM_OWNER_EMAIL } from "@/src/services/marketing/platform-owner";
 
 function requireAdmin(session: any) {
   if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
@@ -40,7 +41,10 @@ export async function GET(req: NextRequest) {
       documentsAwaitingReview,
       ownersTotal,
     ] = await Promise.all([
-      prisma.platform_leads.count({ where: { status: "NEW" } }),
+      // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a
+      // manual onboarding action, not a landing-page lead — this card's own
+      // subtitle says "from the landing page", so they're excluded.
+      prisma.platform_leads.count({ where: { status: "NEW", acquisition_source: "WEBSITE" } }),
       prisma.hostels.count({ where: { verification_status: "PENDING" } }),
       prisma.hostels.count({ where: { listing_status: "LIVE" } }),
       prisma.tenants.count(),
@@ -66,7 +70,10 @@ export async function GET(req: NextRequest) {
       // The admin's other real queue. Counted here so the dashboard can route
       // into it without the client fetching the whole documents page first.
       prisma.owner_documents.count({ where: { status: "PENDING", is_active: true } }),
-      prisma.profile.count({ where: { role: "OWNER" } }),
+      // Excludes the sentinel "Stayo Platform" profile (platform-owner.ts) —
+      // same reasoning as /api/platform-admin/owners: it satisfies role
+      // OWNER for a foreign key, but is not a customer to count.
+      prisma.profile.count({ where: { role: "OWNER", email: { not: PLATFORM_OWNER_EMAIL } } }),
     ]);
 
     // MRR composed the same way as /api/platform-admin/revenue (owner-level,

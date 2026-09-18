@@ -1,15 +1,13 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
-import crypto from "crypto";
 import { NextRequest } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { LeadSelfServeSchema } from "@/lib/validators";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { resolveSignupPhoneVerification } from "@/lib/services/auth/signup-phone-verification-gate";
-import { prisma } from "@/lib/db";
-import { eventLog } from "@/lib/services/event-log-service";
 import { platformLeadNotificationService } from "@/src/services/platform-leads/platform-lead-notification-service";
+import { createPlatformLead } from "@/src/services/platform-leads/create-platform-lead";
 
 const OTP_PURPOSE = "LEAD_CAPTURE";
 
@@ -27,7 +25,7 @@ export async function POST(req: NextRequest) {
     if (!validated.success) {
       return apiError("Validation error", "VALIDATION_ERROR", 400);
     }
-    const { name, hostel_name, phone, google_email, city, bed_count, pain_point, current_tooling } =
+    const { name, hostel_name, phone, google_email, city, bed_count, pain_point, current_tooling, source, plan_code } =
       validated.data;
 
     const normalizedPhone = normalizeWhatsAppPhone(phone);
@@ -41,56 +39,27 @@ export async function POST(req: NextRequest) {
     // allowed to reapply, and gets a fresh row (migration 078 enforces this
     // at the DB level too, against a concurrent double-submit racing past
     // this check).
-    const existingLead = await prisma.platform_leads.findFirst({
-      where: { phone: normalizedPhone, status: { not: "LOST" } },
-      orderBy: { created_at: "desc" },
+    const result = await createPlatformLead({
+      name,
+      hostel_name,
+      phone: normalizedPhone,
+      google_email,
+      phone_verified: verification.phoneVerified,
+      city,
+      bed_count,
+      pain_point,
+      current_tooling,
+      source,
+      plan_code,
+      acquisition_source: "WEBSITE",
     });
-    if (existingLead) {
-      await eventLog.log("LEAD_DUPLICATE_BLOCKED", null, { lead_id: existingLead.id, phone: normalizedPhone });
+    if (result.duplicate) {
       return apiResponse(
-        { id: existingLead.id, status: existingLead.status, tracking_token: existingLead.tracking_token, duplicate: true },
+        { id: result.lead.id, status: result.lead.status, tracking_token: result.lead.tracking_token, duplicate: true },
         200,
       );
     }
-
-    let lead;
-    try {
-      lead = await prisma.platform_leads.create({
-        data: {
-          name,
-          hostel_name,
-          phone: normalizedPhone,
-          google_email: google_email || null,
-          phone_verified: verification.phoneVerified,
-          city: city || null,
-          bed_count: bed_count ?? null,
-          pain_point: pain_point || null,
-          current_tooling: current_tooling || null,
-          status: "NEW",
-          tracking_token: crypto.randomBytes(32).toString("hex"),
-        },
-      });
-    } catch (err: any) {
-      if (err?.code !== "P2002") throw err;
-      // Lost the race: another request created a non-LOST row for this exact
-      // phone between our findFirst and this insert. Treat it exactly like
-      // the pre-check duplicate case rather than surfacing a 500 — this is
-      // the whole reason the DB constraint exists.
-      const raced = await prisma.platform_leads.findFirst({
-        where: { phone: normalizedPhone, status: { not: "LOST" } },
-        orderBy: { created_at: "desc" },
-      });
-      if (raced) {
-        await eventLog.log("LEAD_DUPLICATE_BLOCKED", null, { lead_id: raced.id, phone: normalizedPhone, race: true });
-        return apiResponse(
-          { id: raced.id, status: raced.status, tracking_token: raced.tracking_token, duplicate: true },
-          200,
-        );
-      }
-      throw err;
-    }
-
-    await eventLog.log("LEAD_CREATED", null, { lead_id: lead.id, hostel_name: lead.hostel_name });
+    const lead = result.lead;
 
     // Fire-and-forget: a WhatsApp outage must never cost us a captured lead.
     // The tracking link is also shown on the submission success screen, so

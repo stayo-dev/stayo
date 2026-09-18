@@ -3,11 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission } from "@/src/services/managers/manager-authorization";
 import { prisma } from "@/lib/db";
-
-function requireAdmin(session: any): asserts session is { sub: string; role: string } {
-  if (!session || session.role !== "ADMIN") throw new Error("FORBIDDEN: Admin access only");
-}
 
 /**
  * GET /api/platform-admin/leads/insights
@@ -28,20 +25,26 @@ function requireAdmin(session: any): asserts session is { sub: string; role: str
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
-    requireAdmin(session);
+    await requireAdminOrManagerPermission(session, "MANAGE_LEADS");
 
+    // Admin -> Add Owner leads (acquisition_source DIRECT_ADMIN) are a manual
+    // onboarding action, not a marketing lead — they never went through
+    // discovery/qualification and would skew "why leads are lost"/conversion
+    // stats meant to describe the landing-page funnel. Excluded throughout.
     const [lostGroups, totals, recentDiscovery, toolingGroups] = await Promise.all([
       prisma.platform_leads.groupBy({
         by: ["lost_reason"],
-        where: { status: "LOST", lost_reason: { not: null } },
+        where: { status: "LOST", lost_reason: { not: null }, acquisition_source: "WEBSITE" },
         _count: { _all: true },
       }),
       prisma.platform_leads.groupBy({
         by: ["status"],
+        where: { acquisition_source: "WEBSITE" },
         _count: { _all: true },
       }),
       prisma.platform_leads.findMany({
         where: {
+          acquisition_source: "WEBSITE",
           OR: [
             { discovery_problem: { not: null } },
             { discovery_why: { not: null } },
@@ -59,7 +62,7 @@ export async function GET(req: NextRequest) {
       // Free-form, so this is exposed as "what they told us they use", not as
       // a chart. Normalising case is the only aggregation that is honest here.
       prisma.platform_leads.findMany({
-        where: { current_tooling: { not: null } },
+        where: { current_tooling: { not: null }, acquisition_source: "WEBSITE" },
         select: { current_tooling: true },
         take: 500,
       }),
@@ -100,6 +103,7 @@ export async function GET(req: NextRequest) {
     });
   } catch (error: any) {
     const msg = String(error?.message || "Failed to fetch lead insights");
+    if (error?.name === "HttpForbidden") return apiError(error.message, "FORBIDDEN", 403);
     if (msg.startsWith("FORBIDDEN")) return apiError(msg.split(": ")[1] ?? msg, "FORBIDDEN", 403);
     return apiError(msg);
   }

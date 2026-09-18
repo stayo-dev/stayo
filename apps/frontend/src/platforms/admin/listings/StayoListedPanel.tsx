@@ -1,6 +1,7 @@
 import { useState } from 'react';
+import { useNavigate } from 'react-router-dom';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { Plus, MapPin, MessageSquare, UserPlus, X, Search, Info } from 'lucide-react';
+import { Plus, MapPin, MessageSquare, UserPlus, Pencil, X, Search, Info } from 'lucide-react';
 import { platformAdminService } from '@features/platform-admin/api';
 import { ADMIN_CARD, tintForId } from '../theme/palette';
 import { EmptyState } from '../ui';
@@ -22,6 +23,7 @@ const HOSTEL_TYPES = [
  */
 export function StayoListedPanel() {
   const queryClient = useQueryClient();
+  const navigate = useNavigate();
   const fireToast = useToast();
   const [creating, setCreating] = useState(false);
   const [assignFor, setAssignFor] = useState<{ id: string; name: string; address: string } | null>(null);
@@ -41,8 +43,16 @@ export function StayoListedPanel() {
 
   return (
     <div className="flex flex-col gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex min-w-0 flex-1 items-start gap-2.5 rounded-2xl border border-[#E6DCD1] bg-[#F7F3EF] px-4 py-3">
+      {/*
+        `flex-col` on phone widths — stacked, each full width — switching to
+        a side-by-side row only from `sm:` up. The previous single `flex
+        flex-wrap` row let the info banner's `min-w-0` shrink it down to a
+        squeezed, many-line-wrapped column at phone width rather than
+        actually wrapping to a new line, with the button floating beside it
+        at a mismatched height instead of sitting cleanly underneath.
+      */}
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center">
+        <div className="flex min-w-0 items-start gap-2.5 rounded-2xl border border-[#E6DCD1] bg-[#F7F3EF] px-4 py-3 sm:flex-1">
           <Info className="mt-0.5 h-4 w-4 flex-none text-[#8A7F75]" strokeWidth={1.8} />
           <p className="text-[12px] leading-relaxed text-[#5A5147]">
             Listings Stayo authored so Discovery covers a city, not just the hostels that signed up.
@@ -53,7 +63,7 @@ export function StayoListedPanel() {
         <button
           type="button"
           onClick={() => setCreating(true)}
-          className="flex flex-none items-center gap-2 rounded-xl bg-[#B46A55] px-[18px] py-3 font-admin text-[12.5px] font-bold text-white shadow-[0_4px_12px_rgba(180,106,85,.28)]"
+          className="flex w-full flex-none items-center justify-center gap-2 rounded-xl bg-[#B46A55] px-[18px] py-3 font-admin text-[12.5px] font-bold text-white shadow-[0_4px_12px_rgba(180,106,85,.28)] sm:w-auto"
         >
           <Plus className="h-4 w-4" strokeWidth={2.4} />
           List a hostel
@@ -121,6 +131,14 @@ export function StayoListedPanel() {
               </div>
 
               <div className="mt-4 flex items-center gap-2.5">
+                <button
+                  type="button"
+                  onClick={() => navigate(`/admin/listings/${h.id}/edit`)}
+                  className="flex items-center gap-1.5 rounded-[11px] border border-[#E9DFD3] bg-white px-3.5 py-2.5 font-admin text-[12px] font-bold text-[#5A5147]"
+                >
+                  <Pencil className="h-3.5 w-3.5" strokeWidth={2} />
+                  {h.listing_status === 'LIVE' ? 'Edit listing' : 'Write listing'}
+                </button>
                 <div className="flex-1" />
                 <button
                   type="button"
@@ -139,10 +157,17 @@ export function StayoListedPanel() {
       {creating && (
         <CreateListingModal
           onClose={() => setCreating(false)}
-          onCreated={(name) => {
+          onCreated={(name, id) => {
             setCreating(false);
             refresh();
             fireToast(`${name} listed — now write its marketing page`);
+            // Straight into the editor — the identity fields just entered
+            // here (name/city/address/phone/type) are a different form from
+            // the marketing content (photos, pricing, amenities...) that
+            // form needs next. Without this, the hostel exists but has no
+            // link forward to it from this screen at all — you'd have to
+            // find it again under Pending and click in from there.
+            navigate(`/admin/listings/${id}/edit`);
           }}
           onError={() => fireToast('Could not create that listing', 'no')}
         />
@@ -209,7 +234,7 @@ const INPUT =
   'w-full rounded-[11px] border border-[#E7DDD1] bg-[#FCFAF7] px-3.5 py-2.5 text-[13px] text-[#2A2521] outline-none focus:border-[#B46A55] focus:bg-white';
 
 function CreateListingModal({ onClose, onCreated, onError }: {
-  onClose: () => void; onCreated: (name: string) => void; onError: () => void;
+  onClose: () => void; onCreated: (name: string, id: string) => void; onError: () => void;
 }) {
   const [form, setForm] = useState({
     name: '', city: '', address: '', phone: '', hostel_type: 'CO_LIVING',
@@ -218,7 +243,7 @@ function CreateListingModal({ onClose, onCreated, onError }: {
 
   const create = useMutation({
     mutationFn: () => platformAdminService.createPlatformListing(form),
-    onSuccess: () => onCreated(form.name),
+    onSuccess: (hostel) => onCreated(form.name, hostel.id),
     onError,
   });
 

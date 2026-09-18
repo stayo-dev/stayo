@@ -105,12 +105,20 @@ export function conversationProgress(index: number): number {
   return Math.min(1, Math.max(0, index / LEAD_QUESTION_COUNT));
 }
 
+/** Where this conversation was opened from (analytics + admin triage). */
+export type LeadContext = {
+  source?: string;
+  planCode?: string;
+};
+
 /** Maps answers onto the `POST /leads/self-serve` payload. */
-export function buildLeadPayload(answers: LeadAnswers, googleEmail?: string) {
+export function buildLeadPayload(answers: LeadAnswers, googleEmail?: string, context?: LeadContext) {
   return {
     name: String(answers.name ?? '').trim(),
     hostel_name: String(answers.hostel_name ?? '').trim(),
     phone: String(answers.phone ?? '').trim(),
     google_email: googleEmail || undefined,
+    source: context?.source || undefined,
+    plan_code: context?.planCode || undefined,
   };
 }

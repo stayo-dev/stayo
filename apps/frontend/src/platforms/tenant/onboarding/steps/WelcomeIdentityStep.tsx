@@ -3,6 +3,7 @@ import { needsPhoneOtp, type PhoneTrust } from './identityVerification';
 import { emailFieldPhase, emailHelperText, looksLikeEmail, type EmailRequirement } from './emailVerification';
 import type { EmailVerificationState } from '../useEmailVerification';
 import DateOfBirthField from './DateOfBirthField';
+import { OtpBlock, PhoneField, cardWrap, inputBase, label } from './phoneFields';
 import { FLOW_INK } from '../skyTheme';
 import { GuidanceNote, GuidanceSummary, useFieldGuidance, useGuidance } from '../guidance/Guidance';
 import { AlertCircle, Camera, CheckCircle2, FileText, Mail, Receipt, Send, User } from 'lucide-react';
@@ -17,6 +18,12 @@ export type ProfileDraft = {
   gender: string;
   date_of_birth: string;
   profile_type: string;
+  /*
+    Still on the draft, though this screen no longer renders them: the draft is
+    the tenant record across the whole flow, and the GUARDIAN step (ADR-213)
+    writes these three into the same object so a resumed onboarding restores
+    both halves together.
+  */
   guardian_name: string;
   guardian_phone: string;
   guardian_relation: string;
@@ -42,7 +49,7 @@ function DocRow({ docType, children }: { docType: string; children: ReactNode })
  * source superseding `Stayo SaaS redesign/`'s version this wizard was first
  * built against), where the Welcome screen drops to Room Allocation +
  * Billing Cycle only, and mobile/OTP/Gmail verification moves into a
- * combined Identity screen alongside the profile-photo/gender/DOB/guardian/
+ * combined Identity screen alongside the profile-photo/gender/DOB/
  * emergency fields — Identity now precedes Agreement.
  *
  * Backend-wise, `ACCOUNT` and `PROFILE` remain two distinct, independently
@@ -81,16 +88,6 @@ interface WelcomeIdentityStepProps {
   onDocUpload: (docType: string, file?: File) => void;
   profile: ProfileDraft;
   setProfile: (next: ProfileDraft) => void;
-  isGuardianPhoneVerified: boolean;
-  setGuardianOverrideUnlocked: (v: boolean) => void;
-  guardianOtp: string;
-  setGuardianOtp: (v: string) => void;
-  guardianOtpSent: boolean;
-  guardianOtpSending: boolean;
-  guardianOtpCountdown: number;
-  guardianOtpVerifying: boolean;
-  onSendGuardianOtp: () => void;
-  onVerifyGuardianOtp: () => void;
   profileDraftStatus: 'idle' | 'restored' | 'saving' | 'saved';
   profilePhotoPreview: string;
   profilePhotoFile: File | null;
@@ -128,79 +125,6 @@ interface WelcomeIdentityStepProps {
 }
 
 // Field labels sit on the step body's ground, which is the same at every hour — see FLOW_INK.
-const label = { color: FLOW_INK.label, letterSpacing: '.05em' };
-const cardWrap = { background: '#F6F1EA', borderRadius: 10, border: '1px solid #E7DDCE', padding: '0 13px' };
-const inputBase = { width: '100%', border: 'none', outline: 'none', background: 'transparent', color: '#2A2521', padding: '11px 0' };
-
-function PhoneField({
-  field,
-  value,
-  onChange,
-  placeholder,
-  verified,
-  disabled,
-  onSend,
-  sending,
-  countdown,
-  sent,
-}: {
-  /** Guidance anchor id — 'phone' or 'guardian_phone'. */
-  field: string;
-  value: string;
-  onChange: (v: string) => void;
-  placeholder: string;
-  verified: boolean;
-  disabled?: boolean;
-  onSend: () => void;
-  sending: boolean;
-  countdown: number;
-  sent: boolean;
-}) {
-  const mobileValid = value.length === 10;
-  const guide = useFieldGuidance(field);
-  const border = guide.invalid ? '#D0473A' : verified ? '#1F9D57' : mobileValid ? '#B46A55' : '#E7DDCE';
-  return (
-    <div>
-    <div ref={guide.ref} className={`flex items-center gap-2.5 ${guide.className}`} style={{ ...cardWrap, border: `1.5px solid ${border}`, transition: 'border-color .2s' }}>
-      <span className="flex-none text-sm font-bold" style={{ color: '#8A7F75' }}>
-        +91
-      </span>
-      <div className="h-5 w-px flex-none" style={{ background: '#E0D5C6' }} />
-      <input
-        type="tel"
-        inputMode="numeric"
-        value={value}
-        onChange={(e) => onChange(e.target.value.replace(/\D/g, '').slice(0, 10))}
-        placeholder={placeholder}
-        disabled={disabled || (sent && countdown > 0)}
-        className="min-w-0 flex-1 text-sm font-semibold"
-        style={inputBase}
-        {...guide.aria}
-      />
-      {verified ? (
-        <div className="flex flex-none items-center gap-1.5 text-[11px] font-extrabold" style={{ color: '#1F7A52' }}>
-          <span className="flex h-5 w-5 items-center justify-center rounded-full" style={{ background: '#1F9D57' }}>
-            <CheckCircle2 className="h-3 w-3 text-white" strokeWidth={2.6} />
-          </span>
-          Verified
-        </div>
-      ) : mobileValid ? (
-        <button
-          type="button"
-          onClick={onSend}
-          disabled={sending || countdown > 0}
-          className="flex flex-none items-center gap-1.5 rounded-lg px-3.5 py-1.5 text-xs font-bold text-white disabled:opacity-60"
-          style={{ background: '#B46A55', boxShadow: '0 4px 11px rgba(180,106,85,.28)' }}
-        >
-          <Send className="h-3 w-3" />
-          {sending ? 'Sending' : countdown > 0 ? `${countdown}s` : sent ? 'Resend' : 'Send'}
-        </button>
-      ) : null}
-    </div>
-    <GuidanceNote field={field} />
-    </div>
-  );
-}
 
 /**
  * The onboarding email, proved with a code — the address the tenant will sign
@@ -323,69 +247,6 @@ function EmailField({
   );
 }
 
-function OtpBlock({
-  phone,
-  otp,
-  setOtp,
-  onResend,
-  sending,
-  countdown,
-  helperText,
-  error,
-}: {
-  phone: string;
-  otp: string;
-  setOtp: (v: string) => void;
-  onResend: () => void;
-  sending: boolean;
-  countdown: number;
-  helperText: string;
-  /** Server-side verification failure, shown inline under the box per the design. */
-  error?: string;
-}) {
-  const guide = useFieldGuidance('otp');
-  const borderColor = error || guide.invalid ? '#D0473A' : otp.length === 6 ? '#1F9D57' : '#E7DDCE';
-  return (
-    <div ref={guide.ref} className={`ob-up-fast mt-2.5 rounded-[11px] ${guide.className}`} style={{ background: '#FBF7F1', border: '1px solid #EEE3D4', padding: '12px 13px' }}>
-      <div className="flex items-center justify-between gap-2">
-        <span className="flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#1F7A52' }}>
-          <Send className="h-3 w-3" />
-          Code sent to +91 {phone}
-        </span>
-        <button type="button" onClick={onResend} disabled={sending || countdown > 0} className="font-display text-[11.5px] font-bold disabled:opacity-60" style={{ color: '#A45D44' }}>
-          {countdown > 0 ? `Resend in ${countdown}s` : 'Resend'}
-        </button>
-      </div>
-      <div className="mt-2.5 text-xs font-semibold" style={{ color: '#3A342E' }}>
-        Enter 6-digit code
-      </div>
-      <div className="mt-1.5 flex items-center rounded-[10px] bg-white" style={{ border: `1.5px solid ${borderColor}`, padding: '0 14px', transition: 'border-color .2s' }}>
-        <input
-          type="text"
-          inputMode="numeric"
-          maxLength={6}
-          value={otp}
-          onChange={(e) => setOtp(e.target.value.replace(/\D/g, '').slice(0, 6))}
-          placeholder="— — — — — —"
-          className="font-display w-full text-center text-[17px] font-bold"
-          style={{ ...inputBase, letterSpacing: '.4em' }}
-          {...guide.aria}
-        />
-      </div>
-      {!error && <GuidanceNote field="otp" />}
-      {error ? (
-        <div className="mt-1.5 flex items-center gap-1.5 text-[11.5px] font-bold" style={{ color: '#D0473A' }}>
-          <AlertCircle className="h-3 w-3 flex-none" />
-          {error}
-        </div>
-      ) : (
-        <div className="mt-1.5 text-[11px] font-medium" style={{ color: '#9A8F84' }}>
-          {helperText}
-        </div>
-      )}
-    </div>
-  );
-}
 
 export function WelcomeIdentityStep({
   ctx,
@@ -409,16 +270,6 @@ export function WelcomeIdentityStep({
   onDocUpload,
   profile,
   setProfile,
-  isGuardianPhoneVerified,
-  setGuardianOverrideUnlocked,
-  guardianOtp,
-  setGuardianOtp,
-  guardianOtpSent,
-  guardianOtpSending,
-  guardianOtpCountdown,
-  guardianOtpVerifying,
-  onSendGuardianOtp,
-  onVerifyGuardianOtp,
   profileDraftStatus,
   profilePhotoPreview,
   profilePhotoFile,
@@ -439,7 +290,6 @@ export function WelcomeIdentityStep({
   const photoGuide = useFieldGuidance('photo');
   const genderGuide = useFieldGuidance('gender');
   const dobGuide = useFieldGuidance('date_of_birth');
-  const guardianNameGuide = useFieldGuidance('guardian_name');
 
   const allocation = [
     { label: 'Room', value: ctx.room_summary.room_number || 'Assigned' },
@@ -694,68 +544,6 @@ export function WelcomeIdentityStep({
               />
             </div>
             <GuidanceNote field="date_of_birth" />
-          </div>
-
-          <div>
-            <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Full Name {isStudent ? requiredMark : optionalMark}
-            </div>
-            <div ref={guardianNameGuide.ref} className={guardianNameGuide.className} style={{ ...cardWrap, border: `1px solid ${guardianNameGuide.invalid ? '#D0473A' : '#E7DDCE'}` }}>
-              <input
-                value={profile.guardian_name || ''}
-                onChange={(e) => setProfile({ ...profile, guardian_name: e.target.value })}
-                placeholder="Parent or guardian name"
-                className="text-sm font-medium"
-                style={inputBase}
-                {...guardianNameGuide.aria}
-              />
-            </div>
-            <GuidanceNote field="guardian_name" />
-          </div>
-
-          <div>
-            <div className="mb-1.5 text-[11px] font-bold uppercase" style={label}>
-              Guardian Mobile {isStudent ? requiredMark : optionalMark}
-            </div>
-            <PhoneField
-              field="guardian_phone"
-              value={profile.guardian_phone || ''}
-              onChange={(v) => setProfile({ ...profile, guardian_phone: v })}
-              placeholder="Guardian mobile number"
-              verified={isGuardianPhoneVerified}
-              disabled={isGuardianPhoneVerified}
-              onSend={onSendGuardianOtp}
-              sending={guardianOtpSending}
-              countdown={guardianOtpCountdown}
-              sent={guardianOtpSent}
-            />
-            {isGuardianPhoneVerified && (
-              <button type="button" onClick={() => setGuardianOverrideUnlocked(true)} className="mt-1.5 text-[11px] font-semibold" style={{ color: '#B46A55' }}>
-                Edit guardian mobile
-              </button>
-            )}
-            {!isGuardianPhoneVerified && guardianOtpSent && (
-              <>
-                <OtpBlock
-                  phone={profile.guardian_phone || ''}
-                  otp={guardianOtp}
-                  setOtp={setGuardianOtp}
-                  onResend={onSendGuardianOtp}
-                  sending={guardianOtpSending}
-                  countdown={guardianOtpCountdown}
-                  helperText="We sent a verification code to the guardian's mobile number."
-                />
-                <button
-                  type="button"
-                  disabled={guardianOtpVerifying || guardianOtp.length < 6}
-                  onClick={onVerifyGuardianOtp}
-                  className="mt-2.5 w-full rounded-[10px] py-2.5 text-xs font-bold text-white disabled:opacity-60"
-                  style={{ background: '#1F9D57' }}
-                >
-                  {guardianOtpVerifying ? 'Verifying...' : 'Verify Code'}
-                </button>
-              </>
-            )}
           </div>
 
         </div>

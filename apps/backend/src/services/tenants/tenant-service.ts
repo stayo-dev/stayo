@@ -2,6 +2,8 @@ import { prisma } from "../../../lib/db";
 import { eventSystem } from "../../../lib/events";
 import { z } from "zod";
 import { getTenantOperationalContext } from "../../../lib/hostel-context";
+import { isGuardianPhoneVerifiedForTenant } from "./guardian-verification-store";
+import { readGuardianVerificationPolicy } from "./guardian-verification";
 import { authOtpService } from "../../../lib/services/auth/auth-otp-service";
 import { normalizeWhatsAppPhone } from "../../../lib/services/notifications/providers/whatsapp/meta-provider";
 import { assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
@@ -906,6 +908,11 @@ export class TenantService {
       where: { id: tenantId, owner_id: ownerId },
       include: {
         profiles: true,
+        // ADR-212 — only `preferences_config`, because the guardian policy is
+        // the one thing read from the hostel here and a bare `hostels: true`
+        // would pull every column the model declares on a query that has no
+        // use for them.
+        hostels: { select: { preferences_config: true } },
         tenant_invitations: {
           orderBy: { created_at: "desc" },
           include: {
@@ -1088,6 +1095,22 @@ export class TenantService {
     // reserved room (not the not-yet-existent allocation), and the delivery
     // funnel the invitation table already tracks (PENDING → OPENED →
     // ACTIVATION_STARTED) which no surface was exposing.
+    /**
+     * ADR-212. Whether this tenancy's guardian number is proved, and whether
+     * this hostel chases it if not.
+     *
+     * `chased` travels with the answer rather than being re-derived by each
+     * screen: the owner's tenant list and detail page both render a badge from
+     * it, and a hostel that has opted out of chasing should not have a warning
+     * chip appear on one surface because that surface forgot to ask.
+     */
+    const guardianPhoneOnFile = legacyTenant.phone_2 || legacyTenant.guardian_phone || null;
+    const guardianVerified = guardianPhoneOnFile
+      ? await isGuardianPhoneVerifiedForTenant(legacyTenant.id, guardianPhoneOnFile)
+      : false;
+    const guardianVerificationChased =
+      readGuardianVerificationPolicy(legacyTenant.hostels?.preferences_config) === "MANDATORY";
+
     const liveInvitation = (legacyTenant.tenant_invitations ?? []).find((inv: any) =>
       ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"].includes(String(inv.status))
     ) ?? legacyTenant.tenant_invitations?.[0] ?? null;
@@ -1136,6 +1159,11 @@ export class TenantService {
       guardian_name: legacyTenant.guardian_name,
       guardian_phone: legacyTenant.phone_2 || legacyTenant.profile?.emergency_contact || "",
       guardian_relation: legacyTenant.guardian_relation,
+      // ADR-212. Computed once above and spread into both of this method's
+      // response shapes — the badge and the decision to show it have to agree,
+      // and recomputing per shape is how two things stop agreeing.
+      guardian_verified: guardianVerified,
+      guardian_verification_chased: guardianVerificationChased,
       email: realEmailOrNull(legacyTenant.profile?.email) ?? "",
       profile_type: legacyTenant.profile_type,
       roll_number: legacyTenant.roll_number,
@@ -1264,6 +1292,11 @@ export class TenantService {
         guardian_name: legacyTenant.guardian_name,
         guardian_phone: legacyTenant.phone_2 || legacyTenant.profile?.emergency_contact || "",
         guardian_relation: legacyTenant.guardian_relation,
+        // ADR-212. Computed once above and spread into both of this method's
+        // response shapes — the badge and the decision to show it have to agree,
+        // and recomputing per shape is how two things stop agreeing.
+        guardian_verified: guardianVerified,
+        guardian_verification_chased: guardianVerificationChased,
         gender: legacyTenant.gender,
         date_of_birth: legacyTenant.date_of_birth,
         college_name: legacyTenant.college_name,

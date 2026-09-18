@@ -24,12 +24,21 @@ import {
   canBeCover,
   classifyFiles,
   compressImage,
+  isVideoFile,
   removeMedia,
   reorderMedia,
   setCover as setCoverAt,
 } from './mediaUpload';
 
 const ACCEPTED_TYPES = [...IMAGE_TYPES, ...VIDEO_TYPES];
+/**
+ * How many uploads run at once. Bounded rather than unlimited — a bulk add
+ * (an admin setting up a hostel's first 10 photos on a desktop connection)
+ * should not take as long as 10 sequential round trips, but a real phone on
+ * mobile data still should not have 10 uploads competing for its connection
+ * at once.
+ */
+const UPLOAD_CONCURRENCY = 3;
 
 /**
  * `MODAL: MARKETING PHOTOS` of `Stayo App.dc.html` — the full-screen media
@@ -107,46 +116,63 @@ export function PhotosScreen({
     setPending(accepted.length);
     setDone(0);
 
-    // One request per file, sequentially. A batch was what made a normal
-    // phone multi-select fail as "limit exceeded"; sequential also keeps a
-    // handful of large uploads from competing for one mobile connection.
-    let added: MarketingPhoto[] = [];
+    // One request per file (a batch was what made a normal phone multi-select
+    // fail as "limit exceeded"), but up to UPLOAD_CONCURRENCY of them run at
+    // once instead of one-at-a-time — see the constant above.
+    //
+    // The cover pick and each photo's `sort` are decided from the file's
+    // position in `accepted`, fixed *before* any upload starts — not from
+    // upload completion order, which is unpredictable once requests run
+    // concurrently. That keeps "first image becomes cover" a single decision
+    // made once, rather than a race two concurrent completions could both win.
+    const needsCover = !photos.some((item) => item.is_cover);
+    const coverIndex = needsCover ? accepted.findIndex((file) => !isVideoFile(file.type)) : -1;
+
+    const results: (MarketingPhoto | null)[] = new Array(accepted.length).fill(null);
     let failed = 0;
-    for (const file of accepted) {
+    let finished = 0;
+
+    const uploadOne = async (file: File, index: number) => {
       try {
         const uploaded = await marketingService.uploadMedia(hostelId, await compressImage(file));
         if (!uploaded) {
           failed += 1;
-          continue;
+          return;
         }
-        added = [
-          ...added,
-          {
-            url: uploaded.url,
-            label: null,
-            kind: uploaded.kind,
-            thumbnail_url: uploaded.thumbnail_url,
-            // The first image on an empty listing becomes the cover; a video
-            // never can (it is the search card's still and a link's preview).
-            is_cover:
-              uploaded.kind !== 'video' &&
-              ![...photos, ...added].some((item) => item.is_cover && item.kind !== 'video'),
-            sort: photos.length + added.length,
-          },
-        ];
-        // Kept as they land: an upload that fails halfway must not discard the
-        // ones that already succeeded.
-        onChange([...photos, ...added]);
+        results[index] = {
+          url: uploaded.url,
+          label: null,
+          kind: uploaded.kind,
+          thumbnail_url: uploaded.thumbnail_url,
+          is_cover: index === coverIndex,
+          sort: photos.length + index,
+        };
       } catch (error: any) {
         failed += 1;
         const message = error?.response?.data?.message;
         // One toast per failure would bury the screen on a bad connection.
         if (failed === 1 && message) stayoToast.error(message);
       } finally {
-        setDone((count) => count + 1);
+        finished += 1;
+        setDone(finished);
+        // Kept as they land: a batch that fails partway must not discard the
+        // ones that already succeeded. `results` preserves selection order
+        // even though completion order is not guaranteed.
+        onChange([...photos, ...results.filter((item): item is MarketingPhoto => item !== null)]);
       }
-    }
+    };
 
+    let cursor = 0;
+    const workers = Array.from({ length: Math.min(UPLOAD_CONCURRENCY, accepted.length) }, async () => {
+      while (cursor < accepted.length) {
+        const index = cursor;
+        cursor += 1;
+        await uploadOne(accepted[index], index);
+      }
+    });
+    await Promise.all(workers);
+
+    const added = results.filter((item): item is MarketingPhoto => item !== null);
     setPending(0);
     setDone(0);
     if (added.length > 0) {

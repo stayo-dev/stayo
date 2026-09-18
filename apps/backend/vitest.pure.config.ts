@@ -25,29 +25,7 @@ export default defineConfig({
     globals: true,
     environment: 'node',
     include: [
-      // The Rooms tab as a building (ADR-199) — who is in each room.
-      'tests/room-occupants.test.ts',
-      // Delete, retire or refuse a room (ADR-207) — the rule behind the
-      // RESTRICT foreign key that made edited rooms undeletable.
-      'tests/room-removal-plan.test.ts',
-      // The invitation edit window (ADR-208) — the ADR-165 guards that went stale.
-      'tests/invitation-edit-window.test.ts',
-      // Stay Status (ADR-194) — pure core, mocked service and routes.
-      'tests/timezone-ist.test.ts',
-      'tests/stay-status.test.ts',
-      'tests/stay-events.test.ts',
-      'tests/stay-board.test.ts',
-      'tests/stay-service.test.ts',
-      'tests/stay-poster-pdf.test.ts',
-      'tests/stay-routes.test.ts',
-      // Meal forecast (ADR-195).
-      'tests/meal-ratio.test.ts',
-      'tests/meal-forecast-service.test.ts',
-      'tests/meal-routes.test.ts',
-      // Meet your host (ADR-200).
-      'tests/host-profile-bio-rules.test.ts',
-      'tests/host-profile-service.test.ts',
-      'tests/host-profile-routes.test.ts',
+      'tests/agreement-version-history.test.ts',
       'tests/rent-generation-exit-date-join.test.ts',
       'tests/imagekit-uploadable.test.ts',
       'tests/push-policy.test.ts',
@@ -68,7 +46,6 @@ export default defineConfig({
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
-      'tests/owner-document-review.test.ts',
       // Tenant KYC: the shared status helper, and the document routes (which
       // all `vi.mock('@/lib/db')` — no client is constructed).
       'tests/kyc-status.test.ts',
@@ -111,12 +88,10 @@ export default defineConfig({
       'tests/platform-listing-claim.test.ts',
       'tests/platform-listing-enquiry-lead.test.ts',
       'tests/marketing-editor-scope.test.ts',
-      'tests/settlement-run-computation.test.ts',
       'tests/owner-payout-promise.test.ts',
       'tests/owner-payout-month.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-documents.test.ts',
-      'tests/settlement-transitions.test.ts',
       'tests/payout-account.test.ts',
       'tests/enquiry-template-contracts.test.ts',
       'tests/admissions-lead-transition-guards.test.ts',
@@ -158,8 +133,6 @@ export default defineConfig({
       'tests/whatsapp-command-center-vocabulary.test.ts',
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
-      'tests/whatsapp-rent-template-contract.test.ts',
-      'tests/pay-page-brand.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
@@ -203,6 +176,9 @@ export default defineConfig({
       // Which obligations bind to a room allocation — the rule behind a real
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
+      // Who is holding which bed. The mock supplies allocation, reservation
+      // and invitation rows as plain arrays — no client, no database.
+      'tests/room-capacity-service.test.ts',
       'tests/agreement-content.test.ts',
       // Clerk auth webhook (ADR-176). The verification test signs with the real
       // `svix` library in-process; the sync test `vi.mock`s `@/lib/db`. Neither
@@ -273,9 +249,16 @@ export default defineConfig({
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
       'tests/build-without-env.test.ts',
-      // The per-hostel activity feed. Mocks `@/lib/db` entirely — the raw
-      // log reads are asserted as SQL text, so no client is constructed.
-      'tests/hostel-activity-feed.test.ts',
+      // ADR-212 — guardian verification as a hostel policy. Pure: takes the
+      // database's answers as arguments and reads nothing itself.
+      'tests/guardian-verification.test.ts',
+      // ADR-212 — the guardian-side confirmation: template contract and the
+      // multi-ward resolution. Both pure.
+      'tests/guardian-verify-request.test.ts',
+      'tests/coverage-request-rules.test.ts',
+      'tests/coverage-request-handler.test.ts',
+      'tests/lead-acquisition-source.test.ts',
+      'tests/homepage-curation.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

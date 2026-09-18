@@ -243,7 +243,7 @@ Added 2026-08-27 ([[Decisions#ADR-127|ADR-127]], [[Decisions#ADR-128|ADR-128]]).
 ### Guardian access on WhatsApp
 
 1. **Recognition ≠ authorisation.** A phone matching `tenants.guardian_phone` resolves to role `GUARDIAN`, but the **first financial request** triggers a six-digit OTP to that handset (`authOtpService`, purpose `GUARDIAN_ACCESS`). Verification lasts **90 days**, read back from the `phone_verification_otps` row (`status = 'VERIFIED'`), not from a separate table.
-   - **Two purposes count**: `GUARDIAN_ACCESS` and `ParentVerify`. The second is the onboarding verification a tenant completes when adding their guardian — a code sent to that handset and entered back, which activation already refuses to proceed without. Recognising only the first would send a second code to a number verified minutes earlier, the moment the guardian taps [Help] on the activation notice below. The distinction is real and deliberate: `ParentVerify` proves the number was reachable and cooperated, `GUARDIAN_ACCESS` proves the person holding it *now* asked for access. Both expire into the same 90-day window, after which the stronger challenge is issued.
+   - **Two purposes count**: `GUARDIAN_ACCESS` and `ParentVerify`. The second is the onboarding verification a tenant completes when adding their guardian — a code sent to that handset and entered back, which activation used to refuse to proceed without (**changed 2026-09-16 by [[Decisions#ADR-212|ADR-212]]** — activation no longer blocks on it; see "Guardian verification" below). Recognising only the first would send a second code to a number verified minutes earlier, the moment the guardian taps [Help] on the activation notice below. The distinction is real and deliberate: `ParentVerify` proves the number was reachable and cooperated, `GUARDIAN_ACCESS` proves the person holding it *now* asked for access. Both expire into the same 90-day window, after which the stronger challenge is issued.
 2. **`GUARDIAN_ACCESS` never degrades.** It is excluded from `SKIPPABLE_OTP_PURPOSES`. When WhatsApp OTP delivery is unavailable the guardian is refused and pointed at the hostel — the check is not waived. Same rule as `PASSWORD_RESET`.
 3. **Scope: money and stay basics.** Dues, instalment progress, payment links, receipts, room, hostel, agreement dates. **Not** move-out requests, documents or KYC — enforced by the command set containing no reader for them, not by copy.
 4. **Person, not possession.** Guardians are addressed in the third person ("Aarav's rent"), residents in the second ("your rent"). A phone holding both relationships is judged **per resident**.
@@ -533,6 +533,8 @@ Set by [[Decisions#ADR-059|ADR-059]]. `tenant_rules.agreement_required` (default
 The `PAYMENT_PENDING` / `RESERVED` / `MOVE_IN_READY` vocabulary is **deleted**. The tenant lifecycle is `INVITED` → `ACTIVE` (shown to owners as "Joined") → vacating → `FORMER_TENANT`.
 
 Occupancy is a question about beds, not money: a room is occupied by every active allocation held by an `ACTIVE` tenant. It previously excluded anyone still `PAYMENT_PENDING`, which left a moved-in tenant's bed looking vacant and invitable.
+
+**A bed is held by a person, and one person holds at most one bed in a room** (2026-09-18, see [[Bugs]]). `roomCapacityService` counts occupancy and holds as *sets of tenancies*, not as rows: the held-bed count is the union of the room's ACTIVE `tenant_invitation_reservations` and its live `tenant_invitations`, **minus every tenancy already counted as occupying a bed there**. Either record alone still holds a bed — an invitation that outlived its reservation is somebody on their way in — and both together hold one. This matters because [[Decisions#ADR-165|ADR-165]] makes a tenancy live at invite time (`ACTIVE` tenant, real allocation) while deliberately leaving the invitation open until the tenant personally accepts, so the same person is legitimately present in both tables at once.
 
 ## Food schedule generation is independent of voting (2026-08-08) — **superseded 2026-08-25**
 
@@ -1116,3 +1118,115 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **A resident counts on their return date**, matching [[Decisions#ADR-194|ADR-194]]'s `isHereTonight`; and **a leave's effective end is the day someone actually returned** when that was earlier than planned.
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
+
+## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-214|ADR-214]])
+
+- **A manager's authority is re-derived on every request, never cached in the session/JWT.** `requireAdminOrManagerPermission` and `assertHostelAccess`/`scopeHostelIds` (`src/services/managers/manager-authorization.ts`) load `manager_permission_grants`/`manager_hostel_assignments` fresh from the DB each call. Revoking a permission or unassigning a hostel takes effect on the manager's very next request — no session invalidation, no logout required.
+- **Permissions are a full-replace set, not additive.** `PATCH /api/platform-admin/managers/[id]` with `{permissions: [...]}` deletes and recreates the manager's grant rows in one transaction — the admin console's permission editor always submits the complete intended set, never a delta.
+- **A manager sees only what they are assigned, and that scoping is server-side.** `scopeHostelIds(session)` returns `null` (unrestricted) for ADMIN or the manager's current active hostel-id list for MANAGER — used to filter hostel and owner list queries. `assertHostelAccess(session, hostelId)` gates every single-hostel route. Neither ever reads a manager/hostel id supplied by the client to decide *whose* scope to check — the manager is always resolved from the authenticated session (`session.sub`).
+- **A manager can never escalate, suspend, or reassign themselves.** There is no manager-reachable route to `manager-service.ts`'s CRUD/permission/suspend/hostel-assignment functions — every one of them is called exclusively from ADMIN-gated routes. This is a structural guarantee (no code path exists), not a per-request check that could be missed.
+- **Suspension reuses the platform's one existing login gate.** Suspending a manager sets `profile.is_active = false` — the same flag `lib/auth/supabase-session.ts` already hard-checks for every role. There is no second, parallel "is this manager still allowed in" check to keep in sync.
+- **Reassigning a hostel never deletes assignment history.** `manager_hostel_assignments` rows are closed (`unassigned_at` set), never removed — so activity a manager performed while assigned stays attributable to them even after the hostel moves to someone else. A DB-level partial unique index enforces at most one *active* assignment per hostel.
+- **Manager (and admin) activity is recorded by the service layer, never by the frontend.** `recordManagerActivity` (`src/services/managers/manager-activity.ts`) is called from inside mutation services/routes — e.g. the hostel address-correction route — not from UI button handlers, so activity cannot be skipped by calling the API directly and bypassing a "log this" button. It reuses the existing generic `activity_logs` writer (`ActivityService`) rather than a second audit table, and follows the established `metadata.hostel_id` convention so the same expression index the owner-facing activity feed already uses (`migrations/082_activity_logs_hostel_index.sql`) also serves the Super Admin's manager-activity feed.
+- **Onboarding progress is derived, not stored.** No per-hostel step-tracking table exists or is planned to be added; a hostel's setup checklist is meant to be computed from existing signals (verification/listing status, rooms, documents, etc.) the same way `ownerHealth.ts` derives owner health — see [[Features]] for what is and isn't built yet.
+
+## The activation sequence
+
+`ACCOUNT → RULES → PROFILE → GUARDIAN → AGREEMENT → ACTIVATE` ([[Decisions#ADR-213|ADR-213]]), server-enforced by `assertTransition` — the order is not a UI convention.
+
+Two steps are exempt-able, independently:
+
+- **RULES + AGREEMENT** drop out when `tenant_rules.agreement_required` is false ([[Decisions#ADR-059|ADR-059]]).
+- **GUARDIAN** drops out when the tenancy is not asked for one: `guardianRequired` is true for a STUDENT, and for anyone who has volunteered a guardian number. A number on file that nobody has verified is exactly the state the step exists to resolve.
+
+Applicability is **recomputed on every read, never cached** — `profile_type` is chosen *on* the PROFILE step, so a tenancy legitimately grows a step partway through onboarding.
+
+`GUARDIAN` requires name, relation and number. Relation is a fixed list (Father/Mother/Guardian/Brother/Sister/Spouse/Other). Verification is deliberately **not** part of completion — see below.
+
+## Guardian verification
+
+Added 2026-09-16 ([[Decisions#ADR-212|ADR-212]]). **Files:** `src/services/tenants/guardian-verification.ts` (pure decisions), `guardian-verification-store.ts` (reads/writes), `lib/services/notifications/command-center/guardian-verify-request.ts` + `guardian-confirm-resolution.ts`.
+
+1. **A guardian number is always collected; whether the gap is *chased* is the owner's choice.** `tenant_rules.guardian_verification` is `MANDATORY` (the default, and what every hostel got unconditionally before this) or `OPTIONAL`. Both collect the number, both ask during onboarding, both let a tenant defer. Only MANDATORY sets a clock and reminds.
+
+2. **Nothing blocks activation.** Two gates used to: `saveProfile()` and, independently, `activate()`. Both are gone. A STUDENT must still *give* a guardian name and number — that is unchanged. A verification code that is supplied and wrong is still a hard failure; only its **absence** is now a deferral.
+
+3. **A deferral is dated.** `tenants.guardian_verification_deferred_at` starts a **fixed 7-day** window (`GUARDIAN_GRACE_DAYS`, deliberately not owner-configurable). A re-save keeps the original timestamp — the clock measures how long the tenant has had, not how recently they edited their address. `guardian_verification_deferred_reason` holds one of `NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO`.
+
+4. **The five states** (`resolveGuardianVerification`): `NOT_APPLICABLE` (no number, none required), `VERIFIED`, `PENDING_UNCHASED` (OPTIONAL hostel — terminal unless someone acts), `PENDING_GRACE`, `PENDING_OVERDUE`. An OPTIONAL hostel never computes a deadline **even if a deferral timestamp is on the row** from a period when it was MANDATORY: relaxing the policy must actually relax it, not leave a clock ticking invisibly.
+
+5. **The wall backs off.** `shouldShowGuardianWall` returns true the first time it comes due, then on every third dashboard entry (`guardian_verification_prompt_count`). It never denies entry — "Not now" is immediate and always present.
+
+6. **Proof is scoped to the tenancy.** `isGuardianPhoneVerifiedForTenant(tenantId, phone)` matches a `VERIFIED` `ParentVerify` row with `tenant_id = <this tenancy>` **or** `tenant_id IS NULL` (pre-ADR-212 rows, accepted as legacy and deliberately not backfilled). The old check matched on phone alone across all tenancies with no expiry. Note `guardian-access.isGuardianVerified` **keeps** its phone-wide 90-day lookup — it asks whether a handset is a verified guardian at all, which would be wrong to scope per tenant.
+
+7. **The guardian can confirm without a code.** A request writes a `PENDING` `ParentVerify` row whose `otp_hash` is of a value nobody is ever sent, and the `[Yes, I confirm]` quick reply on `stayo_guardian_verify_request` flips it to `VERIFIED`. One handset with several outstanding requests gets a picker (`resolveGuardianConfirmation` → `ASK_WHICH`), never a guess. A tap with nothing outstanding is answered as "nothing to confirm", not as an error.
+
+8. **`sendGuardianActivation` now requires proof, not intent.** It used to fire whenever a guardian number was entered; it announced access that did not exist to someone who may not have known they were named.
+
+Related: [[Decisions#ADR-212|ADR-212]], [[Database]], [[APIs]], [[Features]]
+## Reading the agreement before signing it
+
+A tenant cannot sign until they have opened the agreement and reached the end of it.
+
+- The document opens on its own full screen (`/activate/agreement`), composed from the same model the PDF is generated from.
+- "Read" is **98% of the scrollable distance**, not the exact bottom — real scrolling rarely lands there. A document shorter than the viewport counts as read by being shown, or a short agreement could never satisfy the gate.
+- Both ends are recorded on `Agreement`: `document_opened_at` and `document_read_completed_at`, plus `document_content_hash` — a digest of exactly what was read.
+- The gate reads the **server's** record, not client state, so a reload cannot skip it. The first open is never overwritten by a re-read.
+- Agreements signed before this existed have all three columns null. Null means "predates the gate", never "did not read".
+
+See [[Decisions#ADR-217|ADR-217]].
+
+## Who has to sign an agreement
+
+**The tenant always signs.** This replaced "at least one signature — tenant or parent/guardian", under which a tenancy could be activated with no signature from the person living there.
+
+- A parent/guardian co-signature is **optional by default**.
+- It becomes mandatory when the hostel sets `preferences_config.tenant_rules.guardian_signature_required`. Absent means **not** required — the opposite default to `agreement_required`, because requiring a co-signature is a deliberate choice.
+- A volunteered guardian signature is validated as strictly as a required one: a signature image demands a typed name and a stated relationship.
+- The rule validates a **submission**. Agreements already signed guardian-only remain valid; nothing re-checks stored rows.
+
+See [[Decisions#ADR-218|ADR-218]].
+
+## What is stamped against a signature
+
+Each signature on the document carries its own provenance, identical in the tenant's reader and in the PDF:
+
+| Stamped | Source |
+|---|---|
+| Signing moment, **IST** | `tenant_signed_at` / `guardian_signed_at`, formatted by `formatAgreementDateTime` |
+| Originating IP | `tenant_ip` / `guardian_ip`, client address taken from the head of an `X-Forwarded-For` chain |
+| Device, OS, browser | parsed from `tenant_user_agent` / `guardian_user_agent` |
+| Raw user agent | stored verbatim alongside the readable summary |
+
+- Times are **IST**, not UTC — every party to these agreements is in India and a UTC timestamp on a tenancy contract invites the wrong reading.
+- An **unsigned** panel is stamped with nothing. A date and an IP under a signature nobody gave would describe an event that never happened.
+- The **owner** gets a date but no device or IP: they sign by applying a stored signature stamp, not from a browser, so there is nothing to record.
+- The stamp is deliberately **excluded from `document_content_hash`** — two renders of the same agreement, signed from different devices, are still the same agreement.
+
+## The five commercial terms
+
+Every Stayo agreement carries the same five terms, in the same order:
+
+| id | Heading |
+|---|---|
+| `residential_use` | Residential Use Only |
+| `rent_payment` | Rent Payment |
+| `security_deposit` | Security Deposit |
+| `notice_period` | Notice Period |
+| `hostel_rules_compliance` | Hostel Rules Compliance |
+
+- **Owners write the body. The headings are fixed.** An owner cannot rename, delete, reorder or add a term.
+- **Enforced server-side** by `normalizeAgreementTerms()`, not by the editor. The save route previously validated only `id` and `content`, so a renamed, invented or omitted term could persist.
+- **It normalizes rather than rejects.** An unrecognised term is dropped, a missing one is restored with Stayo's wording, and a blanked one falls back the same way — a malformed payload becomes a valid agreement instead of costing an owner their editing session.
+- Before this the whole band was uneditable, so every hostel shipped an identical notice period.
+
+See [[Decisions#ADR-220|ADR-220]].
+
+## When an owner may publish an agreement
+
+- **Blocked** when the draft contains a token Stayo cannot fill. A typo like `{{MONTLY_RENT}}` prints literally on a document somebody signs, so this is the one condition worth refusing over. Every offending token is named.
+- **Blocked** when the draft matches what is already published — there is nothing to publish.
+- **Warned, not blocked**, when the owner's signature is not set. An unsigned agreement is still a real document, and refusing would strand an owner who has not reached that screen.
+- Publishing shows what changed — added, reworded, removed — and how many tenants signed the current version, before it happens.
+
+Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.

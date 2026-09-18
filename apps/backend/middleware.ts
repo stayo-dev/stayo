@@ -24,6 +24,10 @@ const PUBLIC_ROUTES = [
   "/api/leads/self-serve",
   "/api/leads/invitation",
   "/api/leads/track",
+  // Manager invitation/activation (ADR-214) — token-gated, mirrors
+  // /api/leads/invitation above. No session exists yet at this point in the
+  // flow; every route under this prefix validates the token itself.
+  "/api/managers/invitation",
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",
@@ -32,6 +36,13 @@ const PUBLIC_ROUTES = [
   // /api/discover/enquiries and /api/discover/saved public too, handing every
   // seeker's enquiry history to anyone who asked.
   "/api/discover/hostels",
+  // Supply requests come from visitors with no account — that is the point of
+  // them. Exact path, never "/api/discover": PUBLIC_ROUTES is prefix-matched,
+  // and the broad entry would expose every seeker's enquiry history and saved
+  // list (ADR-073 point 6).
+  "/api/discover/coverage-requests",
+  // The homepage line-up is browse data, and the homepage is public.
+  "/api/discover/homepage-hostels",
   // The share preview page (`yourstayo.com/h/:slug` rewrites here). Fetched by
   // WhatsApp/Instagram/Telegram crawlers, which carry no session and never
   // will — that is the entire point of a link preview. It renders only what
@@ -44,6 +55,10 @@ const PUBLIC_ROUTES = [
   "/api/webhooks/notifications/whatsapp",
   "/api/webhooks/payments/razorpay",
   "/api/plans",
+  // Landing page pricing section — prices/capacity are business rules, not
+  // secrets, and the route returns no owner-specific data. Exact path, not
+  // the broader "/api/public" prefix — this list is prefix-matched.
+  "/api/public/subscription-plans",
   "/api/revalidate",
   "/api/payments/pay/",
   // Vercel-Cron hits these with `Authorization: Bearer $CRON_SECRET`,
