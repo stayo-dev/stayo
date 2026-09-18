@@ -38,6 +38,29 @@ for file in $migrations
     end
 end
 
+# Reads one key out of .env without sourcing it: .env holds secrets we do not
+# want exported into this shell, and the values contain characters fish would
+# otherwise try to interpret.
+function __env_value -a file key
+    grep -m1 "^$key=" $file | string replace -r "^$key=" '' | string trim -c '"' | string trim -c "'"
+end
+
+# Session mode (5432) from transaction mode (6543). Transaction pooling wraps
+# every statement in a transaction, and `ALTER TYPE … ADD VALUE` cannot run
+# inside one; session mode behaves like a direct connection, and unlike the
+# direct host it has IPv4 records.
+function __session_mode -a url
+    if test -z "$url"
+        return
+    end
+    echo $url | string replace ':6543/' ':5432/' | string replace -r '[?&]pgbouncer=true' ''
+end
+
+function __works -a url
+    test -n "$url"; or return 1
+    PGCONNECT_TIMEOUT=8 psql "$url" -tAc 'select 1' >/dev/null 2>&1
+end
+
 if test -z "$url"
     # .env is gitignored, so it lives in whichever checkout you actually work
     # in — not necessarily the one this script was checked out into. Look in
@@ -63,19 +86,30 @@ if test -z "$url"
     end
 
     echo "Env    : $env_file"
-    # DIRECT_URL first, DATABASE_URL only as a fallback. DATABASE_URL points at
-    # the pgbouncer pooler in transaction mode, and DDL does not belong there —
-    # `ALTER TYPE … ADD VALUE` in particular cannot run inside a transaction
-    # block, which is exactly what transaction pooling wraps every statement in.
-    # Read without sourcing .env: it holds secrets we do not want exported into
-    # this shell, and the values contain characters fish would try to interpret.
-    for key in DIRECT_URL DATABASE_URL
-        set url (grep -m1 "^$key=" $env_file | string replace -r "^$key=" '' | string trim -c '"' | string trim -c "'")
-        if test -n "$url"
-            echo "Using  : $key"
-            break
-        end
+
+    set -l direct (__env_value $env_file DIRECT_URL)
+    set -l pooled (__env_value $env_file DATABASE_URL)
+    set -l session (__session_mode $pooled)
+
+    # In preference order, with the reason each is or is not usable. DIRECT_URL
+    # is the right answer where it resolves, but Supabase's direct host is
+    # IPv6-only on many projects, so it is probed rather than assumed.
+    echo "Probing connections…"
+    if __works $direct
+        set url $direct
+        set -g chosen "DIRECT_URL (direct host, session semantics)"
+    else if __works $session
+        set url $session
+        set -g chosen "DATABASE_URL in session mode (pooler :5432) — DIRECT_URL did not connect"
+    else if __works $pooled
+        set url $pooled
+        set -g chosen "DATABASE_URL as-is (pooler :6543) — nothing better connected"
+    else
+        echo "✗ none of DIRECT_URL, the session-mode pooler, or DATABASE_URL could connect."
+        echo "  Check the network, and that the Supabase project is running."
+        exit 1
     end
+    echo "Using  : $chosen"
 end
 
 if test -z "$url"
