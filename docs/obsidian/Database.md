@@ -888,15 +888,15 @@ A check constraint (`coverage_requests_kind_payload`) keeps each kind from being
 
 **No unique constraint, deliberately** — a student asking twice is signal, not duplication; de-duplication is a reporting concern, and abuse is handled by the endpoint's rate limit and length caps rather than a constraint that would discard genuine repeat demand.
 
-**Unapplied in production as of 2026-09-18.** Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+**Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
 
 ### `PlatformLeadAcquisitionSource` gains two values (migration 087, ADR-223)
 
-`DISCOVER_DEMAND` (tenants enquired about an unclaimed platform listing) and `STUDENT_REFERRAL` (a student named the hostel on the public homepage). Both describe a lead **nobody submitted**, as opposed to `WEBSITE`, where the owner filled in the form. Applied with `ALTER TYPE … ADD VALUE IF NOT EXISTS`, so re-running is a no-op; run it outside an explicit transaction, since a new enum value cannot be used in the transaction that adds it. **Unapplied in production as of 2026-09-18.** See [[Bugs]].
+`DISCOVER_DEMAND` (tenants enquired about an unclaimed platform listing) and `STUDENT_REFERRAL` (a student named the hostel on the public homepage). Both describe a lead **nobody submitted**, as opposed to `WEBSITE`, where the owner filled in the form. Applied with `ALTER TYPE … ADD VALUE IF NOT EXISTS`, so re-running is a no-op; run it outside an explicit transaction, since a new enum value cannot be used in the transaction that adds it. **Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). See [[Bugs]].
 
 ## `homepage_features` (migration 088, ADR-223)
 
 The admin-curated homepage line-up: `hostel_id` (unique, FK → `hostels` `ON DELETE CASCADE`), `position` (ascending, **not** unique — reordering rewrites the whole list, and a unique constraint would force temporary values for every swap), `created_by` (FK → `profiles` `ON DELETE SET NULL`), `created_at`, `updated_at`. Indexed on `(position ASC, created_at ASC)`.
 
-A row here does **not** override `DISCOVERABLE`; the read path intersects the two. **Unapplied in production as of 2026-09-18.** Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+A row here does **not** override `DISCOVERABLE`; the read path intersects the two. **Applied to production 2026-09-18** (via `scripts/apply-homepage-migrations.fish`, session-mode pooler — the direct host is IPv6-only and does not resolve from the dev machine). Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
 
