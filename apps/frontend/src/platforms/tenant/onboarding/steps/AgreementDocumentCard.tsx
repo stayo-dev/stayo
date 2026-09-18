@@ -10,8 +10,7 @@ import {
   highlightTitles,
   sectionIndex,
 } from '@features/agreements/document/documentReading';
-import { useFieldGuidance } from '../guidance/Guidance';
-import { GuidanceNote } from '../guidance/Guidance';
+import { GuidanceNote, useFieldGuidance } from '../guidance/Guidance';
 
 /**
  * The agreement, described honestly and opened.

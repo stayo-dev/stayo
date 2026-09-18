@@ -107,6 +107,19 @@ export function AgreementWorkspacePage() {
     enabled: Boolean(hostelId && active?.rules_content),
   });
 
+  /**
+   * How many tenants signed the version this would replace.
+   *
+   * Matched on the active template's id rather than the first row of the list:
+   * that list is ordered `status: "asc"` and `TemplateStatus` begins at DRAFT,
+   * so the first row is a draft whose `agreements_count` is always 0 — every
+   * owner would have been told nobody had signed. `null` when it cannot be
+   * determined, so the sheet says "future tenants" rather than inventing a
+   * number.
+   */
+  const affectedTenants =
+    templates.find((t) => t.id === active?.id)?.agreements_count ?? null;
+
   const unknown = useMemo(() => unknownVariables(draft), [draft]);
   const unsaved = hasDraftChanges(draft, rules);
   const diff = useMemo(
@@ -117,7 +130,7 @@ export function AgreementWorkspacePage() {
     hasDraftChanges: hasDraft || hasDraftChanges(draft, active?.rules_content ?? null),
     unknownTokens: unknown,
     signatureConfigured,
-    affectedTenants: templates[0]?.agreements_count ?? 0,
+    affectedTenants: affectedTenants ?? 0,
   });
 
   if (isLoading || !draft) {
@@ -213,7 +226,7 @@ export function AgreementWorkspacePage() {
                 open={openSection === category.id}
                 onToggle={() => setOpenSection(openSection === category.id ? null : category.id)}
                 onEditLine={(index, text) => change(editLine(draft, category.id, index, text))}
-                onOverflow={() => change(addLine(draft, category.id, (category.rules ?? []).length - 1))}
+                onAddLine={() => change(addLine(draft, category.id, (category.rules ?? []).length - 1))}
               />
             ))}
 
@@ -289,7 +302,7 @@ export function AgreementWorkspacePage() {
         <PublishReviewSheet
           diff={diff}
           readiness={readiness}
-          affectedTenants={templates[0]?.agreements_count ?? null}
+          affectedTenants={affectedTenants}
           publishing={publish.isPending}
           onCancel={() => setReviewOpen(false)}
           onConfirm={() => draft && publish.mutate(draft)}
