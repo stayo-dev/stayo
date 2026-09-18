@@ -51,6 +51,12 @@ describe('planFeatured', () => {
     expect(planFeatured([card('a'), card('b')]).lead?.id).toBe('a');
   });
 
+  it('respects a curated order instead of hunting for a photograph', () => {
+    const plan = planFeatured([card('no-photo'), card('has-photo', ['https://ik.imagekit.io/x/a.jpg'])], true);
+    expect(plan.lead?.id).toBe('no-photo');
+    expect(plan.cards.map((c) => c.id)).toEqual(['no-photo', 'has-photo']);
+  });
+
   it('treats exactly EDITORIAL_MAX as editorial', () => {
     const exact = Array.from({ length: EDITORIAL_MAX }, (_, i) => card(`h${i}`));
     expect(planFeatured(exact).layout).toBe('editorial');

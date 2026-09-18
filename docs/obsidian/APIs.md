@@ -869,3 +869,11 @@ The decision lives in `src/services/discovery/coverage-request-handler.ts` (depe
 
 `source` takes one value or a comma-separated set (`WEBSITE,STUDENT_REFERRAL,DISCOVER_DEMAND`), validated value by value; a single value behaves exactly as before. The Leads screen asks for those three so owner signups sit beside the leads nobody submitted, each badged; `DIRECT_ADMIN` stays out, because the Owners page owns it. Rows already returned `acquisition_source` — it was simply never displayed. See [[Bugs]].
 
+## Homepage line-up (ADR-223)
+
+- **`GET /api/discover/homepage-hostels`** — public, allowlisted by exact path. Returns `{ results, facets, total, curated }`. `curated` is true when an admin's line-up decided the order; when no line-up exists it falls back to the recommended sort and returns `curated: false`, so the homepage can never be emptied by nobody curating.
+- **`GET /api/platform-admin/homepage-features`** — `MANAGE_HOSTELS` (not `MANAGE_LEADS`: this is a decision about listings, not the sales pipeline). Returns the line-up plus the discoverable hostels that could join it. Each row carries `live_on_homepage` and the status fields explaining a hostel that has stopped showing.
+- **`PUT /api/platform-admin/homepage-features`** — body `{ hostel_ids: string[] }`, replacing the line-up wholesale. Deduped, capped at 12, and hostels that are not discoverable come back in `rejected` rather than being stored to fail silently later.
+
+Related: [[Database]], [[Frontend]], [[Decisions#ADR-223|ADR-223]].
+

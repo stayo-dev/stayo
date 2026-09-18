@@ -23,11 +23,14 @@ export const GRID_MAX = 6;
  * the layout rather than the layout being fixed and the content rattling
  * around inside it.
  */
-export function planFeatured(cards: DiscoverCard[]): FeaturedPlan {
+export function planFeatured(cards: DiscoverCard[], curated = false): FeaturedPlan {
   if (cards.length === 0) {
     return { layout: 'none', cards: [], lead: null, showBrowseAll: false };
   }
-  const lead = cards.find((card) => (card.photos?.length ?? 0) > 0) ?? cards[0];
+  // A curated line-up is somebody's decision about what comes first, so the
+  // lead is simply the first one. Only the default sort gets second-guessed
+  // for a photograph.
+  const lead = curated ? cards[0] : cards.find((card) => (card.photos?.length ?? 0) > 0) ?? cards[0];
   if (cards.length <= EDITORIAL_MAX) {
     return { layout: 'editorial', cards, lead, showBrowseAll: false };
   }

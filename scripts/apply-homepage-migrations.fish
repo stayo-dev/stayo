@@ -4,6 +4,7 @@
 #
 #   086_coverage_requests.sql        — the supply-request table
 #   087_lead_acquisition_sources.sql — DISCOVER_DEMAND + STUDENT_REFERRAL
+#   088_homepage_features.sql        — the admin-curated homepage line-up
 #
 # Usage, from the repo root:
 #
@@ -17,7 +18,7 @@
 # database it is about to touch and asks you to type "yes" before writing.
 
 set -l repo_root (dirname (status --current-filename))/..
-set -l migrations $repo_root/migrations/086_coverage_requests.sql $repo_root/migrations/087_lead_acquisition_sources.sql
+set -l migrations $repo_root/migrations/086_coverage_requests.sql $repo_root/migrations/087_lead_acquisition_sources.sql $repo_root/migrations/088_homepage_features.sql
 
 set -l apply 0
 set -l url ""
@@ -94,6 +95,13 @@ or begin
     exit 1
 end
 
+echo "→ 088_homepage_features.sql"
+psql "$url" -v ON_ERROR_STOP=1 --single-transaction -f $repo_root/migrations/088_homepage_features.sql
+or begin
+    echo "✗ 088 failed. 086 and 087 are applied; re-run to retry 088."
+    exit 1
+end
+
 echo
 echo "→ verifying"
 psql "$url" -v ON_ERROR_STOP=1 -c "
@@ -103,10 +111,12 @@ psql "$url" -v ON_ERROR_STOP=1 -c "
     (select count(*) from pg_enum e
        join pg_type t on t.oid = e.enumtypid
       where t.typname = 'PlatformLeadAcquisitionSource'
-        and e.enumlabel in ('DISCOVER_DEMAND','STUDENT_REFERRAL')) as new_lead_sources;
+        and e.enumlabel in ('DISCOVER_DEMAND','STUDENT_REFERRAL')) as new_lead_sources,
+    (select count(*) from information_schema.tables
+       where table_schema = 'public' and table_name = 'homepage_features') as homepage_features_table;
 "
 
 echo
-echo "✓ Done. Expect coverage_requests_table = 1 and new_lead_sources = 2."
+echo "✓ Done. Expect coverage_requests_table = 1, new_lead_sources = 2, homepage_features_table = 1."
 echo "  Deploy the app only after this reports those numbers — the code queries"
 echo "  coverage_requests and writes the two new acquisition sources."

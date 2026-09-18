@@ -119,6 +119,32 @@ export const platformAdminService = {
    * same search, so the filter chips can show the shape of the backlog
    * without one request per status.
    */
+  /**
+   * The homepage line-up (ADR-223) — which hostels the public front page shows
+   * and in what order. Replaced wholesale, never patched per row.
+   */
+  getHomepageFeatures: async () => {
+    const response = await api.get('/platform-admin/homepage-features');
+    return unwrap(response) as {
+      features: Array<{
+        hostel_id: string;
+        position: number;
+        name: string | null;
+        city: string | null;
+        live_on_homepage: boolean;
+        status: string | null;
+        listing_status: string | null;
+        verification_status: string | null;
+      }>;
+      candidates: Array<{ id: string; name: string; city: string | null }>;
+    };
+  },
+
+  setHomepageFeatures: async (hostelIds: string[]) => {
+    const response = await api.put('/platform-admin/homepage-features', { hostel_ids: hostelIds });
+    return unwrap(response) as { accepted: string[]; rejected: string[]; features: any[] };
+  },
+
   getLeads: async (params: { search?: string; status?: string; source?: string; limit?: number; offset?: number } = {}) => {
     const response = await api.get('/platform-admin/leads', { params });
     const data = unwrap(response);

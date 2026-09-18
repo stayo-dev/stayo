@@ -570,3 +570,9 @@ Related: [[Features]], [[APIs]], [[Decisions#ADR-195|ADR-195]]
 
 Listings are read through the existing Discover browse endpoint; the write goes through `src/features/coverage/api`. Related: [[APIs]], [[Features]], [[Decisions#ADR-223|ADR-223]].
 
+### Homepage line-up, admin side (ADR-223)
+
+`/admin/homepage` (`platforms/admin/pages/HomepageLineupPage.tsx`) curates what the public homepage shows: add from the discoverable hostels, reorder with up/down, remove, then save the whole list. Ordering logic is the pure `platforms/admin/leads/homepageLineup.ts` (`moveItem`), tested directly. A curated hostel that has stopped being discoverable stays visible here with a "not showing" flag and the status that explains it — the homepage drops it silently, so this is the only place an admin can find out why the front page is one short.
+
+On the public side `planFeatured(cards, curated)` leaves a curated order alone; only the default sort is second-guessed for a lead photograph.
+

@@ -232,6 +232,7 @@ export default defineConfig({
       'tests/coverage-request-rules.test.ts',
       'tests/coverage-request-handler.test.ts',
       'tests/lead-acquisition-source.test.ts',
+      'tests/homepage-curation.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

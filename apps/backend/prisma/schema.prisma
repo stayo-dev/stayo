@@ -333,6 +333,7 @@ model hostels {
   history_disclosures            residency_history_disclosures[]
   marketing_revisions            hostel_marketing_revisions[]
   tenant_owner_attestations      tenant_owner_attestations[]
+  homepage_feature                  homepage_features?
 }
 
 model identity_tokens {
@@ -863,6 +864,7 @@ model profile {
   // `visitor_leads` above, which is the same table seen as the *owner*.
   seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
   seeker_coverage_requests                                          coverage_requests[]   @relation("SeekerCoverageRequests")
+  curated_homepage_features                                         homepage_features[]   @relation("HomepageCurator")
   saved_hostels                                                     saved_hostels[]
   hostel_reviews                                                    hostel_reviews[]
   // Phase B: the portable half of this account. `identity` is the person's own
@@ -4627,4 +4629,20 @@ model coverage_requests {
   @@index([normalized_query, created_at(sort: Desc)], map: "idx_coverage_requests_normalized")
   @@index([city, created_at(sort: Desc)], map: "idx_coverage_requests_city")
   @@index([kind, created_at(sort: Desc)], map: "idx_coverage_requests_kind")
+}
+
+/// Admin-curated homepage line-up. See migration 088 / ADR-223.
+model homepage_features {
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id  String   @unique @db.Uuid
+  /// Ascending. Not unique — reordering rewrites the whole list.
+  position   Int
+  created_by String?  @db.Uuid
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  hostel  hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  curator profile? @relation("HomepageCurator", fields: [created_by], references: [id], onDelete: SetNull)
+
+  @@index([position, created_at], map: "idx_homepage_features_position")
 }

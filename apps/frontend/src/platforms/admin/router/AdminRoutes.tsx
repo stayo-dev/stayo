@@ -19,6 +19,7 @@ const ManagerHostelDetailPage = lazy(() => import('../pages/ManagerHostelDetailP
 const LeadsPage = lazy(() => import('../pages/LeadsPage').then((m) => ({ default: m.LeadsPage })));
 const OwnersPage = lazy(() => import('../pages/OwnersPage').then((m) => ({ default: m.OwnersPage })));
 const ListingsPage = lazy(() => import('../pages/ListingsPage').then((m) => ({ default: m.ListingsPage })));
+const HomepageLineupPage = lazy(() => import('../pages/HomepageLineupPage').then((m) => ({ default: m.HomepageLineupPage })));
 const ReviewsPage = lazy(() => import('../pages/ReviewsPage').then((m) => ({ default: m.ReviewsPage })));
 const RevenuePage = lazy(() => import('../pages/RevenuePage').then((m) => ({ default: m.RevenuePage })));
 const SubscriptionsPage = lazy(() => import('../pages/SubscriptionsPage').then((m) => ({ default: m.SubscriptionsPage })));
@@ -75,6 +76,8 @@ export function AdminRoutes() {
             marketing-content review (ADR-076) is a tab inside it rather than
             a separate destination — a listing needs both to go live. */}
         <Route path="/admin/listings" element={<ListingsPage />} />
+        {/* ADR-223: which hostels the public homepage shows, and in what order. */}
+        <Route path="/admin/homepage" element={<HomepageLineupPage />} />
         <Route path="/admin/reviews" element={<ReviewsPage />} />
         {/* Full-screen: it renders the real Discovery listing, so it must not
             sit inside the console chrome. */}

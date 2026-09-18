@@ -1,6 +1,6 @@
 import { useEffect, useMemo } from 'react';
 
-import { useDiscoverSearch } from '@features/discover/hooks/useDiscover';
+import { useHomepageListings } from '@features/homepage/hooks/useHomepageListings';
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
 import { PublicHeader } from './components/PublicHeader';
@@ -13,9 +13,6 @@ import { SupplyRequestSection } from './home/SupplyRequestSection';
 import { TrustSection } from './home/TrustSection';
 import { homeSupplyState, planFeatured } from './home/homeFeatured';
 import { citiesFromFacets, liveCities, liveCityLabel, primaryCity } from './home/liveCities';
-
-/** Enough to fill the grid and derive the city list; the rest is `/discover`. */
-const HOME_LISTING_LIMIT = 12;
 
 /**
  * `/` — the student-first front door (ADR-223).
@@ -30,14 +27,17 @@ const HOME_LISTING_LIMIT = 12;
  * violated). The header's owner CTA changes wording and destination instead.
  */
 export function HomePage() {
-  const { data, isLoading } = useDiscoverSearch({ limit: HOME_LISTING_LIMIT, sort: 'recommended' });
+  // Admin-curated when a line-up exists, the default recommended sort when it
+  // does not — see homepage-feature-service.ts. The page never has to know
+  // which, beyond not re-sorting what a human already ordered.
+  const { data, isLoading } = useHomepageListings();
 
   useEffect(() => {
     document.title = 'Stayo — hostel living, sorted';
   }, []);
 
   const cards = useMemo(() => data?.results ?? [], [data]);
-  const plan = useMemo(() => planFeatured(cards), [cards]);
+  const plan = useMemo(() => planFeatured(cards, data?.curated ?? false), [cards, data]);
   // Facets describe every matching hostel; the cards are only this page of
   // them. Fall back to the cards if the server ever stops sending facets.
   const cities = useMemo(() => {

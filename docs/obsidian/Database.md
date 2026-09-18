@@ -894,3 +894,9 @@ A check constraint (`coverage_requests_kind_payload`) keeps each kind from being
 
 `DISCOVER_DEMAND` (tenants enquired about an unclaimed platform listing) and `STUDENT_REFERRAL` (a student named the hostel on the public homepage). Both describe a lead **nobody submitted**, as opposed to `WEBSITE`, where the owner filled in the form. Applied with `ALTER TYPE … ADD VALUE IF NOT EXISTS`, so re-running is a no-op; run it outside an explicit transaction, since a new enum value cannot be used in the transaction that adds it. **Unapplied in production as of 2026-09-18.** See [[Bugs]].
 
+## `homepage_features` (migration 088, ADR-223)
+
+The admin-curated homepage line-up: `hostel_id` (unique, FK → `hostels` `ON DELETE CASCADE`), `position` (ascending, **not** unique — reordering rewrites the whole list, and a unique constraint would force temporary values for every swap), `created_by` (FK → `profiles` `ON DELETE SET NULL`), `created_at`, `updated_at`. Indexed on `(position ASC, created_at ASC)`.
+
+A row here does **not** override `DISCOVERABLE`; the read path intersects the two. **Unapplied in production as of 2026-09-18.** Related: [[APIs]], [[Decisions#ADR-223|ADR-223]].
+

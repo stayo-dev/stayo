@@ -15,6 +15,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - **Nothing was deleted.** `WelcomePage` still ships and `/` picks between them (`?homepage=…` → `VITE_HOMEPAGE` → default), with `/welcome` and `/home-v2` as permanent URLs either way.
   - New **supply requests**: a student can name an uncovered campus, or name a hostel that should be listed and optionally give the owner's number. One public endpoint, one table (`coverage_requests`, migration **086** — unapplied).
   - **Admin can now see who sent a lead.** Demand-evidence leads had been inheriting the `WEBSITE` default, so a lead nobody submitted was indistinguishable from an owner signup; `DISCOVER_DEMAND` and `STUDENT_REFERRAL` (migration **087**) name the two, the pipeline shows all three sources at once, and any row that is not owner-submitted is badged (see [[Bugs]]).
+  - **Admin now decides which hostels the homepage shows, and in what order** (`/admin/homepage`, migration **088**). Curation composes the DISCOVERABLE predicate rather than overriding it, an empty line-up falls back to the recommended sort, and there are no placeholder cards — with nothing to show the section renders nothing.
   - No money claim appears anywhere on the page: a planned per-converted-tenant fee makes "no brokerage" unsafe, so the spine is *no agents — straight to the hostel owner*.
 
 - **2026-09-18**: **Agreement version history — read any past version, and bring its wording back** ([[Decisions#ADR-222|ADR-222]], [[Features]], [[APIs]]).
