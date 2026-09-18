@@ -92,13 +92,17 @@ in place that grows with supply rather than needing a second rewrite.
    and independent deploy cadence — but it is infra work with no payoff this quarter and it
    collides with the in-flight Clerk migration's cross-subdomain session config. **Deferred to
    v2, explicitly, not rejected.**
-3. **The brand spine is the line from the legal work: _Stayo earns nothing from your rent._**
-   It is the only positioning statement that lands on both audiences — to students and parents
-   it means *we are not a broker* (stating the mechanism, where the current copy only gestures
-   at attitude with "no broker games"); to owners it means *we do not sit between you and your
-   money*. It ships in the trust section of `/` and should later be echoed on `/owners`.
-   `Stay Operations` is an owner-flavoured origin story and does not carry the root;
-   `hostel living, sorted` (already the `document.title`) is the student-side line.
+3. **The brand spine is a claim about the channel, not about money: _no agents — straight to the
+   hostel owner._** An earlier draft of this spec used *"Stayo earns nothing from your rent"*,
+   taken from the legal work's settled position that the owner subscription is Stayo's only
+   revenue. **That position has changed** (see §11 open question 4): a per-converted-tenant fee of
+   roughly ₹100–300, charged to the owner when a Stayo lead becomes an active tenant, is planned
+   but not priced. A success fee paid by the owner on a placement is, in substance, the thing a
+   reader means by brokerage — so the page must not claim there is none, and must not name a
+   price that is not settled. What stays true whatever the pricing lands on is the *channel*:
+   every hostel is visited and verified before it is listed, and the enquiry reaches the person
+   who runs the hostel rather than an agent or a call centre. **No revenue, commission, brokerage
+   or fee claim appears in public copy until pricing is signed off and the terms are updated.**
 4. **No search box until supply justifies one.** The hero leads with *place* and with the
    hostels that actually exist. A search entry point arrives with supply (§7).
 5. **Scarcity is framed as curation, and the claim is true in the schema.** Every listed hostel
@@ -155,7 +159,7 @@ shell exists; a themed page has no such excuse.)
 | 1 | **PublicHeader** (sticky) | Stayo mark + wordmark · Browse hostels · How it works · **List your hostel** · Log in | The owner door on every public page. Present in the mobile menu at the *top*, not buried. |
 | 2 | **Hero** | "Hostel living, sorted." · sub: verified hostels, real photos, no brokers · live-in-city chip · CTA *See hostels in <city>* | Lead listing's own photography, or brand-only when supply is zero (§6). No search box (decision 4). |
 | 3 | **Featured hostels** | 1-3 editorial-scale cards: real photos, `starting_price`, `vacant_beds`, `sharing`, `food_included`, verified badge | Data from the existing public browse endpoint. Layout adapts to count (§5). |
-| 4 | **Coverage request** | "Not in your area yet? Tell us which campus you're near." Area/campus input, optional contact | The engine. Everyone gets an action even when Stayo cannot serve them. |
+| 4 | **Supply requests** (two prongs) | **a.** "Get your hostel on Stayo" — hostel name + optional owner's number. **b.** "Not in your area yet?" — campus/area + optional contact | The engine. Prong (a) is student-led owner acquisition: the student names the hostel, Stayo approaches the owner. Prong (b) is demand data. Everyone gets an action even when Stayo cannot serve them. |
 | 5 | **Trust** | **Stayo earns nothing from your rent** · verified before listed · digital agreement · payments through licensed rails | Written for parents as much as students. |
 | 6 | **How it works** | Browse → Enquire → Visit → Move in | Dissolves the "is this a broker?" doubt. |
 | 7 | **Owner band** (across the seam) | "Run a hostel? Fill your beds and collect rent on autopilot." → `/owners` | One band, not a second homepage. Gains the demand readout in phase 2. |
@@ -363,6 +367,19 @@ layer.
    `apps/backend/public/`. It is deliberately untouched here and **must not be deleted along
    with the frontend copies**, but it is publicly reachable and deserves its own decision: keep,
    redirect to `/`, or retire.
+4. **The pricing change invalidates a settled legal decision.** Commit `427fff80` recorded that
+   *"the owner subscription is Stayo's **only** revenue"* and that the published terms would state
+   affirmatively *"Stayo earns nothing from your rent"*, calling it a trust asset. The planned
+   per-converted-tenant fee makes that statement false, and that spec's own proviso — *"If the
+   Easebuzz commercials ever change to include a share, this claim must change with them"* —
+   applies with equal force here. **The terms, and `docs/superpowers/specs/2026-09-10-legal-policies-production-design.md`,
+   must be revised before any pricing goes live**, and the e-commerce disclosure rules the same
+   spec cites are likely to require the fee to be disclosed to owners. Out of scope for this page
+   beyond keeping the claim off it.
+5. **Who contacts the owner on a referral?** This spec assumes *Stayo* does — the student names
+   the hostel and we approach the owner, which is lower friction for the student and keeps the
+   pitch consistent. The alternative is giving the student a share link to pass on. Not decided;
+   the schema supports either.
 3. **`MarketingFooter` links only to `/company`, `/contact`, `/legal/privacy` and
    `/legal/terms`.** There is no refunds/cancellation-policy route, which a payment aggregator's
    onboarding review typically requires to be reachable from the homepage. Out of scope for this

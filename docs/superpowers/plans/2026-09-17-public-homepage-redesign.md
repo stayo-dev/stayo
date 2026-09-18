@@ -30,6 +30,10 @@ Every task's requirements implicitly include these.
 - **`npm run build` does NOT typecheck** — it is `check:architecture && vite build && branding-check`, and esbuild skips type checking. Run `npx tsc --noEmit` filtered to your own files.
 - **Use the brand pack at `Stayo-Brand-Assetes/`, not hand-picked hexes.** Palette: Warm Clay `#B46A55`, Terra Cotta `#A45D44`, Dusty Orange `#D2986C`, Latte `#EBD9C4`, Charcoal `#2F2F2F`, Cream `#F7F3EE`. The mark is the S-monogram already shipped as `StayoMark` (viewBox `0 0 539 727`, geometry lifted from the brand vector) — **never redraw it**. The header/footer lockup is the horizontal logo.
 - **Texture is the graph-paper grid, never the brand pattern tile.** `pattern/stayo-pattern-tile.svg` carries house/window/tick motifs — sticker art, too loud behind copy. Use ruled 1px gradients: `rgba(180,106,85,0.11)` at `52px` on cream, `rgba(255,255,255,0.055)` at `48px` on charcoal, and `rgba(164,93,68,0.15)` at `26px` on Latte for a photo slot that has not loaded.
+- **No claim about money, commission, brokerage or fees appears in public copy.** A
+  per-converted-tenant fee (~₹100-300, charged to the owner) is planned and unpriced, which makes
+  "no brokerage" and "Stayo earns nothing from your rent" unsafe and the amount unquotable. The
+  trust claim is about the channel instead: *no agents — straight to the hostel owner*.
 - **No green.** The brand has no success colour. Availability ("3 beds free") uses `#3F6B50`, a muted warm-leaning green chosen for 6.1:1 on white — never a Tailwind `emerald-*`, which is off-palette.
 - **ADR number is 214.** Highest on `origin/main` is ADR-213. Re-check `git show origin/main:docs/obsidian/Decisions.md | grep -oE 'ADR-[0-9]+' | sort -n | tail -1` at merge time — numbers collide across concurrent branches.
 
@@ -52,7 +56,7 @@ Every task's requirements implicitly include these.
 | `src/app/pages/public/home/coverageRequest.ts` (+`.test.ts`) | Coverage form validation and payload shaping. |
 | `src/app/pages/public/home/HomeHero.tsx` | Hero, both supply states. |
 | `src/app/pages/public/home/FeaturedHostels.tsx` | Section wrapper + `FeaturedHostelCard`. |
-| `src/app/pages/public/home/CoverageRequestSection.tsx` | The coverage form. |
+| `src/app/pages/public/home/SupplyRequestSection.tsx` | Both supply forms: refer a hostel, request an area. |
 | `src/app/pages/public/home/TrustSection.tsx` | The four trust facts. |
 | `src/app/pages/public/home/HowItWorks.tsx` | Four steps. |
 | `src/app/pages/public/home/OwnerBand.tsx` | Seam transition + owner pitch. |
@@ -499,7 +503,7 @@ git commit -m "feat(home): size listing photography without face cropping"
 ```ts
 // apps/frontend/src/app/pages/public/home/coverageRequest.test.ts
 import { describe, expect, it } from 'vitest';
-import { AREA_MAX, classifyContact, validateCoverage } from './coverageRequest';
+import { AREA_MAX, classifyContact, validateCoverage, validateHostelReferral } from './coverageRequest';
 
 describe('classifyContact', () => {
   it('treats blank as empty, because contact is optional', () => {
@@ -527,7 +531,7 @@ describe('validateCoverage', () => {
   it('accepts an area with no contact at all — the signal is the point', () => {
     const result = validateCoverage({ area: '  Osmania University  ', contact: '' });
     expect(result.valid).toBe(true);
-    expect(result.payload).toEqual({ area_query: 'Osmania University', source: 'HOME' });
+    expect(result.payload).toEqual({ kind: 'AREA', area_query: 'Osmania University', source: 'HOME' });
   });
 
   it('includes a valid contact when one is given', () => {
@@ -556,6 +560,32 @@ describe('validateCoverage', () => {
     expect(validateCoverage({ area: 'Osmania University', contact: '' }, 'HOME_EMPTY').payload?.source).toBe('HOME_EMPTY');
   });
 });
+
+describe('validateHostelReferral', () => {
+  it('accepts a hostel name on its own — the number is a bonus, not a gate', () => {
+    const result = validateHostelReferral({ hostelName: '  Sri Sai Boys Hostel ', ownerContact: '' });
+    expect(result.valid).toBe(true);
+    expect(result.payload).toEqual({ kind: 'HOSTEL', hostel_name: 'Sri Sai Boys Hostel', source: 'HOME' });
+  });
+
+  it("includes the owner's number when one is given", () => {
+    const result = validateHostelReferral({ hostelName: 'Sri Sai', ownerContact: '9876543210' });
+    expect(result.payload?.owner_contact).toBe('9876543210');
+  });
+
+  it('rejects a name too short to identify a hostel', () => {
+    const result = validateHostelReferral({ hostelName: 'ab', ownerContact: '' });
+    expect(result.valid).toBe(false);
+    expect(result.errors.hostelName).toBeTruthy();
+    expect(result.payload).toBeNull();
+  });
+
+  it('rejects a malformed owner number rather than dropping it', () => {
+    const result = validateHostelReferral({ hostelName: 'Sri Sai', ownerContact: '12345' });
+    expect(result.valid).toBe(false);
+    expect(result.errors.ownerContact).toBeTruthy();
+  });
+});
 ```
 
 - [ ] **Step 2: Run test to verify it fails**
@@ -576,9 +606,29 @@ export interface CoverageDraft {
 }
 
 export interface CoveragePayload {
+  kind: 'AREA';
   area_query: string;
   contact?: string;
   source: string;
+}
+
+/** A student naming a hostel that should be on Stayo. */
+export interface HostelReferralDraft {
+  hostelName: string;
+  ownerContact: string;
+}
+
+export interface HostelReferralPayload {
+  kind: 'HOSTEL';
+  hostel_name: string;
+  owner_contact?: string;
+  source: string;
+}
+
+export interface HostelReferralValidation {
+  valid: boolean;
+  errors: { hostelName?: string; ownerContact?: string };
+  payload: HostelReferralPayload | null;
 }
 
 export interface CoverageValidation {
@@ -631,8 +681,44 @@ export function validateCoverage(draft: CoverageDraft, source = 'HOME'): Coverag
     return { valid: false, errors, payload: null };
   }
 
-  const payload: CoveragePayload = { area_query: area, source };
+  const payload: CoveragePayload = { kind: 'AREA', area_query: area, source };
   if (contactKind !== 'empty') payload.contact = draft.contact.trim();
+  return { valid: true, errors: {}, payload };
+}
+
+export const HOSTEL_NAME_MIN = 3;
+export const HOSTEL_NAME_MAX = 120;
+
+/**
+ * Validates a hostel referral.
+ *
+ * This is student-led owner acquisition: the student names the hostel they
+ * already live in or want, and Stayo approaches the owner. The owner's number
+ * is the single most valuable field on the page — it turns a name into a call —
+ * but it stays optional, because a hostel name alone is still findable and
+ * demanding the number would lose most of the referrals.
+ */
+export function validateHostelReferral(draft: HostelReferralDraft, source = 'HOME'): HostelReferralValidation {
+  const errors: { hostelName?: string; ownerContact?: string } = {};
+  const hostelName = draft.hostelName.trim();
+
+  if (hostelName.length < HOSTEL_NAME_MIN) {
+    errors.hostelName = 'Tell us the name of the hostel.';
+  } else if (hostelName.length > HOSTEL_NAME_MAX) {
+    errors.hostelName = `Keep this under ${HOSTEL_NAME_MAX} characters.`;
+  }
+
+  const contactKind = classifyContact(draft.ownerContact);
+  if (contactKind === 'invalid') {
+    errors.ownerContact = "Enter the owner's mobile number — or leave it blank.";
+  }
+
+  if (errors.hostelName || errors.ownerContact) {
+    return { valid: false, errors, payload: null };
+  }
+
+  const payload: HostelReferralPayload = { kind: 'HOSTEL', hostel_name: hostelName, source };
+  if (contactKind !== 'empty') payload.owner_contact = draft.ownerContact.trim();
   return { valid: true, errors: {}, payload };
 }
 ```
@@ -640,13 +726,13 @@ export function validateCoverage(draft: CoverageDraft, source = 'HOME'): Coverag
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd apps/frontend && npx vitest run src/app/pages/public/home/coverageRequest.test.ts`
-Expected: PASS, 10 tests.
+Expected: PASS, 14 tests.
 
 - [ ] **Step 5: Commit**
 
 ```bash
 git add apps/frontend/src/app/pages/public/home/coverageRequest.ts apps/frontend/src/app/pages/public/home/coverageRequest.test.ts
-git commit -m "feat(home): validate coverage requests without gating on contact"
+git commit -m "feat(home): validate area requests and hostel referrals, neither gated on contact"
 ```
 
 ---
@@ -771,20 +857,30 @@ git commit -m "feat(home): owner door label and destination from session state"
 
 CREATE TABLE IF NOT EXISTS public.coverage_requests (
   id                uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-  area_query        text NOT NULL,
-  normalized_query  text NOT NULL,
+  kind              text NOT NULL DEFAULT 'AREA',   -- 'AREA' | 'HOSTEL'
+  area_query        text,
+  normalized_query  text,
+  hostel_name       text,
+  owner_contact     text,
   city              text,
   contact_phone     text,
   contact_email     text,
   seeker_profile_id uuid REFERENCES public.profiles(id) ON DELETE SET NULL,
   source            text NOT NULL DEFAULT 'HOME',
   notified_at       timestamptz,
-  created_at        timestamptz NOT NULL DEFAULT now()
+  created_at        timestamptz NOT NULL DEFAULT now(),
+  -- Each kind carries its own required payload; neither may be half-filled.
+  CONSTRAINT coverage_requests_kind_payload CHECK (
+    (kind = 'AREA'   AND area_query IS NOT NULL AND normalized_query IS NOT NULL) OR
+    (kind = 'HOSTEL' AND hostel_name IS NOT NULL)
+  )
 );
 
 -- Aggregation is always "how much demand for this area / this city, lately".
 CREATE INDEX IF NOT EXISTS idx_coverage_requests_normalized
-  ON public.coverage_requests (normalized_query, created_at DESC);
+  ON public.coverage_requests (normalized_query, created_at DESC) WHERE normalized_query IS NOT NULL;
+CREATE INDEX IF NOT EXISTS idx_coverage_requests_kind
+  ON public.coverage_requests (kind, created_at DESC);
 CREATE INDEX IF NOT EXISTS idx_coverage_requests_city
   ON public.coverage_requests (city, created_at DESC) WHERE city IS NOT NULL;
 
@@ -802,9 +898,15 @@ Append to `apps/backend/prisma/schema.prisma`:
 /// Demand for an area Stayo does not cover yet. See migration 085.
 model coverage_requests {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  area_query        String
+  /// 'AREA' (demand for a place) or 'HOSTEL' (a student naming a hostel to onboard).
+  kind              String    @default("AREA")
+  area_query        String?
   /// Lower-cased, whitespace-collapsed `area_query`, for aggregation.
-  normalized_query  String
+  normalized_query  String?
+  /// The hostel a student referred, for kind = 'HOSTEL'.
+  hostel_name       String?
+  /// The owner's number, when the student knew it. Optional, always.
+  owner_contact     String?
   city              String?
   contact_phone     String?
   contact_email     String?
@@ -817,6 +919,7 @@ model coverage_requests {
   seeker profile? @relation("SeekerCoverageRequests", fields: [seeker_profile_id], references: [id], onDelete: SetNull)
 
   @@index([normalized_query, created_at(sort: Desc)], map: "idx_coverage_requests_normalized")
+  @@index([kind, created_at(sort: Desc)], map: "idx_coverage_requests_kind")
   @@index([city, created_at(sort: Desc)], map: "idx_coverage_requests_city")
 }
 ```
@@ -878,6 +981,7 @@ describe('parseCoverageRequest', () => {
     if (!parsed.ok) return;
     expect(parsed.value.areaQuery).toBe('Osmania University');
     expect(parsed.value.normalizedQuery).toBe('osmania university');
+    expect(parsed.value.kind).toBe('AREA');
     expect(parsed.value.contactPhone).toBeNull();
     expect(parsed.value.contactEmail).toBeNull();
     expect(parsed.value.source).toBe('HOME');
@@ -924,6 +1028,36 @@ describe('parseCoverageRequest', () => {
     if (!parsed.ok) return;
     expect(parsed.value.source).toBe('HOME');
   });
+
+  it('accepts a hostel referral with just a name', () => {
+    const parsed = parseCoverageRequest({ kind: 'HOSTEL', hostel_name: ' Sri Sai Boys Hostel ' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.kind).toBe('HOSTEL');
+    expect(parsed.value.hostelName).toBe('Sri Sai Boys Hostel');
+    expect(parsed.value.areaQuery).toBeNull();
+    expect(parsed.value.normalizedQuery).toBeNull();
+    expect(parsed.value.ownerContact).toBeNull();
+  });
+
+  it("keeps the owner's number on a referral, as ten local digits", () => {
+    const parsed = parseCoverageRequest({ kind: 'HOSTEL', hostel_name: 'Sri Sai', owner_contact: '+91 98765 43210' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.ownerContact).toBe('9876543210');
+  });
+
+  it('rejects a referral with no usable hostel name', () => {
+    expect(parseCoverageRequest({ kind: 'HOSTEL' }).ok).toBe(false);
+    expect(parseCoverageRequest({ kind: 'HOSTEL', hostel_name: 'ab' }).ok).toBe(false);
+  });
+
+  it('treats an unknown kind as AREA rather than failing', () => {
+    const parsed = parseCoverageRequest({ kind: 'WHATEVER', area_query: 'BITS' });
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.value.kind).toBe('AREA');
+  });
 });
 ```
 
@@ -949,9 +1083,17 @@ export const AREA_MAX = 120;
 export const COVERAGE_SOURCES = ["HOME", "HOME_EMPTY", "SEARCH_EMPTY"] as const;
 export type CoverageSource = (typeof COVERAGE_SOURCES)[number];
 
+export type CoverageKind = "AREA" | "HOSTEL";
+
 export interface RecordCoverageRequestInput {
-  areaQuery: string;
-  normalizedQuery: string;
+  kind: CoverageKind;
+  /** Set for AREA; null for HOSTEL. */
+  areaQuery: string | null;
+  normalizedQuery: string | null;
+  /** Set for HOSTEL; null for AREA. */
+  hostelName: string | null;
+  /** The owner's number on a referral. Optional, always. */
+  ownerContact: string | null;
   contactPhone: string | null;
   contactEmail: string | null;
   source: CoverageSource;
@@ -960,7 +1102,10 @@ export interface RecordCoverageRequestInput {
 
 export type ParsedCoverageRequest =
   | { ok: true; value: Omit<RecordCoverageRequestInput, "seekerProfileId"> }
-  | { ok: false; error: "INVALID_AREA" | "INVALID_CONTACT" };
+  | { ok: false; error: "INVALID_AREA" | "INVALID_CONTACT" | "INVALID_HOSTEL" };
+
+export const HOSTEL_NAME_MIN = 3;
+export const HOSTEL_NAME_MAX = 120;
 
 const EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]{2,}$/;
 const INDIAN_MOBILE = /^[6-9]\d{9}$/;
@@ -985,15 +1130,51 @@ function parseContact(raw: unknown): { phone: string | null; email: string | nul
 }
 
 /**
- * The server is the authority on what a coverage request is.
+ * The server is the authority on what a supply request is.
  *
- * The area alone is a complete submission — contact is optional and never
- * gates the signal. An unrecognised `source` is coerced to HOME rather than
- * rejected: the client has no business widening an enum, and losing the whole
- * signal over a bad label would be the wrong trade.
+ * Two kinds share one endpoint and one table: AREA is demand for a place,
+ * HOSTEL is a student naming a hostel that should be listed. Neither is gated
+ * on a contact detail — the area and the hostel name are the valuable parts and
+ * they are free to collect; making either conditional on a phone number trades
+ * most of the signal for a little of the contact. An unrecognised `source` is
+ * coerced to HOME rather than rejected: the client has no business widening an
+ * enum, and losing the whole signal over a bad label would be the wrong trade.
  */
 export function parseCoverageRequest(body: unknown): ParsedCoverageRequest {
   const input = (body ?? {}) as Record<string, unknown>;
+
+  const rawSource = input.source;
+  const source = COVERAGE_SOURCES.includes(rawSource as CoverageSource)
+    ? (rawSource as CoverageSource)
+    : "HOME";
+
+  const kind: CoverageKind = input.kind === "HOSTEL" ? "HOSTEL" : "AREA";
+
+  if (kind === "HOSTEL") {
+    const rawName = input.hostel_name;
+    if (typeof rawName !== "string") return { ok: false, error: "INVALID_HOSTEL" };
+    const hostelName = rawName.trim();
+    if (hostelName.length < HOSTEL_NAME_MIN || hostelName.length > HOSTEL_NAME_MAX) {
+      return { ok: false, error: "INVALID_HOSTEL" };
+    }
+    const owner = parseContact(input.owner_contact);
+    if (owner === "invalid") return { ok: false, error: "INVALID_CONTACT" };
+    return {
+      ok: true,
+      value: {
+        kind,
+        areaQuery: null,
+        normalizedQuery: null,
+        hostelName,
+        // A referral's contact is the OWNER's, and it is the whole point of the
+        // prong: it turns a hostel name into a phone call.
+        ownerContact: owner.phone ?? owner.email,
+        contactPhone: null,
+        contactEmail: null,
+        source,
+      },
+    };
+  }
 
   const rawArea = input.area_query;
   if (typeof rawArea !== "string") return { ok: false, error: "INVALID_AREA" };
@@ -1005,16 +1186,14 @@ export function parseCoverageRequest(body: unknown): ParsedCoverageRequest {
   const contact = parseContact(input.contact);
   if (contact === "invalid") return { ok: false, error: "INVALID_CONTACT" };
 
-  const rawSource = input.source;
-  const source = COVERAGE_SOURCES.includes(rawSource as CoverageSource)
-    ? (rawSource as CoverageSource)
-    : "HOME";
-
   return {
     ok: true,
     value: {
+      kind,
       areaQuery,
       normalizedQuery: normalizeQuery(areaQuery),
+      hostelName: null,
+      ownerContact: null,
       contactPhone: contact.phone,
       contactEmail: contact.email,
       source,
@@ -1026,7 +1205,7 @@ export function parseCoverageRequest(body: unknown): ParsedCoverageRequest {
 - [ ] **Step 4: Run test to verify it passes**
 
 Run: `cd apps/backend && npm run test:pure -- tests/coverage-request-rules.test.ts`
-Expected: PASS, 8 tests.
+Expected: PASS, 12 tests.
 
 - [ ] **Step 5: Commit**
 
@@ -1149,7 +1328,7 @@ export interface CoverageHandlerDeps {
 
 export type CoverageHandlerResult =
   | { status: 201; body: { recorded: true; will_notify: boolean } }
-  | { status: 400; body: { error: "INVALID_AREA" | "INVALID_CONTACT" } }
+  | { status: 400; body: { error: "INVALID_AREA" | "INVALID_CONTACT" | "INVALID_HOSTEL" } }
   | { status: 429; body: { error: "RATE_LIMITED"; retry_after_seconds: number } };
 
 /**
@@ -1205,8 +1384,11 @@ export const coverageRequestService = {
    */
   async record(input: RecordCoverageRequestInput): Promise<{ id: string; willNotify: boolean }> {
     const data = {
+      kind: input.kind,
       area_query: input.areaQuery,
       normalized_query: input.normalizedQuery,
+      hostel_name: input.hostelName,
+      owner_contact: input.ownerContact,
       contact_phone: input.contactPhone,
       contact_email: input.contactEmail,
       source: input.source,
@@ -1214,7 +1396,12 @@ export const coverageRequestService = {
     } satisfies Prisma.coverage_requestsUncheckedCreateInput;
 
     const row = await prisma.coverage_requests.create({ data, select: { id: true } });
-    return { id: row.id, willNotify: Boolean(input.contactPhone || input.contactEmail) };
+    // A referral notifies nobody: the contact we hold is the owner's, and we
+    // are the ones who will call them.
+    return {
+      id: row.id,
+      willNotify: input.kind === "AREA" && Boolean(input.contactPhone || input.contactEmail),
+    };
   },
 };
 ```
@@ -1529,14 +1716,14 @@ git commit -m "feat(home): one public header with a permanent owner door"
 **Files:**
 - Create: `apps/frontend/src/app/pages/public/home/HomeHero.tsx`
 - Create: `apps/frontend/src/app/pages/public/home/FeaturedHostels.tsx`
-- Create: `apps/frontend/src/app/pages/public/home/CoverageRequestSection.tsx`
+- Create: `apps/frontend/src/app/pages/public/home/SupplyRequestSection.tsx`
 - Create: `apps/frontend/src/app/pages/public/home/TrustSection.tsx`
 - Create: `apps/frontend/src/app/pages/public/home/HowItWorks.tsx`
 - Create: `apps/frontend/src/app/pages/public/home/OwnerBand.tsx`
 
 **Interfaces:**
-- Consumes: `planFeatured`/`FeaturedPlan` (Task 2), `listingPhotoUrl` (Task 3), `validateCoverage`/`CoveragePayload` (Task 4), `useSubmitCoverageRequest` (Task 10), `hostelCardFacts` from `@/app/pages/discover/hostelCardFacts`, `DiscoverCard`.
-- Produces: `<HomeHero cityLabel ctaCity lead loading />`, `<FeaturedHostels plan loading />`, `<CoverageRequestSection source variant />`, `<TrustSection />`, `<HowItWorks />`, `<OwnerBand />`.
+- Consumes: `planFeatured`/`FeaturedPlan` (Task 2), `listingPhotoUrl` (Task 3), `validateCoverage`/`validateHostelReferral` (Task 4), `useSubmitCoverageRequest` (Task 10), `hostelCardFacts` from `@/app/pages/discover/hostelCardFacts`, `DiscoverCard`.
+- Produces: `<HomeHero cityLabel ctaCity lead loading />`, `<FeaturedHostels plan loading />`, `<SupplyRequestSection source />`, `<TrustSection />`, `<HowItWorks />`, `<OwnerBand />`.
 
 **Reference:** the approved visual design is the canvas at https://claude.ai/artifact/3EvwF3FiM5Kzz52M5TMML3 — desktop, 390px mobile, and the zero-listings hero. Match its hierarchy and copy; use theme tokens (`bg-background`, `text-foreground`, `bg-card`, `border-border`, `text-muted-foreground`, `bg-primary`, `font-display`) rather than the canvas's literal hexes, so dark mode and the marketing theme both work.
 
@@ -1545,7 +1732,7 @@ git commit -m "feat(home): one public header with a permanent owner door"
 ```tsx
 // apps/frontend/src/app/pages/public/home/HomeHero.tsx
 import { Link } from 'react-router-dom';
-import { ArrowRight, FileText, IndianRupee, ShieldCheck } from 'lucide-react';
+import { ArrowRight, FileText, ShieldCheck, Users } from 'lucide-react';
 
 import type { DiscoverCard } from '@features/discover/api';
 import { hostelCardFacts } from '@/app/pages/discover/hostelCardFacts';
@@ -1613,7 +1800,7 @@ export function HomeHero({ cityLabel, ctaCity, lead, loading }: HomeHeroProps) {
               <ShieldCheck className="h-4 w-4 text-primary" strokeWidth={1.9} aria-hidden="true" /> Verified hostels only
             </li>
             <li className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground/80">
-              <IndianRupee className="h-4 w-4 text-primary" strokeWidth={1.9} aria-hidden="true" /> Zero brokerage
+              <Users className="h-4 w-4 text-primary" strokeWidth={1.9} aria-hidden="true" /> Straight to the owner
             </li>
             <li className="inline-flex items-center gap-2 text-[13px] font-semibold text-foreground/80">
               <FileText className="h-4 w-4 text-primary" strokeWidth={1.9} aria-hidden="true" /> Digital agreement
@@ -1781,31 +1968,105 @@ export function FeaturedHostels({ plan, loading }: { plan: FeaturedPlan; loading
 }
 ```
 
-- [ ] **Step 3: Write `CoverageRequestSection.tsx`**
+- [ ] **Step 3: Write `SupplyRequestSection.tsx`**
+
+Two prongs, one section, one endpoint. Prong (a) is student-led owner acquisition — the student
+names a hostel and Stayo approaches the owner. Prong (b) is demand for a place Stayo does not
+cover. Each is an independent form with its own success state, so submitting one never clears the
+other.
 
 ```tsx
-// apps/frontend/src/app/pages/public/home/CoverageRequestSection.tsx
+// apps/frontend/src/app/pages/public/home/SupplyRequestSection.tsx
 import { useState, type FormEvent } from 'react';
+import { HousePlus, MapPin } from 'lucide-react';
 
 import { useSubmitCoverageRequest } from '@features/coverage/hooks/useSubmitCoverageRequest';
 
-import { validateCoverage } from './coverageRequest';
+import { validateCoverage, validateHostelReferral } from './coverageRequest';
 
-interface CoverageRequestSectionProps {
+interface SupplyRequestSectionProps {
   /** 'HOME' from the normal page, 'HOME_EMPTY' when there are no listings. */
   source: string;
 }
 
-/**
- * The engine of the page at this stage of the business.
- *
- * A student naming a campus Stayo does not cover is not a failed search — it
- * is the data that recruits owners into that area. So this is a first-class
- * section rather than an empty state, and the area alone is a complete
- * submission: contact is optional, because gating the signal on a phone number
- * trades most of the demand for a little of the contact.
- */
-export function CoverageRequestSection({ source }: CoverageRequestSectionProps) {
+const FIELD =
+  'mt-2 h-[50px] w-full rounded-[13px] border border-white/15 bg-white/[0.06] px-4 text-[15px] text-background placeholder:text-background/45';
+const LABEL = 'mt-3.5 block font-display text-[11px] font-bold uppercase tracking-wider text-primary';
+const SUBMIT =
+  'mt-4 h-[50px] w-full rounded-[13px] bg-primary font-display text-[15px] font-extrabold text-primary-foreground disabled:opacity-60';
+
+/** A student naming the hostel they already live in is an owner lead. */
+function ReferHostelForm({ source }: { source: string }) {
+  const [hostelName, setHostelName] = useState('');
+  const [ownerContact, setOwnerContact] = useState('');
+  const [errors, setErrors] = useState<{ hostelName?: string; ownerContact?: string }>({});
+  const submit = useSubmitCoverageRequest();
+
+  const onSubmit = (event: FormEvent) => {
+    event.preventDefault();
+    const result = validateHostelReferral({ hostelName, ownerContact }, source);
+    setErrors(result.errors);
+    if (result.valid && result.payload) submit.mutate(result.payload);
+  };
+
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.055] p-6">
+      <HousePlus className="h-6 w-6 text-primary" strokeWidth={1.9} aria-hidden="true" />
+      <h3 className="mt-3 font-display text-[19px] font-extrabold text-background">Get your hostel on Stayo</h3>
+      <p className="mt-2 text-sm leading-relaxed text-background/70">
+        Living somewhere that isn't listed? Name it and we'll approach the owner ourselves. Your hostel gets a real
+        page — and you get rent receipts and complaints that don't get lost.
+      </p>
+
+      {submit.isSuccess ? (
+        <p className="mt-5 text-[15px] font-semibold text-background" role="status" aria-live="polite">
+          Got it — we'll reach out to them. Thank you.
+        </p>
+      ) : (
+        <form onSubmit={onSubmit} noValidate>
+          <label htmlFor="refer-name" className={LABEL}>Hostel name</label>
+          <input
+            id="refer-name"
+            type="text"
+            value={hostelName}
+            onChange={(event) => setHostelName(event.target.value)}
+            placeholder="e.g. Sri Sai Boys Hostel"
+            aria-invalid={Boolean(errors.hostelName)}
+            aria-describedby={errors.hostelName ? 'refer-name-error' : undefined}
+            className={FIELD}
+          />
+          {errors.hostelName && <p id="refer-name-error" className="mt-1.5 text-[13px] font-semibold text-primary">{errors.hostelName}</p>}
+
+          <label htmlFor="refer-owner" className={LABEL}>
+            Owner's number <span className="font-semibold normal-case tracking-normal text-background/60">— optional</span>
+          </label>
+          <input
+            id="refer-owner"
+            type="tel"
+            value={ownerContact}
+            onChange={(event) => setOwnerContact(event.target.value)}
+            placeholder="So we can call them"
+            aria-invalid={Boolean(errors.ownerContact)}
+            aria-describedby={errors.ownerContact ? 'refer-owner-error' : undefined}
+            className={FIELD}
+          />
+          {errors.ownerContact && <p id="refer-owner-error" className="mt-1.5 text-[13px] font-semibold text-primary">{errors.ownerContact}</p>}
+
+          <button type="submit" disabled={submit.isPending} className={SUBMIT}>
+            {submit.isPending ? 'Sending…' : 'Refer this hostel'}
+          </button>
+          <p className="mt-2.5 text-[12.5px] font-medium text-background/60">We do the asking — you don't have to.</p>
+          {submit.isError && (
+            <p className="mt-2 text-[13px] font-semibold text-primary" role="alert">That didn't send. Try again in a moment.</p>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+/** Demand for a place Stayo has no supply in. */
+function AreaRequestForm({ source }: { source: string }) {
   const [area, setArea] = useState('');
   const [contact, setContact] = useState('');
   const [errors, setErrors] = useState<{ area?: string; contact?: string }>({});
@@ -1815,85 +2076,89 @@ export function CoverageRequestSection({ source }: CoverageRequestSectionProps) 
     event.preventDefault();
     const result = validateCoverage({ area, contact }, source);
     setErrors(result.errors);
-    if (!result.valid || !result.payload) return;
-    submit.mutate(result.payload);
+    if (result.valid && result.payload) submit.mutate(result.payload);
   };
 
-  const done = submit.isSuccess;
+  return (
+    <div className="rounded-[20px] border border-white/10 bg-white/[0.055] p-6">
+      <MapPin className="h-6 w-6 text-primary" strokeWidth={1.9} aria-hidden="true" />
+      <h3 className="mt-3 font-display text-[19px] font-extrabold text-background">Not in your area yet?</h3>
+      <p className="mt-2 text-sm leading-relaxed text-background/70">
+        Tell us the campus you're near. We'll go and find hostels there, and you'll be the first to know when one lists.
+      </p>
 
+      {submit.isSuccess ? (
+        <p className="mt-5 text-[15px] font-semibold text-background" role="status" aria-live="polite">
+          {submit.data?.will_notify
+            ? "Noted — we'll message you when a hostel lists there."
+            : "Noted — we've recorded the area."}
+        </p>
+      ) : (
+        <form onSubmit={onSubmit} noValidate>
+          <label htmlFor="area-query" className={LABEL}>Your college or area</label>
+          <input
+            id="area-query"
+            type="text"
+            value={area}
+            onChange={(event) => setArea(event.target.value)}
+            placeholder="e.g. Osmania University"
+            aria-invalid={Boolean(errors.area)}
+            aria-describedby={errors.area ? 'area-query-error' : undefined}
+            className={FIELD}
+          />
+          {errors.area && <p id="area-query-error" className="mt-1.5 text-[13px] font-semibold text-primary">{errors.area}</p>}
+
+          <label htmlFor="area-contact" className={LABEL}>
+            Your phone <span className="font-semibold normal-case tracking-normal text-background/60">— optional</span>
+          </label>
+          <input
+            id="area-contact"
+            type="text"
+            value={contact}
+            onChange={(event) => setContact(event.target.value)}
+            placeholder="So we can tell you"
+            aria-invalid={Boolean(errors.contact)}
+            aria-describedby={errors.contact ? 'area-contact-error' : undefined}
+            className={FIELD}
+          />
+          {errors.contact && <p id="area-contact-error" className="mt-1.5 text-[13px] font-semibold text-primary">{errors.contact}</p>}
+
+          <button type="submit" disabled={submit.isPending} className={SUBMIT}>
+            {submit.isPending ? 'Sending…' : 'Tell Stayo'}
+          </button>
+          <p className="mt-2.5 text-[12.5px] font-medium text-background/60">Just the area is enough — we record it either way.</p>
+          {submit.isError && (
+            <p className="mt-2 text-[13px] font-semibold text-primary" role="alert">That didn't send. Try again in a moment.</p>
+          )}
+        </form>
+      )}
+    </div>
+  );
+}
+
+/**
+ * The supply engine, and the reason this page earns its keep at two listings.
+ *
+ * A student who names an uncovered campus is demand data. A student who names
+ * the hostel they already live in is an owner lead with a phone number attached
+ * — the cheapest owner acquisition Stayo has, because the student does the
+ * finding and Stayo only has to make the call.
+ */
+export function SupplyRequestSection({ source }: SupplyRequestSectionProps) {
   return (
     <section className="bg-card px-4 pb-16 sm:px-6 sm:pb-20">
-      <div className="mx-auto max-w-6xl rounded-[28px] border border-border bg-secondary p-7 sm:p-12">
-        <div className="grid gap-8 lg:grid-cols-2 lg:gap-14">
-          <div>
-            <h2 className="font-display text-[clamp(26px,3.4vw,36px)] font-extrabold leading-[1.1] tracking-tight text-foreground">
-              Not in your area yet?
-            </h2>
-            <p className="mt-3.5 text-base leading-relaxed text-muted-foreground">
-              Tell us the campus you're near. We'll go and find hostels there — and you'll be the first to know when one lists.
-            </p>
-          </div>
+      <div className="mx-auto max-w-6xl rounded-[28px] bg-foreground p-7 sm:p-12">
+        <span className="font-display text-xs font-bold uppercase tracking-[0.14em] text-primary">Help Stayo grow</span>
+        <h2 className="mt-3.5 font-display text-[clamp(26px,3.6vw,38px)] font-extrabold leading-[1.1] tracking-tight text-background">
+          Can't find the hostel you want?
+        </h2>
+        <p className="mt-3 max-w-[640px] text-base leading-relaxed text-background/70">
+          Two ways to fix that. Both take under a minute, and both make the list better for whoever looks next.
+        </p>
 
-          {done ? (
-            <div className="flex items-center" role="status" aria-live="polite">
-              <div>
-                <p className="font-display text-lg font-extrabold text-foreground">Noted — thank you.</p>
-                <p className="mt-2 text-[15px] leading-relaxed text-muted-foreground">
-                  {submit.data?.will_notify
-                    ? "We've recorded the area and we'll message you when a hostel lists there."
-                    : "We've recorded the area. Check back — or leave a number next time and we'll tell you."}
-                </p>
-              </div>
-            </div>
-          ) : (
-            <form onSubmit={onSubmit} noValidate>
-              <label htmlFor="coverage-area" className="block font-display text-[12px] font-bold uppercase tracking-wider text-primary">
-                Your college or area
-              </label>
-              <input
-                id="coverage-area"
-                type="text"
-                value={area}
-                onChange={(event) => setArea(event.target.value)}
-                placeholder="e.g. Osmania University, Hyderabad"
-                aria-invalid={Boolean(errors.area)}
-                aria-describedby={errors.area ? 'coverage-area-error' : undefined}
-                className="mt-2 h-14 w-full rounded-[14px] border border-border bg-background px-4 text-[15.5px] text-foreground"
-              />
-              {errors.area && <p id="coverage-area-error" className="mt-1.5 text-[13px] font-semibold text-destructive">{errors.area}</p>}
-
-              <label htmlFor="coverage-contact" className="mt-4 block font-display text-[12px] font-bold uppercase tracking-wider text-primary">
-                Phone or email <span className="font-semibold normal-case tracking-normal text-muted-foreground">— optional</span>
-              </label>
-              <div className="mt-2 flex flex-wrap gap-3">
-                <input
-                  id="coverage-contact"
-                  type="text"
-                  value={contact}
-                  onChange={(event) => setContact(event.target.value)}
-                  placeholder="So we can tell you when one lists"
-                  aria-invalid={Boolean(errors.contact)}
-                  aria-describedby={errors.contact ? 'coverage-contact-error' : undefined}
-                  className="h-14 min-w-[200px] flex-1 rounded-[14px] border border-border bg-background px-4 text-[15.5px] text-foreground"
-                />
-                <button
-                  type="submit"
-                  disabled={submit.isPending}
-                  className="h-14 flex-none rounded-[14px] bg-foreground px-7 font-display text-[15px] font-bold text-background disabled:opacity-60"
-                >
-                  {submit.isPending ? 'Sending…' : 'Tell Stayo'}
-                </button>
-              </div>
-              {errors.contact && <p id="coverage-contact-error" className="mt-1.5 text-[13px] font-semibold text-destructive">{errors.contact}</p>}
-
-              <p className="mt-3.5 text-[13px] font-medium text-muted-foreground">Just the area is enough — we record it either way.</p>
-              {submit.isError && (
-                <p className="mt-2 text-[13px] font-semibold text-destructive" role="alert">
-                  That didn't send. Try again in a moment.
-                </p>
-              )}
-            </form>
-          )}
+        <div className="mt-7 grid gap-5 lg:grid-cols-2">
+          <ReferHostelForm source={source} />
+          <AreaRequestForm source={source} />
         </div>
       </div>
     </section>
@@ -1905,21 +2170,23 @@ export function CoverageRequestSection({ source }: CoverageRequestSectionProps) 
 
 ```tsx
 // apps/frontend/src/app/pages/public/home/TrustSection.tsx
-import { CreditCard, FileCheck2, IndianRupee, ShieldCheck } from 'lucide-react';
+import { CreditCard, FileCheck2, ShieldCheck, Users } from 'lucide-react';
 
 const FACTS = [
   { Icon: ShieldCheck, title: 'Visited before listed', body: 'Every hostel is verified by us before it can appear here.' },
-  { Icon: IndianRupee, title: 'No brokerage, ever', body: 'You pay the hostel. Nothing is added on top by us.' },
+  { Icon: Users, title: 'Straight to the owner', body: 'Your enquiry goes to the person who runs the hostel, not an agent.' },
   { Icon: FileCheck2, title: 'Agreement in writing', body: 'A digital agreement and receipts you can actually produce later.' },
   { Icon: CreditCard, title: 'Licensed payment rails', body: 'Rent moves through a regulated aggregator, not a personal account.' },
 ];
 
 /**
- * The brand spine, and it comes out of the legal work rather than marketing:
- * the owner subscription is Stayo's only revenue, so "Stayo earns nothing from
- * your rent" is a fact the terms state affirmatively. It is the one line that
- * lands on both audiences — students hear "not a broker", owners hear "we do
- * not sit between you and your money".
+ * The brand spine — a claim about the channel, never about money.
+ *
+ * An earlier draft led with "Stayo earns nothing from your rent". A planned
+ * per-converted-tenant fee makes that unsafe, and the amount is not settled, so
+ * nothing about revenue, commission or brokerage appears here. What is true
+ * regardless of pricing is that every hostel is verified before listing and the
+ * enquiry reaches whoever runs it — no agent in the middle.
  */
 export function TrustSection() {
   return (
@@ -1928,13 +2195,14 @@ export function TrustSection() {
         <div className="max-w-[760px]">
           <span className="font-display text-xs font-bold uppercase tracking-[0.14em] text-primary">Why you can trust this</span>
           <h2 className="mt-4 font-display text-[clamp(32px,4.6vw,48px)] font-extrabold leading-[1.06] tracking-tight text-foreground">
-            Stayo earns nothing
+            No agents.
             <br />
-            from your rent.
+            Just you and the hostel.
           </h2>
           <p className="mt-4.5 text-[17px] leading-relaxed text-muted-foreground">
-            Hostel owners pay us a flat subscription for the software they run on. We take no commission, no brokerage and no
-            cut of what you pay your hostel — so nobody here has a reason to push you anywhere.
+            Every hostel here is visited and verified before it goes live. Your enquiry reaches the person who actually
+            runs it, not an agent or a call centre. And what you agree is written down, with receipts you can produce
+            months later.
           </p>
         </div>
 
@@ -2079,7 +2347,7 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 
 import { PublicHeader } from './components/PublicHeader';
 import { MarketingFooter } from './components/MarketingFooter';
-import { CoverageRequestSection } from './home/CoverageRequestSection';
+import { SupplyRequestSection } from './home/SupplyRequestSection';
 import { FeaturedHostels } from './home/FeaturedHostels';
 import { HomeHero } from './home/HomeHero';
 import { HowItWorks } from './home/HowItWorks';
@@ -2132,7 +2400,7 @@ export function HomePage() {
           loading={state === 'loading'}
         />
         <FeaturedHostels plan={plan} loading={state === 'loading'} />
-        <CoverageRequestSection source={state === 'empty' ? 'HOME_EMPTY' : 'HOME'} />
+        <SupplyRequestSection source={state === 'empty' ? 'HOME_EMPTY' : 'HOME'} />
         <TrustSection />
         <HowItWorks />
         <OwnerBand />
@@ -2233,13 +2501,13 @@ In `apps/frontend/index.html`, replace the `<title>` and the `description`/`og:t
 ```html
     <title>Stayo | Verified hostels &amp; PGs for students — hostel living, sorted</title>
     <meta name="description"
-      content="Find verified hostels and PGs with real photos, real prices and zero brokerage. Stayo earns nothing from your rent. Hostel owners: fill empty beds and collect rent on autopilot." />
+      content="Find verified hostels and PGs near your campus — real photos, real prices, and an enquiry that goes straight to the person who runs the hostel. Hostel owners: fill empty beds and collect rent on autopilot." />
 ```
 
 ```html
     <meta property="og:title" content="Stayo | Verified hostels &amp; PGs — hostel living, sorted" />
     <meta property="og:description"
-      content="Verified hostels with real photos, real prices and no brokers in the middle. Stayo earns nothing from your rent." />
+      content="Verified hostels with real photos and real prices. Your enquiry goes straight to the hostel owner." />
 ```
 
 - [ ] **Step 3: Add Organization JSON-LD**
@@ -2373,6 +2641,6 @@ Report explicitly:
 
 **Fixed after a second design review (2026-09-18):** the loading-vs-empty flash (`homeSupplyState`), the listing card being a card-with-a-button-inside-a-link rather than one link, `Log in` hidden below `sm`, and Tailwind `emerald-*` in place of a brand tone. The artboards were also rebuilt on the real brand pack.
 
-**Known gap, deliberate:** the zero-listings hero is handled by `HomeHero` rendering without the photo block and `CoverageRequestSection` receiving `HOME_EMPTY`, rather than a separate component. The canvas's third artboard shows a distinct layout for that state; if the rendered result is weaker than the canvas, split it into `HomeHeroEmpty.tsx` — but do not build both up front for a state the business may leave within weeks.
+**Known gap, deliberate:** the zero-listings hero is handled by `HomeHero` rendering without the photo block and `SupplyRequestSection` receiving `HOME_EMPTY`, rather than a separate component. The canvas's third artboard shows a distinct layout for that state; if the rendered result is weaker than the canvas, split it into `HomeHeroEmpty.tsx` — but do not build both up front for a state the business may leave within weeks.
 
 **Type consistency.** `DiscoverCard`, `FeaturedPlan`, `CoveragePayload`, `RecordCoverageRequestInput`, `CoverageSource`, `DiscoverCityFacet` and `OwnerDoor` are each defined once and imported everywhere else. `DiscoverSearchResult.results` and `.facets.cities` were both read from the source while writing this plan, not guessed. The Tailwind tokens used (`bg-secondary`, `text-destructive`, `text-primary-foreground`) were confirmed to exist as `@theme` colors in `src/styles/theme.css`.
