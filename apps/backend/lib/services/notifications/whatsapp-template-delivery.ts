@@ -21,6 +21,13 @@ export type WhatsAppTemplateDeliveryInput = {
    * from using the idempotent delivery path.
    */
   buttonParameters?: string[];
+  /**
+   * Optional media header for a document-header template (e.g. an invoice
+   * PDF). Passed straight through to `MetaWhatsAppProvider.sendTemplate`,
+   * which has always accepted it — this service simply never had a caller
+   * that needed a document header until the owner-invoice WhatsApp flow.
+   */
+  headerDocument?: { mediaId?: string; link?: string; filename?: string };
   idempotencyKey: string;
   tenantId?: string;
   hostelId?: string;
@@ -86,6 +93,7 @@ export class WhatsAppTemplateDeliveryService {
         templateName: input.templateName,
         bodyParameters: input.bodyParameters,
         buttonParameters: input.buttonParameters,
+        headerDocument: input.headerDocument,
         language: input.languageCode ? { code: input.languageCode } : undefined,
       });
 
