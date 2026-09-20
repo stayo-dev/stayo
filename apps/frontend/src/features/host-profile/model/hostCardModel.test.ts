@@ -88,6 +88,17 @@ describe('buildHostCard', () => {
     expect(card.stats).toEqual([]);
   });
 
+  it('names the owner on a platform listing whose content carries a host name', () => {
+    const card = buildHostCard({ ...HOST, platform_listed: true, name: ' Samala Poshetty ', bio: null })!;
+    expect(card.variant).toBe('platform');
+    expect(card.heading).toBe('Hosted by Samala Poshetty');
+    expect(card.role).toBe('Owner');
+    expect(card.initial).toBe('S');
+    // Naming them claims nothing else: no button, no stats.
+    expect(card.ctaLabel).toBeNull();
+    expect(card.stats).toEqual([]);
+  });
+
   it('renders nothing without a host', () => {
     expect(buildHostCard(null)).toBeNull();
     expect(buildHostCard(undefined)).toBeNull();
@@ -117,6 +128,13 @@ describe('buildHostByline', () => {
     const byline = buildHostByline({ ...HOST, platform_listed: true, name: null })!;
     expect(byline.title).toBe('Listed by Stayo');
     expect(byline.line).toBe('On Stayo since Sep 2026');
+    expect(byline.photoUrl).toBeNull();
+  });
+
+  it('names the owner on a platform listing that carries a host name', () => {
+    const byline = buildHostByline({ ...HOST, platform_listed: true, name: 'Samala Poshetty' })!;
+    expect(byline.title).toBe('Hosted by Samala Poshetty');
+    expect(byline.line).toBe('Owner');
     expect(byline.photoUrl).toBeNull();
   });
 

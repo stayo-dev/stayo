@@ -195,10 +195,17 @@ const BasicsSchema = z.object({
   about: z.string().trim().max(2000).nullable().default(null),
   /** Owner-stated, shown as-is. Not a substitute for the agreement's rules. */
   highlights: z.array(z.string().trim().min(1).max(80)).max(6).default([]),
+  /**
+   * Who to name as the host on a PLATFORM_LISTED hostel, which has no owner
+   * account of its own — all of them share one sentinel profile, so the
+   * listing cannot borrow a name from there. Ignored for owner-managed
+   * hostels, whose host is the owner's real profile.
+   */
+  host_name: z.string().trim().max(80).nullable().default(null),
 });
 
 export const MarketingContentSchema = z.object({
-  basics: BasicsSchema.default({ highlights: [] }),
+  basics: BasicsSchema.default({ highlights: [], host_name: null }),
   photos: z.array(PhotoSchema).max(24).default([]),
   beds: z.array(BedTierSchema).max(12).default([]),
   amenities: z.array(AmenitySchema).max(40).default([]),
@@ -223,7 +230,7 @@ export const DEFAULT_MESS_MEALS: MarketingContent["mess"]["meals"] = [
 const EMPTY_MESS_DAY = { b: "", l: "", s: "", dn: "" };
 
 export const EMPTY_CONTENT: MarketingContent = {
-  basics: { tagline: null, about: null, highlights: [] },
+  basics: { tagline: null, about: null, highlights: [], host_name: null },
   photos: [],
   beds: [],
   amenities: [],

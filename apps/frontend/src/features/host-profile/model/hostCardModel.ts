@@ -99,9 +99,18 @@ export function buildHostCard(
 
   const since = formatMonthYear(host.listed_since);
   if (host.platform_listed) {
+    // A platform listing has no owner account, but its reviewed content may
+    // still name the person behind it. Nothing else about a real host (photo,
+    // stats, button) is claimed for them.
+    const named = host.name?.trim() || null;
     return {
-      variant: 'platform', heading: 'Listed by Stayo', name: null, initial: 'S', photoUrl: null,
-      verified: false, bio: null, role: since ? `On Stayo since ${since}` : 'On Stayo',
+      variant: 'platform',
+      heading: named ? `Hosted by ${named}` : 'Listed by Stayo',
+      name: named,
+      initial: (named ?? 'S').charAt(0).toUpperCase(),
+      photoUrl: null,
+      verified: false, bio: null,
+      role: named ? 'Owner' : since ? `On Stayo since ${since}` : 'On Stayo',
       facts: [], stats: [], ctaLabel: null,
     };
   }
@@ -157,11 +166,12 @@ export function buildHostByline(host: PublicHost | null | undefined): HostByline
   const photoUrl = host.photo_url || null;
 
   if (host.platform_listed) {
+    const named = host.name?.trim() || null;
     return {
-      title: 'Listed by Stayo',
-      line: since ? `On Stayo since ${since}` : 'On Stayo',
-      name: null,
-      initial: 'S',
+      title: named ? `Hosted by ${named}` : 'Listed by Stayo',
+      line: named ? 'Owner' : since ? `On Stayo since ${since}` : 'On Stayo',
+      name: named,
+      initial: (named ?? 'S').charAt(0).toUpperCase(),
       photoUrl: null,
       verified: false,
     };

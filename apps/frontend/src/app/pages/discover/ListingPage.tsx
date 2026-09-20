@@ -61,7 +61,8 @@ interface BedOption {
   capacity: number;
   label: string;
   price: number | null;
-  availableBeds: number;
+  /** `null` = open, but no live count to quote (owner-asserted, no real rooms). */
+  availableBeds: number | null;
   roomType: string | null;
 }
 
@@ -170,8 +171,17 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
         label: tier.name || (tier.sharing === 1 ? 'Single room' : `${tier.sharing}-bed sharing`),
         price: tier.price > 0 ? tier.price : (realTier?.price ?? null),
         // A tier the owner marked FULL is full regardless of what rooms say;
-        // otherwise the live count wins over any claim.
-        availableBeds: tier.availability === 'FULL' ? 0 : (realTier?.availableBeds ?? 0),
+        // otherwise the live count wins over any claim. Only where no real
+        // room of this size exists at all (a platform-listed hostel) does an
+        // owner's AVAILABLE stand in — with no count, rather than a made-up one.
+        availableBeds:
+          tier.availability === 'FULL'
+            ? 0
+            : realTier
+              ? realTier.availableBeds
+              : tier.availability === 'AVAILABLE'
+                ? null
+                : 0,
         roomType: tier.inclusions ?? realTier?.roomType ?? null,
         // What the real rooms of this size are like to live in — measured by
         // the owner, summarised by the server (`room-space.ts`).
@@ -183,7 +193,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
   const isSaved = hostel ? savedIds.has(hostel.id) : false;
 
   const totalVacant = useMemo(
-    () => bedOptions.reduce((sum, option) => sum + option.availableBeds, 0),
+    () => bedOptions.reduce((sum, option) => sum + (option.availableBeds ?? 0), 0),
     [bedOptions],
   );
 
@@ -243,7 +253,7 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
    * price a full tier if nothing is open.
    */
   const pricedOptions = bedOptions.filter((option) => option.price != null);
-  const openOptions = pricedOptions.filter((option) => option.availableBeds > 0);
+  const openOptions = pricedOptions.filter((option) => option.availableBeds === null || option.availableBeds > 0);
   const cheapestPool = openOptions.length > 0 ? openOptions : pricedOptions;
   const minBedPrice =
     cheapestPool.length > 0 ? Math.min(...cheapestPool.map((option) => option.price as number)) : null;
@@ -775,14 +785,16 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
                             style={
                               soldOut
                                 ? { background: '#EFE6DA', color: C.textMuted }
-                                : option.availableBeds <= 2
+                                : option.availableBeds !== null && option.availableBeds <= 2
                                   ? { background: C.amberPale, color: C.amber }
                                   : { background: C.greenPale, color: C.green }
                             }
                           >
                             {soldOut
                               ? 'Full'
-                              : `${option.availableBeds} ${option.availableBeds === 1 ? 'bed' : 'beds'} left`}
+                              : option.availableBeds === null
+                                ? 'Available'
+                                : `${option.availableBeds} ${option.availableBeds === 1 ? 'bed' : 'beds'} left`}
                           </span>
                         </span>
                         {option.roomType && (

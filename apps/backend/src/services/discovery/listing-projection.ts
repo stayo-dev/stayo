@@ -208,12 +208,15 @@ export function projectListing({ detail, visible, marketing, hostProfile = null,
      * person is named in full, with their photo, their own words and the
      * stats they earned — and still never a phone or email (the bio rules
      * refuse both). A PLATFORM_LISTED hostel has no real owner, so it says so
-     * rather than naming the sentinel profile.
+     * rather than naming the sentinel profile — unless its reviewed listing
+     * content names a host (`basics.host_name`), which is shown as-is.
      */
     host: platformListed
       ? {
           platform_listed: true,
-          name: null,
+          // Only a name an admin-reviewed listing carries for this hostel —
+          // never the shared sentinel profile's.
+          name: marketing?.basics?.host_name?.trim() || null,
           photo_url: null,
           bio: null,
           languages: [],

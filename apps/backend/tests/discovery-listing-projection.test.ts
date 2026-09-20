@@ -101,6 +101,16 @@ describe("platform-listed hostels never advertise live vacancy", () => {
     expect(out.bed_tiers).toHaveLength(1);
   });
 
+  it("names no host unless the reviewed content carries one", () => {
+    expect(projectListing({ detail, visible: platform, marketing }).host.name).toBeNull();
+    const named = { ...marketing, basics: { ...marketing.basics, host_name: "  Samala Poshetty " } };
+    const out = projectListing({ detail, visible: platform, marketing: named });
+    expect(out.host.name).toBe("Samala Poshetty");
+    // Naming the host does not make the listing look operated: still no live vacancy.
+    expect(out.host.platform_listed).toBe(true);
+    expect(out.availability_confirmed).toBe(false);
+  });
+
   it("flags itself as platform listed so the UI can say so", () => {
     expect(projectListing({ detail, visible: platform, marketing }).platform_listed).toBe(true);
     expect(projectListing({ detail, visible, marketing }).platform_listed).toBe(false);

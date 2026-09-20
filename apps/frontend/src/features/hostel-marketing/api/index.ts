@@ -105,7 +105,7 @@ export interface MarketingMess {
 }
 
 export interface MarketingContent {
-  basics: { tagline: string | null; about: string | null; highlights: string[] };
+  basics: { tagline: string | null; about: string | null; highlights: string[]; host_name?: string | null };
   photos: MarketingPhoto[];
   beds: MarketingBed[];
   amenities: MarketingAmenity[];
