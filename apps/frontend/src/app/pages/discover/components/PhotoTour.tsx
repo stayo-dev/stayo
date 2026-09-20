@@ -3,7 +3,7 @@ import { ChevronLeft, Play } from 'lucide-react';
 
 import { C, FONT, PAGE_SHELL, PHOTO_FALLBACK } from '../discoverTheme';
 import { mobileSpan, mosaicTiles } from '../photoMosaic';
-import { categoryLabel } from '@features/hostel-drilldown/marketing/photoCategories';
+import { groupTourSections } from '@features/hostel-drilldown/marketing/photoCategories';
 import { MediaLightbox, type LightboxItem } from './MediaLightbox';
 
 export interface TourMedia extends LightboxItem {
@@ -20,31 +20,26 @@ export interface TourMedia extends LightboxItem {
  * forty undifferentiated photos makes someone hunt for the bathroom; this
  * answers "show me the bathrooms" in one tap.
  *
- * The order and the grouping rules live in the backend's `photo-tour.ts` and
- * are mirrored here for the client-side payload — see `groupTour` below, which
- * is deliberately the same shape so the two cannot disagree about what an
- * uncategorised photo does (it lands in "More photos"; it is never dropped).
+ * The order is the owner's own, arranged in their Photos screen and carried on
+ * the listing as `photo_sections`; a listing that never arranged anything gets
+ * the standard one. Grouping and ordering both live in `groupTourSections`,
+ * shared with that owner screen so the two ends cannot disagree — and mirrored
+ * by the backend's `photo-tour.ts`.
  */
-const SECTION_ORDER = ['rooms', 'bathrooms', 'mess', 'common', 'study', 'outside', 'other'];
-
-function groupTour(media: TourMedia[]) {
-  return SECTION_ORDER.map((key) => ({
-    key,
-    label: categoryLabel(key),
-    items: media.filter((item) => (item.category ?? 'other') === key),
-  })).filter((section) => section.items.length > 0);
-}
 
 export function PhotoTour({
   media,
+  sectionOrder,
   hostelName,
   onClose,
 }: {
   media: TourMedia[];
+  /** The owner's section order. Absent on an older payload — see above. */
+  sectionOrder?: string[] | null;
   hostelName: string;
   onClose: () => void;
 }) {
-  const sections = useMemo(() => groupTour(media), [media]);
+  const sections = useMemo(() => groupTourSections(media, sectionOrder), [media, sectionOrder]);
   // The viewer steps through the tour's own order, so "next" from the last
   // room photo lands on the first bathroom photo rather than jumping.
   const flat = useMemo(() => sections.flatMap((section) => section.items), [sections]);

@@ -90,6 +90,27 @@ describe("content normalisation", () => {
     expect(issues.join(" ")).toMatch(/₹0 price reads as free/i);
   });
 
+  it("completes the photo tour's section order rather than storing a partial one", () => {
+    // An owner who moves one section leaves a one-key array behind, and every
+    // revision saved before section order existed has none at all. Both must
+    // read back as a full order, because the tour and the owner's strip index
+    // it — a missing key would drop a section of photos from the listing.
+    expect(normaliseContent({}).photoSections).toEqual([
+      "rooms",
+      "bathrooms",
+      "mess",
+      "common",
+      "study",
+      "outside",
+      "other",
+    ]);
+
+    const moved = normaliseContent({ photoSections: ["mess"] });
+    expect(moved.photoSections[0]).toBe("mess");
+    expect(moved.photoSections).toHaveLength(7);
+    expect(new Set(moved.photoSections).size).toBe(7);
+  });
+
   it("pads the mess week to seven days, whatever was saved", () => {
     // Both surfaces index the week positionally — the owner's day chips and
     // Discovery's day chips both read `week[dayIndex]`. Every revision written

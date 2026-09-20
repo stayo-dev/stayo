@@ -1,4 +1,5 @@
 import api from '@lib/api-client';
+import { PHOTO_CATEGORY_KEYS } from '@features/hostel-drilldown/marketing/photoCategories';
 
 /**
  * The hostel marketing page and its approval cycle.
@@ -107,6 +108,12 @@ export interface MarketingMess {
 export interface MarketingContent {
   basics: { tagline: string | null; about: string | null; highlights: string[] };
   photos: MarketingPhoto[];
+  /**
+   * The order the listing's photo tour shows its sections in. Absent on every
+   * revision saved before owners could arrange them, which reads as the
+   * standard order — see `orderPhotoSections`.
+   */
+  photoSections?: string[];
   beds: MarketingBed[];
   amenities: MarketingAmenity[];
   places: MarketingPlace[];
@@ -276,6 +283,7 @@ export const MESS_TYPE_LABELS: Record<MessType, string> = {
 export const EMPTY_MARKETING_CONTENT: MarketingContent = {
   basics: { tagline: null, about: null, highlights: [] },
   photos: [],
+  photoSections: PHOTO_CATEGORY_KEYS,
   beds: [],
   amenities: [],
   places: [],
