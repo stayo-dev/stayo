@@ -178,11 +178,11 @@ export function DiscoverSearchBar({
             onClick={onOpenSearch}
             aria-label="Search hostels"
             className={`flex flex-none items-center justify-center rounded-full transition-transform hover:scale-105 ${
-              compact ? 'h-10 w-10' : 'h-[52px] w-[52px]'
+              'h-10 w-10'
             }`}
             style={{ background: C.clayDeep }}
           >
-            <Search className={compact ? 'h-4 w-4 text-white' : 'h-5 w-5 text-white'} strokeWidth={2.2} />
+            <Search className={'h-4 w-4 text-white'} strokeWidth={2.2} />
           </button>
         </div>
 

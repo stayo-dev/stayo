@@ -225,8 +225,8 @@ export function ExplorePage() {
         style={{ background: C.ink }}
       >
         <div
-          className="pointer-events-none absolute -right-12 -top-9 h-[170px] w-[170px] rounded-full lg:-right-24 lg:-top-24 lg:h-[520px] lg:w-[520px]"
-          style={{ background: 'radial-gradient(circle,rgba(217,144,111,.24),transparent 70%)' }}
+          className="pointer-events-none absolute -right-8 -top-6 h-[110px] w-[110px] rounded-full lg:-right-8 lg:-top-8 lg:h-[170px] lg:w-[170px]"
+          style={{ background: 'radial-gradient(circle,rgba(217,144,111,.16),transparent 70%)' }}
         />
 
         {/* Desktop top bar. A laptop visitor looks for the brand, the account
