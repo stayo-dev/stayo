@@ -22,6 +22,28 @@ const checks: Array<{
     allow: [/lib\/cache\/dashboard-cache\.ts$/],
   },
   {
+    /**
+     * A public hostel page is cached in TWO places — Next's ISR cache, keyed
+     * by tag, and the Redis cache inside `admissionsService.getPublicHostel`
+     * that the page reads THROUGH. Busting only the first re-renders the page
+     * from a stale read, so the owner's change is silently ignored: no error,
+     * no log, just a photo that did not update.
+     *
+     * `invalidatePublicListing` busts both. This keeps `revalidateTag` from
+     * being reached for directly, the same way the dashboard rule above works.
+     * ADR-224.
+     */
+    name: "public SEO pages must be invalidated through the blessed helper",
+    roots: ["lib/services", "src/services", "app/api"],
+    pattern: /\brevalidateTag\(/,
+    allow: [
+      /lib\/cache\/public-listing-cache\.ts$/,
+      // The Sanity webhook for the retired single-hostel landing page. It
+      // predates this rule and invalidates content this engine never reads.
+      /app\/api\/revalidate\/route\.ts$/,
+    ],
+  },
+  {
     name: "operational backend must not use optional hostelId service contracts",
     roots: ["lib/services", "app/api/dashboard", "app/api/analytics", "app/api/rooms", "app/api/tenants", "app/api/payments", "app/api/expenses", "app/api/food", "app/api/announcements", "app/api/hostel-events", "app/api/service-requests", "app/api/utility-status", "src/services/stay", "app/api/tenant/stay", "app/api/owner/stay", "app/api/hostels/[id]/stay", "src/services/meals", "app/api/hostels/[id]/meals"],
     pattern: /hostelId\?:\s*string|hostelId\?:\s*string\s*\|/,

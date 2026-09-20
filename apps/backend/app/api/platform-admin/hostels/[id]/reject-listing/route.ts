@@ -4,6 +4,7 @@ export const runtime = "nodejs";
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { invalidatePublicListing } from "@/lib/cache/public-listing-cache";
 import { eventLog } from "@/lib/services/event-log-service";
 
 function requireAdmin(session: any) {
@@ -50,7 +51,18 @@ export async function POST(req: NextRequest, { params }: { params: { id: string 
     const updated = await prisma.hostels.update({
       where: { id: params.id },
       data: { verification_status: "REJECTED", verification_note: reason },
-      select: { id: true, verification_status: true, listing_status: true, verification_note: true },
+      select: { id: true, verification_status: true, listing_status: true, verification_note: true, public_slug: true },
+    });
+
+    /**
+     * `verification_status` leaves VERIFIED, so the hostel drops out of
+     * `DISCOVERABLE` and its public page stops existing. The sitemap has to
+     * learn that, hence `visibilityChanged`.
+     */
+    await invalidatePublicListing({
+      hostelId: params.id,
+      slug: updated.public_slug,
+      visibilityChanged: true,
     });
 
     await eventLog

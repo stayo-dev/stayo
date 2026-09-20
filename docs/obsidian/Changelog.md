@@ -1902,3 +1902,19 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 - Add entries under `[Unreleased]` as you work; cut a dated section when a meaningful batch of work lands (doesn't need to map 1:1 to a deploy).
 - Use `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security` headers per Keep a Changelog.
 - Link to [[Decisions]] for the ADR behind a change, [[Bugs]] for the bug being fixed, [[Features]] for the feature affected.
+
+## 2026-09-20 — Programmatic SEO engine, Phase 1 ([[Decisions#ADR-224|ADR-224]])
+
+On `feat/programmatic-seo`. **Not merged, not deployed.**
+
+- **Added** the canonical server-rendered hostel page at `/hostels/:slug`, plus the `/hostels` hub, a dynamic sharded `sitemap.xml`, and a generated `robots.txt` — all in a new `app/(seo)` route group in `apps/backend`, surfaced on `yourstayo.com` by `vercel.json` rewrites.
+- **Added** `apps/backend/src/services/seo/` — pure, database-free modules holding every decision about what an indexable page says: the page generator, the copy rules, the JSON-LD builders and their omission rules, the content-threshold gate, the intent allowlist, slug rules, the sitemap sharder, and the single URL builder. 228 tests, all under `vitest.pure.config.ts`.
+- **Added** `lib/cache/public-listing-cache.ts` and a new architectural invariant forbidding `revalidateTag(` outside it; wired into marketing approval, post-approval actions, and the admin approve/suspend/reject listing routes.
+- **Fixed** `X-Robots-Tag: index, follow` being served on every URL in production, including `/owner/*` — see [[Bugs]].
+- **Fixed**, before shipping, a hostel page claiming an `aggregateRating` aggregated across all of its owner's hostels and not rendered anywhere on the page — see [[Bugs]].
+- **Changed** `share-card.ts`: `/h/:slug` keeps its 200 and its own `og:url`, but now canonicalises to `/hostels/:slug` and sends humans there.
+- **Deleted** four static crawl-control files — both apps' `sitemap.xml` and `robots.txt`. On Vercel a `public/` file is served before rewrites, so any survivor silently defeats the generated versions.
+- **Moved** `apps/backend/app/layout.tsx`, `page.tsx`, `(dashboard)/` and `studio/` under `app/(app)/`. No URL changed.
+- **Added** a `Browse hostels` link to the SPA marketing footer — a plain `<a>`, not a router `Link`, since `/hostels` is a rewrite and not an SPA route. It is the one crawlable bridge from the client-rendered site into the indexable tree.
+
+**Not built:** Phases 2–5 — slug history and 301s, the `areas`/`colleges`/`hostel_colleges` tables, locality and college pages, intent pages. Their generators exist and are tested; they have no routes and no data, and every collection URL 404s at today's one listing, which is what the gate requires.

@@ -1222,3 +1222,27 @@ See [[Decisions#ADR-220|ADR-220]].
 - Publishing shows what changed — added, reworded, removed — and how many tenants signed the current version, before it happens.
 
 Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.
+
+## What a public hostel page may say (2026-09-20, ADR-224)
+
+**One hostel, one indexable URL.** `/hostels/:slug` is canonical. `/h/:slug` (the share unfurl) and `/discover/h/:slug` (the app) both point their `rel=canonical` at it; `/visit/:slug` is self-canonical and `noindex`, because its visibility gate is looser than `DISCOVERABLE` and it can resolve for a hostel that has no canonical page.
+
+**A page may state only what a column backs.** Applied as hard omissions in the structured data, each pinned by a test:
+
+| Claim | Emitted only when |
+|---|---|
+| `aggregateRating` | **this hostel** has ≥1 published review *and* the page renders those reviews. Never the host's cross-hostel average. |
+| `Offer.availability` | `availability_confirmed` — a `PLATFORM_LISTED` hostel has no real rooms and may not claim `InStock`. |
+| `Offer` at all | the tier has a price > 0. An unpriced room is unpriced, not free. |
+| `priceRange` | something is priced. |
+| `geo` / `hasMap` | never in this phase — there is no latitude or longitude in the schema. |
+| `telephone` | never — the owner's number is not public on any Stayo surface. |
+| `FAQPage` | never — no Q&A rows exist, and generating them is invented content. |
+
+**Availability is a band, never a count.** "Beds available" or "Currently full". Under ISR the page can be an hour stale, and a wrong bed count on a page someone is choosing a home from is the failure [[Decisions#ADR-073|ADR-073]] exists to prevent. The exact number stays on the app page.
+
+**Sharing options come from real rooms, prices from the approved revision.** Search filters on `rooms.capacity`, so a page reached by filtering for a single room must not then say the hostel offers only 4-bed. Prices remain the advertised offer ([[Decisions#ADR-076|ADR-076]]) — what is on sale, not what is billed.
+
+**A generated collection page exists only with enough inventory behind it** — locality 3, city 2, college 3, intent 5 — and below that it **404s rather than `noindex`ing**. The same function gates the page and its sitemap entry, so the sitemap can never advertise a URL that 404s.
+
+Related: [[Decisions#ADR-224|ADR-224]], [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-086|ADR-086]], [[Features]]

@@ -1660,3 +1660,19 @@ A student-first homepage at `/`: a live-city chip derived from real listings, th
 
 Related: [[APIs]], [[Database]], [[Decisions#ADR-223|ADR-223]], [[Changelog]].
 
+
+### Programmatic SEO — the indexable hostel page (2026-09-20, ADR-224)
+
+**Phase 1 only. On `feat/programmatic-seo`; not merged, not deployed.**
+
+Every discoverable hostel now has one canonical, server-rendered page at `/hostels/:slug`, generated from the database with no per-hostel work by anyone. It carries a unique `<title>` and description composed from real columns (name, locality, audience, price, nearest college), a self-referencing canonical, Open Graph and Twitter tags using the ImageKit 1200×630 crop `share-card.ts` already built, one `<h1>` with a proper heading hierarchy beneath it, alt text on every image, and `Hostel` + `BreadcrumbList` JSON-LD.
+
+What the page shows, all of it already-approved listing content: gallery, tagline and about, bed tiers with prices and room dimensions, enabled amenities, the reviewed weekly mess menu, nearby places with their free-text distances, the landmark (only when an admin has located the hostel), the host card, published resident reviews, and a link into the SPA to enquire.
+
+What it refuses to show, each with a test: a rating with no published review behind it; an availability **count** (a band — "Beds available" / "Currently full" — because under ISR the page is correct for up to an hour); `₹0` for an unpriced room; a coordinate; a phone number; a generated FAQ.
+
+**The engine is complete but gated.** Locality, city, college and intent pages all have generators, and `thresholds.ts` decides whether each renders and enters the sitemap — area 3 listings, city 2, college 3, intent 5. With **one** discoverable hostel today every one of them 404s, which is the intended behaviour, not a gap. Onboarding the third hostel in a locality publishes that locality's page with no deploy and no flag.
+
+**Also fixed here:** `X-Robots-Tag: index, follow` was being served on every URL including `/owner/*`, `/admin/*` and `/tenant/*` — see [[Bugs]].
+
+Related: [[Decisions#ADR-224|ADR-224]], [[APIs]], [[Architecture]], [[Changelog]]

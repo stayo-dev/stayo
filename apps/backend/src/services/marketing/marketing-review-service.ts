@@ -10,6 +10,7 @@ import {
   ownerNotification,
   type PostApprovalAction,
 } from "./post-approval-transitions";
+import { invalidatePublicListing } from "@/lib/cache/public-listing-cache";
 
 /**
  * The platform-admin side of the marketing approval cycle.
@@ -193,7 +194,15 @@ export class MarketingReviewService {
   async approve(adminId: string, revisionId: string, note?: string | null) {
     const revision = await prisma.hostel_marketing_revisions.findUnique({
       where: { id: revisionId },
-      select: { id: true, status: true, hostel_id: true, version: true, hostel: { select: { owner_id: true, name: true } } },
+      // `public_slug` is selected so the approval can bust the public page's
+      // caches by name — see `invalidatePublicListing`.
+      select: {
+        id: true,
+        status: true,
+        hostel_id: true,
+        version: true,
+        hostel: { select: { owner_id: true, name: true, public_slug: true } },
+      },
     });
     if (!revision) throw ApiError.notFound("Submission not found");
     if (revision.status !== "PENDING_REVIEW") {
@@ -218,6 +227,21 @@ export class MarketingReviewService {
         select: { id: true, version: true, status: true },
       }),
     ]);
+
+    /**
+     * The approved revision IS the public page, so the page has just changed.
+     * Busted before the owner is told it is live — the notification says "now
+     * visible", and a stale cache would make that untrue for up to an hour.
+     *
+     * `visibilityChanged` is false: approving content changes what a page
+     * says, not which pages exist. The hostel was already discoverable or it
+     * was not, and that is decided by `listing_status`/`verification_status`,
+     * which only an admin listing action writes (ADR-040).
+     */
+    await invalidatePublicListing({
+      hostelId: revision.hostel_id,
+      slug: revision.hostel.public_slug,
+    });
 
     await notificationService
       .createNotification(
@@ -319,7 +343,8 @@ export class MarketingReviewService {
 
     const hostel = await prisma.hostels.findUnique({
       where: { id: hostelId },
-      select: { id: true, name: true, owner_id: true },
+      // `public_slug` so the public page's caches can be busted by name.
+      select: { id: true, name: true, owner_id: true, public_slug: true },
     });
     if (!hostel) throw ApiError.notFound("Hostel not found");
 
@@ -388,6 +413,22 @@ export class MarketingReviewService {
         },
       });
     }
+
+    /**
+     * Both actions change the public page. UNPUBLISH is the sharper one: the
+     * approved revision becomes WITHDRAWN, so the page must immediately stop
+     * showing details the admin has just pulled. REQUEST_CHANGES leaves the
+     * page live (ADR-089) but seeds a draft, so nothing visible moves —
+     * busting anyway is cheap and keeps the two paths from diverging.
+     *
+     * `visibilityChanged` stays false for both: neither removes the hostel
+     * from Discovery. That is `suspend-listing`, a deliberately separate
+     * lever, and it is the one that changes which URLs exist.
+     */
+    await invalidatePublicListing({
+      hostelId,
+      slug: hostel.public_slug,
+    });
 
     const message = ownerNotification(action, hostel.name, trimmed ?? summariseFlagsForOwner(flags));
     await notificationService

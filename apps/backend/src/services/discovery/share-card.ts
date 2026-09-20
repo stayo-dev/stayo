@@ -105,7 +105,22 @@ export function buildShareCard(input: ShareCardInput): ShareCard {
     title: input.city ? `${input.name} — ${input.city} on Stayo` : `${input.name} on Stayo`,
     description: shareDescription(input),
     imageUrl: ogImageUrl(input.photos[0], `${site}/og-cover.png`),
-    listingUrl: `${site}/discover/h/${input.slug}`,
+    /**
+     * Where a person ends up, and what this page canonicalises to.
+     *
+     * Moved from `/discover/h/:slug` (the SPA listing) to `/hostels/:slug`
+     * when the server-rendered page became canonical — ADR-224. Two reasons,
+     * both load-bearing:
+     *
+     *   - A crawler that reads this preview must be sent to the page Stayo
+     *     wants indexed, not to a client-rendered route it cannot read.
+     *   - A person following a shared link lands on a page that has already
+     *     rendered, rather than on an empty shell waiting for a bundle.
+     *
+     * `shareUrl` below is unchanged: it stays `/h/:slug` and remains this
+     * page's own `og:url`, because that is the URL actually in the message.
+     */
+    listingUrl: `${site}/hostels/${input.slug}`,
     shareUrl: `${site}/h/${input.slug}`,
     name: input.name,
     city: input.city,

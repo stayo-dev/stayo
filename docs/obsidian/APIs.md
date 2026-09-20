@@ -885,3 +885,21 @@ Completes a referral the POST already saved: `{ owner_contact?, area_query? }`, 
 
 The POST now returns `id` alongside `recorded`/`will_notify` so the client can make this call. Related: [[Database]], [[Features]], [[Decisions#ADR-223|ADR-223]].
 
+
+## Public SEO pages (`apps/backend/app/(seo)`) — ADR-224
+
+These routes return **HTML and XML, not JSON**, and are the only public *pages* `apps/backend` serves besides the retired Sanity landing page. They are reached on `yourstayo.com` through rewrites in `apps/frontend/vercel.json`, the same arrangement `/h/:slug` and `/pay/:token` already use. They are unauthenticated by construction: `app/(seo)/layout.tsx` is a **second root layout** with no `Providers`, so the auth guard on `app/(app)/layout.tsx` never runs for them.
+
+| Route | Serves at | Returns | Cache |
+|---|---|---|---|
+| `GET /hostels/[slug]` | `yourstayo.com/hostels/:slug` | The canonical hostel page. 404 if not `DISCOVERABLE`; 308 to the lowercased slug if it differs. | ISR `revalidate = 3600`, `dynamicParams = true` |
+| `GET /hostels` | `yourstayo.com/hostels` | The hub — every listed hostel, the crawlable root of the engine. | ISR 3600 |
+| `GET /sitemap.xml` | `yourstayo.com/sitemap.xml` | A **sitemap index**, never a flat urlset. Shard count from `COUNT(*) WHERE DISCOVERABLE`. | `s-maxage=3600, swr=86400` |
+| `GET /sitemaps/[shard]` | `yourstayo.com/sitemaps/:shard` | `static.xml`, or `hostels-N.xml` (5,000 URLs each, ordered `created_at ASC, id ASC`). Any other name 404s. | `s-maxage=3600, swr=86400` |
+| `GET /robots.txt` | `yourstayo.com/robots.txt` | Generated from `PRIVATE_PATH_PREFIXES`. | `s-maxage=86400` |
+
+**Changed:** `GET /api/discover/share/[slug]` (ADR-084) still returns 200 with its own `og:url` — a link crawler does not follow redirects to unfurl — but its `rel=canonical` and its human redirect target now point at `/hostels/:slug` instead of `/discover/h/:slug`.
+
+**Deleted:** `apps/frontend/public/sitemap.xml`, `apps/frontend/public/robots.txt`, `apps/backend/public/sitemap.xml`, `apps/backend/public/robots.txt`. On Vercel a file in `public/` is served *before* rewrites are considered, so any survivor silently defeats the routes above.
+
+**Not yet built:** `/hostels-in/:area` and `/hostels-near/:college` are rewritten in `vercel.json` but have no route handler — they 404 today, which is also what the content gate would do at one listing. See [[Decisions#ADR-224|ADR-224]] and [[Features]].
