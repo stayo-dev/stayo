@@ -1,6 +1,6 @@
 /**
  * Slug rules. A slug is a permanent public address, so these are permanence
- * tests as much as formatting ones. ADR-224.
+ * tests as much as formatting ones. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";
@@ -21,7 +21,7 @@ describe("buildHostelSlug", () => {
     id: "36094ab4-1302-47e2-96bf-f0cbf937389e",
   };
 
-  it("produces the locality-suffixed form ADR-224 chose", () => {
+  it("produces the locality-suffixed form ADR-226 chose", () => {
     expect(buildHostelSlug(hostel)).toBe("sri-adithya-boys-hostel-yamnampet-36094ab4");
   });
 

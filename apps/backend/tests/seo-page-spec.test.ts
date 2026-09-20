@@ -3,7 +3,7 @@
  *
  * The canonical assertions here are the important ones. A canonical that is
  * relative, or that points at another page, is how a site asks Google to merge
- * pages it wanted kept apart. ADR-224.
+ * pages it wanted kept apart. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";

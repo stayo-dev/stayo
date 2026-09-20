@@ -18,7 +18,7 @@ import { hubUrl, siteUrl } from "@/src/services/seo/seo-links";
  * page links to its city, its siblings and its own filtered views. Every link
  * here has already been gated by the generator — a page that has not passed
  * its threshold is never linked to, because a link into a 404 is the same
- * defect as a sitemap entry for one. See ADR-224.
+ * defect as a sitemap entry for one. See ADR-226.
  */
 export function SeoShell({ spec, children }: { spec: SeoPageSpec; children: ReactNode }) {
   const { parents, siblings, intents } = spec.links;

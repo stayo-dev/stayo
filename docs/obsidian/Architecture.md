@@ -135,7 +135,7 @@ These exist because of **real past bugs** — the "first hostel" and required-`h
 - [[Business-Rules]] for the domain model this architecture serves
 - [[Decisions]] for the architectural decisions inferred from this code
 
-## `apps/backend` serves public pages, not only the API (2026-09-20, ADR-224)
+## `apps/backend` serves public pages, not only the API (2026-09-20, ADR-226)
 
 `apps/backend/app/` is now split into two route groups, each with its own root layout:
 
@@ -148,4 +148,4 @@ These pages appear on the public domain through rewrites in `apps/frontend/verce
 
 **Deploy order is load-bearing:** `apps/backend` first, `apps/frontend` second. They are separate Vercel projects, so a rewrite pointing at a route that has not shipped is a 404 on a live domain.
 
-Decision logic lives in pure modules under `apps/backend/src/services/seo/` — the page components only arrange what those return. See [[Decisions#ADR-224|ADR-224]], [[Backend]], [[Frontend]], [[APIs]].
+Decision logic lives in pure modules under `apps/backend/src/services/seo/` — the page components only arrange what those return. See [[Decisions#ADR-226|ADR-226]], [[Backend]], [[Frontend]], [[APIs]].

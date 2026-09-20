@@ -16,7 +16,7 @@ export const revalidate = 3600;
  * from there into the indexable tree, and it is what the SPA footer links to.
  *
  * Once locality and college pages pass their thresholds they become the better
- * subdivisions and this becomes an index of those instead. See ADR-224.
+ * subdivisions and this becomes an index of those instead. See ADR-226.
  */
 
 const TITLE = "Hostels and PGs on Stayo — verified, with real prices";

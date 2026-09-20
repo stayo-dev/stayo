@@ -1661,7 +1661,7 @@ A student-first homepage at `/`: a live-city chip derived from real listings, th
 Related: [[APIs]], [[Database]], [[Decisions#ADR-223|ADR-223]], [[Changelog]].
 
 
-### Programmatic SEO — the indexable hostel page (2026-09-20, ADR-224)
+### Programmatic SEO — the indexable hostel page (2026-09-20, ADR-226)
 
 **Phase 1 only. On `feat/programmatic-seo`; not merged, not deployed.**
 
@@ -1675,4 +1675,4 @@ What it refuses to show, each with a test: a rating with no published review beh
 
 **Also fixed here:** `X-Robots-Tag: index, follow` was being served on every URL including `/owner/*`, `/admin/*` and `/tenant/*` — see [[Bugs]].
 
-Related: [[Decisions#ADR-224|ADR-224]], [[APIs]], [[Architecture]], [[Changelog]]
+Related: [[Decisions#ADR-226|ADR-226]], [[APIs]], [[Architecture]], [[Changelog]]

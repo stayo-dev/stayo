@@ -20,7 +20,7 @@
  * nothing here is manual. Onboarding the third hostel in Yamnampet is what
  * publishes `/hostels-in/yamnampet` — no deploy, no toggle, no ticket. That is
  * the whole "10 hostels to 10,000 without changing the architecture" claim,
- * and it lives in these four numbers. See ADR-224.
+ * and it lives in these four numbers. See ADR-226.
  */
 
 /**

@@ -1903,7 +1903,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 - Use `Added` / `Changed` / `Fixed` / `Removed` / `Deprecated` / `Security` headers per Keep a Changelog.
 - Link to [[Decisions]] for the ADR behind a change, [[Bugs]] for the bug being fixed, [[Features]] for the feature affected.
 
-## 2026-09-20 — Programmatic SEO engine, Phase 1 ([[Decisions#ADR-224|ADR-224]])
+## 2026-09-20 — Programmatic SEO engine, Phase 1 ([[Decisions#ADR-226|ADR-226]])
 
 On `feat/programmatic-seo`. **Not merged, not deployed.**
 

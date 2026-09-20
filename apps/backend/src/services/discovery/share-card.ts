@@ -109,7 +109,7 @@ export function buildShareCard(input: ShareCardInput): ShareCard {
      * Where a person ends up, and what this page canonicalises to.
      *
      * Moved from `/discover/h/:slug` (the SPA listing) to `/hostels/:slug`
-     * when the server-rendered page became canonical — ADR-224. Two reasons,
+     * when the server-rendered page became canonical — ADR-226. Two reasons,
      * both load-bearing:
      *
      *   - A crawler that reads this preview must be sent to the page Stayo

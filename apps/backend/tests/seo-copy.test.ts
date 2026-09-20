@@ -2,7 +2,7 @@
  * The words.
  *
  * Two properties are load-bearing: no page may claim something no column
- * backs, and no two pages may share a title. ADR-224.
+ * backs, and no two pages may share a title. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";

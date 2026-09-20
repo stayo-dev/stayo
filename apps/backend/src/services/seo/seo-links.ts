@@ -20,7 +20,7 @@ import { frontendUrl } from "@/lib/config/domains";
 
 export type SeoPath = string;
 
-/** The canonical, indexable page for a hostel. ADR-224. */
+/** The canonical, indexable page for a hostel. ADR-226. */
 export function hostelPath(slug: string): SeoPath {
   return `/hostels/${slug}`;
 }
@@ -41,7 +41,7 @@ export function hubPath(): SeoPath {
 
 /**
  * The SPA's interactive listing — where a reader goes to enquire.
- * `noindex, follow`: it is the app, not the document. ADR-224.
+ * `noindex, follow`: it is the app, not the document. ADR-226.
  */
 export function appListingPath(slug: string): SeoPath {
   return `/discover/h/${slug}`;

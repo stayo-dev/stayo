@@ -18,7 +18,7 @@
  *    subject AND count AND price floor — so two pages can only collide if the
  *    underlying hostels genuinely are the same.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 import type {

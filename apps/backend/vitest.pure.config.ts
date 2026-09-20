@@ -237,7 +237,7 @@ export default defineConfig({
       'tests/lead-acquisition-source.test.ts',
       'tests/homepage-curation.test.ts',
       /**
-       * ADR-224 — the programmatic SEO engine. Every rule about what an
+       * ADR-226 — the programmatic SEO engine. Every rule about what an
        * indexable page may claim lives in a pure module precisely so it can be
        * verified here, with no database: the main suite cannot reach one.
        */

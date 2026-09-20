@@ -19,7 +19,7 @@ import { SeoShell } from "../../_components/SeoShell";
  * canonical, for every URL: a crawler asking for a hostel is handed the
  * generic Stayo shell and no amount of client-side metadata can change that,
  * because crawlers do not run the JavaScript that would set it. ADR-084
- * established the pattern for share unfurls; ADR-224 scales it to the page
+ * established the pattern for share unfurls; ADR-226 scales it to the page
  * itself.
  *
  * Every decision about what this page SAYS lives in `src/services/seo/` and is

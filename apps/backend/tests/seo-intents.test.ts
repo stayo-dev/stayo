@@ -2,7 +2,7 @@
  * The intent allowlist.
  *
  * The property being defended is that `/hostels-in/:area/:anything` is NOT
- * infinite crawl space. Everything not on the list must 404. ADR-224.
+ * infinite crawl space. Everything not on the list must 404. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";
@@ -110,7 +110,7 @@ describe("the slugs themselves", () => {
     }
   });
 
-  it("covers the searches ADR-224 set out to win", () => {
+  it("covers the searches ADR-226 set out to win", () => {
     for (const slug of ["boys", "girls", "with-food", "4-sharing", "under-8000"]) {
       expect(INTENT_SLUGS).toContain(slug);
     }

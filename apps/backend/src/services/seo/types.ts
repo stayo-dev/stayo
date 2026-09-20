@@ -8,7 +8,7 @@
  * impossible to feed a field that no column backs. Mapping the live listing
  * into this narrow shape happens once, in `seo-service.ts`, and every rule
  * about what a page may claim is then enforced by the type system — if a fact
- * is not on this interface, no page can say it. ADR-224.
+ * is not on this interface, no page can say it. ADR-226.
  */
 
 export interface BedTierFact {

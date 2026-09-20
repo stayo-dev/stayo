@@ -3347,7 +3347,7 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Related:** [[Decisions#ADR-071|ADR-071]] (the fork this supersedes without deleting), [[Decisions#ADR-073|ADR-073]] (no invented listing data; the allowlist rule), [[Features]], [[APIs]], [[Database]], [[Frontend]], [[Changelog]]
 
 
-## ADR-224 — The canonical public page for a hostel is server-rendered at `/hostels/:slug`; every other per-hostel URL is a satellite
+### ADR-226 — The canonical public page for a hostel is server-rendered at `/hostels/:slug`; every other per-hostel URL is a satellite
 
 - **Date:** 2026-09-20
 - **Status:** Accepted — Phase 1 shipped on `feat/programmatic-seo`, not merged, not deployed.

@@ -14,7 +14,7 @@ import { frontendUrl } from "@/lib/config/domains";
  * HTML and then bounce — for a person and for Googlebot, which renders JS.
  * Route groups do not appear in a URL, so `(app)` and `(seo)` are two roots
  * over one `app/` tree and no path changed when this split landed. See
- * ADR-224.
+ * ADR-226.
  *
  * Nothing here is a client component: no auth, no React Query, no theme
  * provider. These pages are read, not operated. Anything interactive lives on

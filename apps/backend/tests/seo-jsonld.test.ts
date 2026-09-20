@@ -4,7 +4,7 @@
  * Every assertion about an ABSENT property here corresponds to a real way a
  * marketplace gets a manual action: a rating nobody left, a bed that is not
  * free, a price that is not the price. These are the properties a future edit
- * is most likely to fill in helpfully, so each one is pinned. ADR-224.
+ * is most likely to fill in helpfully, so each one is pinned. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";

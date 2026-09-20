@@ -8,7 +8,7 @@
  * therefore deterministic and additive — `buildHostelSlug` never returns a
  * different answer for the same inputs, and when a hostel is renamed the old
  * slug is retired into `hostel_slug_history` rather than forgotten. See
- * ADR-224 and ADR-225.
+ * ADR-226 and ADR-225.
  */
 
 /** The id fragment appended to every hostel slug. Matches `ensureHostelSlug`. */

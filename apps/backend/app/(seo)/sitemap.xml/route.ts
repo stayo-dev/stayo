@@ -20,7 +20,7 @@ export const revalidate = 3600;
  * (9 URLs, no hostels) and `apps/backend/public/sitemap.xml` (12 URLs, on the
  * `www.` host that the frontend 301s away from). Both are deleted in the same
  * change — on Vercel a static file shadows a rewrite, so this route cannot be
- * reached while either exists. See ADR-224.
+ * reached while either exists. See ADR-226.
  */
 export async function GET() {
   const site = frontendUrl();

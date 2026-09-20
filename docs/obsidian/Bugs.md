@@ -2929,7 +2929,7 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 
 ## 2026-09-20 — Every owner, admin and tenant URL was marked indexable in production (fixed)
 
-**Found** while auditing the public site for [[Decisions#ADR-224|ADR-224]], by fetching the live domain rather than by reading the code. Nothing reported it, and nothing would have.
+**Found** while auditing the public site for [[Decisions#ADR-226|ADR-226]], by fetching the live domain rather than by reading the code. Nothing reported it, and nothing would have.
 
 **Area:** [[Frontend]] — `apps/frontend/vercel.json`, the `headers` block matching `/(.*)`.
 
@@ -2959,4 +2959,4 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 
 **Lesson:** a passing test proves the function is right, not that it was given the right input. The unit under test was the JSON-LD builder; the thing that was wrong was which number reached it — and the only reason it surfaced at all was running the page against real data.
 
-**See:** [[Decisions#ADR-224|ADR-224]], [[Decisions#ADR-200|ADR-200]] (host stats and their intended scope), [[Decisions#ADR-086|ADR-086]] (reviewer identity).
+**See:** [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-200|ADR-200]] (host stats and their intended scope), [[Decisions#ADR-086|ADR-086]] (reviewer identity).

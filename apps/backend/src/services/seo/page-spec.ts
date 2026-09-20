@@ -21,7 +21,7 @@
  * handed. That is what "reusable generators over hardcoded pages" means here:
  * adding a fifth kind is a new `*PageSpec` function, not a new template.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 import type {

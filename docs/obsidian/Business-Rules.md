@@ -1223,7 +1223,7 @@ See [[Decisions#ADR-220|ADR-220]].
 
 Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.
 
-## What a public hostel page may say (2026-09-20, ADR-224)
+## What a public hostel page may say (2026-09-20, ADR-226)
 
 **One hostel, one indexable URL.** `/hostels/:slug` is canonical. `/h/:slug` (the share unfurl) and `/discover/h/:slug` (the app) both point their `rel=canonical` at it; `/visit/:slug` is self-canonical and `noindex`, because its visibility gate is looser than `DISCOVERABLE` and it can resolve for a hostel that has no canonical page.
 
@@ -1245,4 +1245,4 @@ Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT
 
 **A generated collection page exists only with enough inventory behind it** — locality 3, city 2, college 3, intent 5 — and below that it **404s rather than `noindex`ing**. The same function gates the page and its sitemap entry, so the sitemap can never advertise a URL that 404s.
 
-Related: [[Decisions#ADR-224|ADR-224]], [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-086|ADR-086]], [[Features]]
+Related: [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-086|ADR-086]], [[Features]]

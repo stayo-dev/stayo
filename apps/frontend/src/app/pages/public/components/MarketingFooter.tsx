@@ -84,7 +84,7 @@ export function MarketingFooter() {
               It matters because this site is client-rendered: a crawler
               fetching yourstayo.com gets one `index.html` and sees no listings
               anywhere. This link is how it reaches them by following the site
-              rather than only by reading the sitemap. ADR-224.
+              rather than only by reading the sitemap. ADR-226.
             */}
             <a href="/hostels" className="text-[13.5px] text-background/58 hover:text-background">
               Browse hostels

@@ -5,7 +5,7 @@
  * that page must agree, always. A sitemap advertising URLs that 404 teaches
  * Google to distrust the sitemap — and since both callers reach the same
  * exported function, they cannot disagree unless someone writes a second copy.
- * The last test in this file is what stops that. ADR-224.
+ * The last test in this file is what stops that. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";

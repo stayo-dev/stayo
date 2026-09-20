@@ -18,7 +18,7 @@
  * omission, because these are the properties a future edit is most likely to
  * "helpfully" fill in.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 import type {

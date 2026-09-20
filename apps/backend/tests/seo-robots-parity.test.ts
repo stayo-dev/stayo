@@ -18,7 +18,7 @@ import {
  * `X-Robots-Tag: index, follow` — every owner, admin and tenant URL marked
  * indexable by a blanket rule nobody remembered adding.
  *
- * This reads both as text. No client, no database. ADR-224.
+ * This reads both as text. No client, no database. ADR-226.
  */
 
 const VERCEL_JSON = path.resolve(__dirname, "../../frontend/vercel.json");

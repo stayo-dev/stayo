@@ -16,7 +16,7 @@
  *
  * Every intent maps onto filters `discoveryService.search` already supports.
  * No new data model, and nothing here can express a filter the listing data
- * cannot back. See ADR-224.
+ * cannot back. See ADR-226.
  */
 
 import type { DiscoverSearchParams } from "@/src/services/discovery/discovery-service";

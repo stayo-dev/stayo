@@ -21,7 +21,7 @@
  * onboarding. Ordered by `created_at ASC, id ASC`, a new hostel only ever
  * appends to the last shard, so exactly one file changes.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 /** 5,000 per shard: an order of magnitude under the cap, small enough to fetch fast. */

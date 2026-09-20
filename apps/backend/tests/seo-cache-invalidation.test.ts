@@ -14,7 +14,7 @@ import path from "node:path";
  * This reads the write paths as text and asserts each one still calls the
  * helper. Text-reading rather than execution because these paths need a
  * database and there is none. Precedent: `tests/whatsapp-prisma-accessors.test.ts`,
- * `tests/hostel-identity-field-round-trip.test.ts`. ADR-224.
+ * `tests/hostel-identity-field-round-trip.test.ts`. ADR-226.
  */
 
 const BACKEND = path.resolve(__dirname, "..");

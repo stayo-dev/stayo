@@ -71,7 +71,7 @@ describe("buildShareCard", () => {
     // The URL actually in the message stays /h/:slug — it is this page's own
     // og:url, and a link crawler does not follow redirects to unfurl.
     expect(card.shareUrl).toBe("https://yourstayo.com/h/starlink-79ba709b");
-    // Retargeted from the SPA listing to the server-rendered page (ADR-224):
+    // Retargeted from the SPA listing to the server-rendered page (ADR-226):
     // a crawler reading this preview must be sent to the page Stayo wants
     // indexed, and a person must land on HTML that has already rendered.
     expect(card.listingUrl).toBe("https://yourstayo.com/hostels/starlink-79ba709b");
@@ -103,7 +103,7 @@ describe("renderSharePage", () => {
 
   it("points canonical at the canonical page, not at itself", () => {
     // Canonical and NOT noindex: that pair is self-conflicting, and this page
-    // has to keep returning 200 for unfurls to work at all. ADR-224.
+    // has to keep returning 200 for unfurls to work at all. ADR-226.
     expect(html).toContain('<link rel="canonical" href="https://yourstayo.com/hostels/starlink-79ba709b" />');
     expect(html).not.toContain("noindex");
   });

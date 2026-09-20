@@ -31,7 +31,7 @@ const checks: Array<{
      *
      * `invalidatePublicListing` busts both. This keeps `revalidateTag` from
      * being reached for directly, the same way the dashboard rule above works.
-     * ADR-224.
+     * ADR-226.
      */
     name: "public SEO pages must be invalidated through the blessed helper",
     roots: ["lib/services", "src/services", "app/api"],

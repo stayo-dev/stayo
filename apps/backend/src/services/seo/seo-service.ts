@@ -34,7 +34,7 @@ import type { CollegeFact, HostelFacts, ReviewFact } from "./types";
  * ceiling. The ceiling is the backstop: if a write path ever forgets to
  * invalidate, a page is wrong for an hour rather than indefinitely.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 const PAGE_REVALIDATE_SECONDS = 3600;

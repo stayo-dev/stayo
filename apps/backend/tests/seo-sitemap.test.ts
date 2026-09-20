@@ -1,7 +1,7 @@
 /**
  * Sitemap sharding and rendering.
  *
- * The scale claim in ADR-224 — "1 hostel to 10,000 with no code change" — is
+ * The scale claim in ADR-226 — "1 hostel to 10,000 with no code change" — is
  * implemented by `shardPlan`, so it is tested at both ends of that range and
  * at every boundary in between.
  */

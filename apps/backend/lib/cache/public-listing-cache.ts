@@ -31,7 +31,7 @@ import { redisKeys } from "@/lib/redis/keys";
  * reads the write-path services as text as a cheap backstop, and the one-hour
  * ISR ceiling is the floor on how stale a page can get regardless.
  *
- * See ADR-224.
+ * See ADR-226.
  */
 
 export const seoTags = {
