@@ -899,6 +899,12 @@ model profile {
   subscription_invoices                                             subscription_invoices[]
   owner_billing_profile                                             owner_billing_profiles?
 
+  // Generic owner payments (not subscription payments) — arbitrary one-off
+  // charges Stayo collects from the owner. Deliberately separate from the
+  // subscription-billing relations above.
+  owner_payments                                                    owner_payments[]
+  owner_invoices                                                    owner_invoices[]
+
   /// Where this owner's settled rent is sent. Added to `profiles` by migration
   /// 070 but never declared here — so `/api/owner/payout-account` and the admin
   /// settlement console's payout destination both selected columns Prisma did
@@ -4537,6 +4543,123 @@ model owner_billing_profiles {
   updated_at      DateTime? @db.Timestamptz(6)
 
   profile profile @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+}
+
+// ============================================================================
+// GENERIC OWNER PAYMENTS (owner-payments feature)
+//
+// A `subscription_payments` row is deliberately NOT reused here: that model is
+// tightly coupled to a plan_id, a subscription_id, plan-approval math and the
+// admin review/approve lifecycle (see subscription-payment-service.ts). An
+// arbitrary charge — "tenant onboarding cost", "custom service fee" — has none
+// of that: no plan, no subscription-status side effect, no billing period.
+// Forcing it through `subscription_payments` would either require a fake
+// plan/subscription row (misleading, and risks silently mutating real
+// subscription state) or a pile of nullable columns/branches bolted onto a
+// model whose every other reader assumes "this is a subscription payment".
+//
+// `owner_payments` / `owner_invoices` is the generic sibling: same shape of
+// idea (immutable payment record → 1:1 invoice), same reused infrastructure
+// (PDF rendering pattern, EmailService/Resend, ImageKit document storage,
+// activity_logs audit trail, MANAGE_SUBSCRIPTIONS admin/manager authorization)
+// but with NO subscription/plan coupling whatsoever — recording one, voiding
+// one, or emailing its invoice can never activate, renew, or otherwise change
+// an owner_subscriptions row.
+// ============================================================================
+
+enum OwnerPaymentMethod {
+  CASH
+  UPI
+  BANK_TRANSFER
+}
+
+/// RECORDED is the only state money actually moves through. VOIDED marks a
+/// past entry as an admin-acknowledged mistake (wrong amount, duplicate,
+/// wrong owner) without deleting the historical row — a correction is a new
+/// `owner_payments` row, never an edit to this one.
+enum OwnerPaymentStatus {
+  RECORDED
+  VOIDED
+}
+
+/// A one-off amount Stayo collects from an owner for something other than
+/// their subscription — onboarding help, custom setup work, ad-hoc support,
+/// etc. `description` (admin-entered, required) is what tells the payment
+/// apart from any other; there is deliberately no "charge type" enum (see
+/// ADR — keeping the owner-billing UI to one generic action, not a menu of
+/// billing categories).
+model owner_payments {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id               String             @db.Uuid
+  amount_paise           Int
+  currency               String             @default("INR")
+  payment_method         OwnerPaymentMethod
+  description            String
+  /// UPI UTR / bank reference / "CASH-xxxx" — optional, admin-entered.
+  transaction_reference  String?
+  /// URL or storage reference for an uploaded payment proof/screenshot.
+  proof_file             String?
+  notes                  String?
+  status                 OwnerPaymentStatus @default(RECORDED)
+  /// Client-supplied dedup key (e.g. a UUID generated once per form-open) —
+  /// lets a retried/double-clicked submit resolve to the same row instead of
+  /// creating a second payment. Nullable: not every future caller (e.g. a
+  /// later gateway webhook path) necessarily has one of these specifically.
+  idempotency_key        String?            @unique
+  /// `profiles.id` of the admin/manager who recorded this. Plain uuid, no
+  /// relation — same convention as `subscription_payments.reviewed_by`.
+  created_by             String             @db.Uuid
+  voided_at              DateTime?          @db.Timestamptz(6)
+  voided_by              String?            @db.Uuid
+  void_reason            String?
+  created_at             DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime?          @db.Timestamptz(6)
+
+  profile        profile         @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner_invoices owner_invoices?
+
+  @@index([owner_id, created_at(sort: Desc)])
+  @@index([status])
+}
+
+/// The financial document for an `owner_payments` row. One invoice per payment
+/// (`payment_id` UNIQUE), never cascade-deleted, effectively immutable once
+/// issued — the same convention `subscription_invoices` uses, kept as a
+/// separate model because this document has no plan/billing-period/extra-bed
+/// concept to carry.
+model owner_invoices {
+  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id               String             @db.Uuid
+  payment_id             String             @unique @db.Uuid
+  invoice_number         String             @unique
+  /// Copied from the payment at issue time so the invoice reads correctly even
+  /// if a much-later feature ever allowed editing a payment's own description.
+  description            String
+  amount_paise           Int
+  /// Reserved for a future GST-registered flow, same convention as
+  /// `subscription_invoices.tax_paise`. Always 0 today.
+  tax_paise              Int                @default(0)
+  currency               String             @default("INR")
+  payment_method         OwnerPaymentMethod
+  transaction_reference  String?
+  /// URL / storage reference for the generated invoice PDF (ImageKit) — never
+  /// handed to a client directly; downloads are proxied through an
+  /// owner/admin API route.
+  document_url           String?
+  /// Set once `EmailService` reports the invoice email sent; left null (with
+  /// `email_failed_at` set) when it couldn't be delivered — sending an
+  /// invoice email is best-effort and retryable, never a condition for the
+  /// payment/invoice themselves being valid.
+  emailed_at             DateTime?          @db.Timestamptz(6)
+  email_failed_at        DateTime?          @db.Timestamptz(6)
+  issued_at              DateTime           @default(now()) @db.Timestamptz(6)
+  created_at             DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at             DateTime?          @db.Timestamptz(6)
+
+  profile        profile        @relation(fields: [owner_id], references: [id])
+  owner_payments owner_payments @relation(fields: [payment_id], references: [id])
+
+  @@index([owner_id, issued_at(sort: Desc)])
 }
 
 /// Stay Status event store (ADR-194). Append-only — the permanent truth;

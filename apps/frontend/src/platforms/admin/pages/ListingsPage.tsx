@@ -18,7 +18,6 @@ import { NavigationBlock } from '../listings/NavigationBlock';
 import { AddressBlock } from '../listings/AddressBlock';
 import { LiveListingControls } from '../listings/LiveListingControls';
 import { AddHostelListingModal } from '../listings/AddHostelListingModal';
-import { tintForId } from '../theme/palette';
 
 function timeAgo(iso: string): string {
   const mins = Math.floor((Date.now() - new Date(iso).getTime()) / 60000);
@@ -251,10 +250,18 @@ export function ListingsPage() {
                 className="flex cursor-pointer flex-col overflow-hidden rounded-[16px] border border-[#EFE6DA] bg-white shadow-[0_1px_2px_rgba(40,30,20,.04),0_6px_16px_rgba(40,30,20,.05)] transition hover:border-[#DCC9BE] hover:shadow-[0_2px_4px_rgba(40,30,20,.06),0_10px_24px_rgba(40,30,20,.09)]"
               >
                 {/* Cover as a short banner rather than a tall side column: at
-                    four-up the card is ~330px, and a side column ate half of it. */}
+                    four-up the card is ~330px, and a side column ate half of it.
+                    Deliberately the same flat gradient on every card — it used to
+                    be a per-hostel-id tint (`tintForId`), which reads as a status
+                    or category colour even though it's arbitrary; two hostels
+                    with the same name but different owners then look like they
+                    might be sorted or flagged differently by colour, when the
+                    colour means nothing at all. Kept `tintForId` for genuine
+                    per-row avatar tints elsewhere (owners/leads lists), just not
+                    here where the "row" is a big, meaning-carrying banner. */}
                 <div
                   className="relative h-[68px] flex-none"
-                  style={{ background: `linear-gradient(135deg, ${tintForId(h.id)}, #201C18)` }}
+                  style={{ background: 'linear-gradient(135deg, #3A332C, #201C18)' }}
                 >
                   <span
                     className="absolute right-2 top-2 rounded-full px-2 py-[3px] text-[9.5px] font-semibold"
@@ -266,11 +273,14 @@ export function ListingsPage() {
 
                 <div className="flex flex-1 flex-col gap-2.5 p-3.5">
                   <div className="min-w-0">
-                    <div className="truncate font-admin text-[14px] font-bold tracking-[-0.01em] text-[#221E1A]">
-                      {h.name}
+                    {/* Owner leads now, not the hostel name — two hostels can
+                        (and do) share a name, but never an owner, so the owner
+                        is the field that actually tells two cards apart. */}
+                    <div className="truncate font-admin text-[13.5px] font-bold tracking-[-0.01em] text-[#221E1A]">
+                      {h.owner || 'No owner'}
                     </div>
-                    <div className="truncate text-[11px] text-[#8A7F75]">
-                      {[h.owner, h.city].filter(Boolean).join(' · ')}
+                    <div className="truncate text-[11.5px] text-[#8A7F75]">
+                      {[h.name, h.city].filter(Boolean).join(' · ')}
                     </div>
                   </div>
 

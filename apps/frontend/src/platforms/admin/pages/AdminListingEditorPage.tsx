@@ -7,6 +7,7 @@ import { HostelMarketingPage } from '@/features/hostel-drilldown/pages/HostelMar
 import { HostProfileSection } from '../drawer/HostProfileSection';
 import { AddressBlock } from '../listings/AddressBlock';
 import { NavigationBlock } from '../listings/NavigationBlock';
+import { LiveListingControls } from '../listings/LiveListingControls';
 import { tintForId } from '../theme/palette';
 import { serializeDetail } from '../drawer/drawerParam';
 
@@ -118,6 +119,17 @@ export function AdminListingEditorPage() {
           scroll away with the content they publish.
         */}
         <div className="flex w-full max-w-[480px] flex-col gap-4 lg:sticky lg:top-6 lg:max-w-none">
+          {hostelId && hostel.data && (
+            <LiveListingControls
+              hostelId={hostelId}
+              hostelName={hostel.data.name ?? 'this hostel'}
+              hasLiveListing={Boolean(hostel.data.listing_review?.has_live_listing)}
+              openStatus={hostel.data.listing_review?.open_status ?? null}
+              listingStatus={String(hostel.data.listing_status ?? '')}
+              onDone={() => hostel.refetch()}
+            />
+          )}
+
           <div className="rounded-[16px] border border-[#EFE6DA] bg-white p-4">
             <div className="mb-3 font-admin text-[11px] font-bold uppercase tracking-[0.08em] text-[#B0A597]">
               Hostel

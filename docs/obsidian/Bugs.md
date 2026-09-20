@@ -2863,6 +2863,36 @@ Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI t
 
 **Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
 
+## 2026-09-18 — Listing cards' banner colour looked like a status/category signal but was arbitrary (fixed)
+
+**Symptom.** Reported by the user from a screenshot: two "Sri Adithya Boys Hostel" cards on `/admin/listings` (same name, different owners — Srinivas Rao and Shiva Prakash) had different banner colours (amber-brown vs green), which read as if colour meant something — status, category, a flag — right next to an actual status pill ("Approved") in the same corner. It didn't: it was confusing precisely because a real signal (the status pill) and a fake one (the banner tint) sat in the same visual slot.
+
+**Root cause.** `ListingsPage.tsx`'s card banner used `tintForId(h.id)` (`platforms/admin/theme/palette.ts`) — a deterministic hash of the hostel's UUID into one of 5 fixed colours, designed for row-avatar stability (owners/leads lists, where each row's colour is a decorative anchor, not information). Applied to a large banner sitting beside a genuine status pill, the same mechanism reads as meaningful when it is coincidental — two hostels sharing a name but not an owner then look like they might be sorted or flagged differently by colour.
+
+**Fix.** Two changes to `ListingsPage.tsx`'s card, `platforms/admin/pages/ListingsPage.tsx`:
+1. Banner is now a single flat gradient on every card (`#3A332C → #201C18`) — no more per-hostel tint, so colour no longer competes with the actual status pill for meaning.
+2. Card text hierarchy flipped: **owner name is now the bold primary line**, hostel name moved to the smaller secondary line (with city). Two hostels can share a name; they never share an owner, so the owner is the field that actually disambiguates two cards — the UI now leads with the field that does the disambiguating instead of the one that doesn't.
+
+`tintForId` itself is unchanged and still correctly used for small avatar-initials chips elsewhere (`StayoListedPanel.tsx`, owner/lead rows) — those aren't sitting next to a status pill, so the same mechanism isn't misleading there.
+
+**Verified:** `tsc --noEmit` (frontend) zero new errors; `check:architecture` passes. Not exercised live/in a browser.
+
+**See:** [[Features]], [[Changelog]]
+
+## 2026-09-18 — Live-listing review endpoint checked `role === 'ADMIN'` directly, so a permitted Manager would 403 (fixed)
+
+**Symptom.** Caught while adding an Unpublish control to the admin listing editor page ([[Features]]) — not yet reported by a real Manager. `POST /api/platform-admin/hostels/:id/listing-review` (Request changes / Unpublish a live listing, [[Decisions#ADR-089|ADR-089]]) checked `session.role !== "ADMIN"` directly and returned 403 for anyone else, unlike every sibling `/platform-admin/hostels/*` route.
+
+**Root cause.** This endpoint predates [[Decisions#ADR-214|ADR-214]] (the Manager role) and was never migrated to `requireAdminOrManagerPermission`/`assertHostelAccess` the way `GET/PATCH /api/platform-admin/hostels/[id]` and the other route groups listed in ADR-214 Phase 2 were. A Manager granted `MANAGE_HOSTELS` and assigned to a hostel could view and edit it, but not act on its live listing — a silent capability gap, not a crash.
+
+**Fix.** Swapped the direct role check for `requireAdminOrManagerPermission(session, "MANAGE_HOSTELS")` + `assertHostelAccess(session, id)`, matching the sibling hostel routes exactly. ADMIN behaviour is unchanged; a Manager with the permission and hostel assignment can now use Request Changes/Unpublish, and one without either gets the same 403 any other gated route would give.
+
+**Lesson.** A route added before a new role/permission system existed doesn't get migrated automatically — grep for direct `session.role ===` checks in a route group when extending permission-gating to it, rather than assuming every route in the group already went through the ADR-214 sweep.
+
+**Verified:** `npx tsc --noEmit` (backend) zero new errors. Not exercised live against a real Manager session in this change.
+
+**See:** [[Decisions#ADR-214|ADR-214]], [[Decisions#ADR-089|ADR-089]], [[APIs]], [[Changelog]]
+
 ## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
 
 "Leave out" set `enabled: false` on a rule category. The owner's editor honoured it and the tenant's view honoured it, but `generatePdfBuffer` iterated `data.hostelRules.categories` **raw** — so a section an owner had deliberately withdrawn still appeared on the PDF their tenant signed and the business filed.

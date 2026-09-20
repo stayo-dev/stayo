@@ -259,6 +259,43 @@ export class EmailService {
     
     return this.sendEmail(data.toEmail, subject, html, attachments);
   }
+  /**
+   * Emails the owner their invoice for a generic `owner_payments` charge (not
+   * a subscription invoice — see `src/services/owner-billing/*`). Follows the
+   * exact same attachment pattern as `sendReceipt` above: the PDF is passed
+   * straight through to `sendEmail`'s `attachments`. Best-effort — a thrown
+   * error here must never invalidate the payment/invoice it describes; the
+   * caller is responsible for catching and recording the failure.
+   */
+  static async sendOwnerPaymentInvoice(data: {
+    toEmail: string;
+    ownerName: string;
+    amountLabel: string;
+    description: string;
+    paymentMethodLabel: string;
+    invoiceNumber: string;
+    paymentDateLabel: string;
+    pdfBuffer: Buffer;
+  }) {
+    const subject = "Payment Receipt / Invoice — Stayo";
+    const html = emailShell({
+      title: "Payment received",
+      subtitle: `Invoice ${data.invoiceNumber}`,
+      preheader: `We've recorded your payment of ${data.amountLabel} — invoice attached.`,
+      body: `
+        <p style="margin:0 0 14px;">Hello <strong>${data.ownerName}</strong>,</p>
+        <p style="margin:0 0 4px;">We've recorded a payment of <strong>${data.amountLabel}</strong> on your Stayo account.</p>
+        <p style="margin:0 0 4px;"><strong>Description:</strong> ${data.description}</p>
+        <p style="margin:0 0 4px;"><strong>Payment method:</strong> ${data.paymentMethodLabel}</p>
+        <p style="margin:0 0 4px;"><strong>Invoice number:</strong> ${data.invoiceNumber}</p>
+        <p style="margin:0 0 14px;"><strong>Date:</strong> ${data.paymentDateLabel}</p>
+        ${emailNote("Your invoice is attached to this email as a PDF.")}
+      `,
+    });
+    const attachments = [{ filename: `Invoice_${data.invoiceNumber}.pdf`, content: data.pdfBuffer }];
+    return this.sendEmail(data.toEmail, subject, html, attachments);
+  }
+
   static renderReminderPreview(data: {
     name: string;
     amount: number;
