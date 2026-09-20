@@ -37,6 +37,17 @@ export function priceLabel(value: number | null): string | null {
   return value == null ? null : `₹${formatRupees(value)}`;
 }
 
+/**
+ * Singular/plural for a count.
+ *
+ * Not a nicety: locality pages now publish on their FIRST listing, so "1
+ * verified hostels and PGs" is the common case rather than an edge one, and
+ * a page that cannot count reads as generated.
+ */
+export function pluralise(count: number, singular: string, plural: string): string {
+  return count === 1 ? singular : plural;
+}
+
 /** "single, 2-bed, 4-bed" — the vocabulary `share-card.ts` already uses. */
 export function sharingLabel(sharing: number[]): string | null {
   if (!sharing || sharing.length === 0) return null;
@@ -227,7 +238,11 @@ export function collectionTitle(
   const heading = collectionHeading(subject, intent);
   const price = priceLabel(stats.minPrice);
 
-  const facts = [`${stats.listingCount} verified`];
+  const noun = intent
+    ? pluralise(stats.listingCount, "option", "options")
+    : pluralise(stats.listingCount, "hostel", "hostels");
+
+  const facts = [`${stats.listingCount} verified ${noun}`];
   if (price) facts.push(`from ${price}`);
 
   return `${heading} — ${facts.join(" ")} | Stayo`;
@@ -241,9 +256,17 @@ export function collectionDescription(
   const parts: string[] = [];
   const preposition = subject.kind === "college" ? "near" : "in";
   const name = subject.kind === "college" ? subject.shortName || subject.name : subject.name;
-  const noun = intent ? intent.phrase : "hostels and PGs";
+  const noun = intent
+    ? intent.phrase
+    : pluralise(stats.listingCount, "hostel or PG", "hostels and PGs");
 
-  parts.push(`Compare ${stats.listingCount} verified ${noun} ${preposition} ${name}`);
+  // "Compare 1" is nonsense — at one listing the page presents rather than
+  // compares, and says so.
+  const verb = pluralise(stats.listingCount, "See the", "Compare");
+  const countedNoun =
+    stats.listingCount === 1 ? `verified ${noun}` : `${stats.listingCount} verified ${noun}`;
+
+  parts.push(`${verb} ${countedNoun} ${preposition} ${name}`);
 
   if (stats.minPrice != null) {
     parts.push(
@@ -255,7 +278,11 @@ export function collectionDescription(
 
   const sharing = sharingLabel(stats.sharing);
   if (sharing) parts.push(`${sharing} sharing`);
-  if (stats.withFood > 0) parts.push(`${stats.withFood} with meals included`);
+  if (stats.withFood > 0) {
+    parts.push(
+      stats.listingCount === 1 ? "meals included" : `${stats.withFood} with meals included`,
+    );
+  }
 
   return `${parts.join(" · ")}. Real prices, real availability on Stayo.`;
 }
@@ -278,7 +305,9 @@ export function collectionLede(
 
   const preposition = subject.kind === "college" ? "near" : "in";
   const name = subject.kind === "college" ? subject.shortName || subject.name : subject.name;
-  const noun = intent ? intent.phrase : "hostels and PGs";
+  const noun = intent
+    ? intent.phrase
+    : pluralise(stats.listingCount, "hostel or PG", "hostels and PGs");
 
   const bits = [`Stayo lists ${stats.listingCount} verified ${noun} ${preposition} ${name}`];
 
@@ -296,11 +325,17 @@ export function collectionLede(
   if (stats.withVacancy > 0) {
     extras.push(
       stats.withVacancy === stats.listingCount
-        ? "Every one of them has beds free right now"
-        : `${stats.withVacancy} have beds free right now`,
+        ? pluralise(stats.listingCount, "It has beds free right now", "Every one of them has beds free right now")
+        : `${stats.withVacancy} ${pluralise(stats.withVacancy, "has", "have")} beds free right now`,
     );
   }
-  if (stats.withFood > 0) extras.push(`${stats.withFood} include meals`);
+  if (stats.withFood > 0) {
+    extras.push(
+      stats.listingCount === 1 && stats.withFood === 1
+        ? "Meals are included"
+        : `${stats.withFood} ${pluralise(stats.withFood, "includes", "include")} meals`,
+    );
+  }
 
   return extras.length > 0 ? `${sentence} ${extras.join(", ")}.` : sentence;
 }

@@ -8,6 +8,7 @@
 import { describe, it, expect } from "vitest";
 import {
   audiencePhrase,
+  pluralise,
   availabilityBand,
   collectionDescription,
   collectionHeading,
@@ -29,6 +30,14 @@ function facts(overrides: Partial<HostelFacts> = {}): HostelFacts {
     name: "Sri Adithya Boys Hostel",
     areaName: "Yamnampet",
     areaSlug: "yamnampet",
+    parentAreaName: "Ghatkesar",
+    parentAreaSlug: "ghatkesar",
+    cityAreaSlug: "hyderabad",
+    areaAncestry: [
+      { name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY" },
+      { name: "Ghatkesar", slug: "ghatkesar", kind: "LOCALITY" },
+      { name: "Hyderabad", slug: "hyderabad", kind: "CITY" },
+    ],
     city: "Hyderabad",
     state: "Telangana",
     address: "Yamnampet",
@@ -244,5 +253,62 @@ describe("collection copy", () => {
     const unpriced = { ...stats, minPrice: null, maxPrice: null };
     expect(collectionDescription(subject, unpriced, null)).not.toContain("₹");
     expect(collectionLede(subject, unpriced, null)).not.toContain("₹");
+  });
+});
+
+
+describe("the one-listing page reads like English", () => {
+  /**
+   * Locality pages now publish on their FIRST listing, so the singular is the
+   * common case rather than an edge one. "Compare 1 verified hostels and PGs"
+   * is what a generated page sounds like.
+   */
+  const subject: CollectionSubject = {
+    kind: "area", slug: "yamnampet", name: "Yamnampet", intro: null,
+    parentName: "Ghatkesar", parentSlug: "ghatkesar",
+  };
+
+  const one: CollectionStats = {
+    listingCount: 1, minPrice: 8200, maxPrice: 8200,
+    sharing: [1, 2, 4], withFood: 0, withVacancy: 1, types: ["BOYS"],
+  };
+
+  it("counts the noun in the title", () => {
+    const title = collectionTitle(subject, one, null);
+    expect(title).toContain("1 verified hostel ");
+    expect(title).not.toContain("hostels");
+  });
+
+  it("presents rather than compares when there is nothing to compare with", () => {
+    const description = collectionDescription(subject, one, null);
+    expect(description).toContain("See the verified hostel or PG in Yamnampet");
+    expect(description).not.toContain("Compare 1");
+  });
+
+  it("does not say 'every one of them' about one thing", () => {
+    const lede = collectionLede(subject, one, null);
+    expect(lede).toContain("It has beds free right now");
+    expect(lede).not.toContain("Every one of them");
+  });
+
+  it("still reads correctly in the plural", () => {
+    const many = { ...one, listingCount: 7, withVacancy: 5, withFood: 3, maxPrice: 12000 };
+    expect(collectionTitle(subject, many, null)).toContain("7 verified hostels");
+    expect(collectionDescription(subject, many, null)).toContain("Compare 7 verified hostels and PGs");
+    expect(collectionLede(subject, many, null)).toContain("5 have beds free right now");
+  });
+
+  it("agrees the verb with the count, not with the total", () => {
+    const oneWithFood = { ...one, listingCount: 4, withFood: 1, withVacancy: 1 };
+    expect(collectionLede(subject, oneWithFood, null)).toContain("1 includes meals");
+    expect(collectionLede(subject, oneWithFood, null)).toContain("1 has beds free right now");
+  });
+});
+
+describe("pluralise", () => {
+  it("switches only at one", () => {
+    expect(pluralise(0, "hostel", "hostels")).toBe("hostels");
+    expect(pluralise(1, "hostel", "hostels")).toBe("hostel");
+    expect(pluralise(2, "hostel", "hostels")).toBe("hostels");
   });
 });

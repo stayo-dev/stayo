@@ -24,6 +24,14 @@ function facts(overrides: Partial<HostelFacts> = {}): HostelFacts {
     name: "Sri Adithya Boys Hostel",
     areaName: "Yamnampet",
     areaSlug: "yamnampet",
+    parentAreaName: "Ghatkesar",
+    parentAreaSlug: "ghatkesar",
+    cityAreaSlug: "hyderabad",
+    areaAncestry: [
+      { name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY" },
+      { name: "Ghatkesar", slug: "ghatkesar", kind: "LOCALITY" },
+      { name: "Hyderabad", slug: "hyderabad", kind: "CITY" },
+    ],
     city: "Hyderabad",
     state: "Telangana",
     address: "Yamnampet, Ghatkesar",
@@ -223,18 +231,66 @@ describe("hostelNode — omissions", () => {
     expect(hostelNode(facts(), PAGE)).not.toHaveProperty("telephone");
   });
 
-  it("omits the address node when nothing locates the hostel", () => {
+  it("splits the locality out of streetAddress instead of concatenating", () => {
+    // The row held "Yamnampet,Ghatkesar" and the whole string went into
+    // streetAddress — two places Google knows, concatenated into one string
+    // it knows nothing about.
+    const node = hostelNode(facts({ address: "Yamnampet" }), PAGE) as any;
+    expect(node.address).toEqual({
+      "@type": "PostalAddress",
+      streetAddress: "Yamnampet",
+      addressLocality: "Ghatkesar",
+      addressRegion: "Telangana",
+      addressCountry: "India",
+    });
+  });
+
+  it("keeps a real street line and does not overwrite it with the locality", () => {
+    const node = hostelNode(facts({ address: "Plot 12, Road No 5" }), PAGE) as any;
+    expect(node.address.streetAddress).toBe("Plot 12, Road No 5");
+    expect(node.address.addressLocality).toBe("Ghatkesar");
+  });
+
+  it("falls back to the locality when the owner wrote no address", () => {
+    const node = hostelNode(facts({ address: null }), PAGE) as any;
+    expect(node.address.streetAddress).toBe("Yamnampet");
+  });
+
+  it("never repeats one place in two fields", () => {
     const node = hostelNode(
-      facts({ address: null, areaName: null, city: null, state: null }),
+      facts({ address: "Ghatkesar", areaName: "Ghatkesar", parentAreaName: "Ghatkesar" }),
+      PAGE,
+    ) as any;
+    expect(node.address.streetAddress).toBe("Ghatkesar");
+    expect(node.address).not.toHaveProperty("addressLocality");
+  });
+
+  it("uses the city as the locality when the hostel has no curated parent", () => {
+    const node = hostelNode(
+      facts({ address: "Some Street", areaName: null, parentAreaName: null, city: "Hyderabad" }),
+      PAGE,
+    ) as any;
+    expect(node.address.addressLocality).toBe("Hyderabad");
+  });
+
+  it("omits the address node when nothing locates the hostel", () => {
+    // `addressCountry` alone is not an address — emitting one that says only
+    // "India" is worse than emitting none.
+    const node = hostelNode(
+      facts({ address: null, areaName: null, parentAreaName: null, city: null, state: null }),
       PAGE,
     );
     expect(node).not.toHaveProperty("address");
   });
 
   it("keeps the address when only a locality is known", () => {
-    const node = hostelNode(facts({ address: null, state: null }), PAGE) as any;
-    expect(node.address.addressLocality).toBe("Yamnampet");
-    expect(node.address).not.toHaveProperty("streetAddress");
+    const node = hostelNode(
+      facts({ address: null, state: null, parentAreaName: null, city: null }),
+      PAGE,
+    ) as any;
+    expect(node.address.streetAddress).toBe("Yamnampet");
+    expect(node.address).not.toHaveProperty("addressLocality");
+    expect(node.address).not.toHaveProperty("addressRegion");
   });
 
   it("omits amenityFeature rather than emitting an empty list", () => {

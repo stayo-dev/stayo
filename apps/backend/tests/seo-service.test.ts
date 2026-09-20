@@ -20,7 +20,7 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-import { toHostelFacts, listSitemapHostels } from "@/src/services/seo/seo-service";
+import { toHostelFacts, listSitemapHostels, loadHostelPage } from "@/src/services/seo/seo-service";
 import { prisma } from "@/lib/db";
 
 /** Shaped like `projectListing`'s output, trimmed to what the mapper reads. */
@@ -293,5 +293,38 @@ describe("sitemap lastmod reflects when the LISTING changed", () => {
   it("drops a hostel with no slug rather than emitting a broken URL", async () => {
     (prisma.hostels.findMany as any).mockResolvedValueOnce([row({ public_slug: null })]);
     expect(await listSitemapHostels(0, 10)).toHaveLength(0);
+  });
+});
+
+
+describe("a transient failure must not be reported as a missing page", () => {
+  /**
+   * The defect this pins: the loader caught EVERY error and returned null,
+   * which the route turns into a 404. A dropped pooler connection would have
+   * told Google a live hostel is permanently gone — and a 404 is believed,
+   * while a 500 is retried. The Supabase pooler returned P1001 mid-session
+   * during verification, so this is not hypothetical.
+   */
+  it("404s only a hostel that is genuinely not listed", async () => {
+    const { discoveryService } = await import("@/src/services/discovery/discovery-service");
+    const notListed: any = new Error("This hostel is not listed on Stayo");
+    notListed.statusCode = 404;
+    notListed.code = "NOT_FOUND";
+
+    vi.spyOn(discoveryService, "getListing").mockRejectedValueOnce(notListed);
+    (prisma.hostels.findFirst as any).mockResolvedValueOnce(null);
+
+    await expect(loadHostelPage("gone-1111aaaa")).resolves.toBeNull();
+  });
+
+  it("rethrows a database failure instead of swallowing it into a 404", async () => {
+    const { discoveryService } = await import("@/src/services/discovery/discovery-service");
+    const unreachable: any = new Error("Can't reach database server");
+    unreachable.code = "P1001";
+
+    vi.spyOn(discoveryService, "getListing").mockRejectedValueOnce(unreachable);
+    (prisma.hostels.findFirst as any).mockResolvedValueOnce(null);
+
+    await expect(loadHostelPage("sri-adithya-1111aaaa")).rejects.toThrow(/reach database/);
   });
 });

@@ -1950,3 +1950,15 @@ On `feat/programmatic-seo`. **Not merged, not deployed.**
 
 - **Fixed** the sitemap's `lastmod`, which read only `hostels.updated_at` — a column with no `@updatedAt` that listing-content edits never touch, since those write to `hostel_marketing_revisions`. It now composes the newest of the hostel row, the approved revision and, as a floor, the hostel's creation date. See [[Bugs]].
 - **Data:** the one listed hostel's `city` was corrected from `Hydarabad` to `Hyderabad` in production; `address` left as the owner has it.
+
+## 2026-09-20 — Location graph, locality and college pages ([[Decisions#ADR-227|ADR-227]])
+
+- **Added** migrations **089** (`hostel_slug_history`) and **090** (`areas`, `colleges`, `hostel_colleges`, `hostels.area_id`) — **both applied to production and verified**, in the strict apply-then-declare order migration 090's header sets out.
+- **Seeded and published** the first cluster: Hyderabad → Ghatkesar → Yamnampet → SNIST → Sri Adithya Boys Hostel.
+- **Added** `/hostels-in/:area` and `/hostels-near/:college` with their intent variants, one shared renderer, and a `places.xml` sitemap shard.
+- **Changed** the content gate: locality pages publish at **1** listing, comparison at 2, recommendations at 3+; intent pages stay at 3.
+- **Changed** the postal address to one field per geographic entity, and breadcrumbs to walk the area ancestry.
+- **Changed** `discoveryService.search` to accept `hostelIds`, filtered in SQL.
+- **Re-minted** the live hostel's slug to the locality form; the old slug 301s permanently on both surfaces.
+- **Fixed** a renamed hostel's old URL serving the page instead of redirecting, and a dropped database connection being reported to Google as a permanent 404 — see [[Bugs]].
+- **Added** a canonical consistency audit, frozen SEO snapshots, and related-hostel generators. 367 SEO tests.

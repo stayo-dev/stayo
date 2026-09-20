@@ -94,8 +94,6 @@ export interface HostelPageInput {
   nearbyInArea?: ListingCardFact[];
   /** Other hostels near the same college. */
   nearbyAtCollege?: ListingCardFact[];
-  /** Whether the area page currently passes its threshold — link only if so. */
-  areaIsPublished?: boolean;
   /**
    * The college slugs whose pages currently pass the gate.
    *
@@ -113,20 +111,45 @@ export function hostelPageSpec(input: HostelPageInput): SeoPageSpec {
   const canonicalUrl = hostelUrl(facts.slug);
   const place = placeName(facts);
 
+  /**
+   * The breadcrumb walks the whole area chain — Stayo → Hyderabad →
+   * Ghatkesar → Yamnampet → the hostel.
+   *
+   * It is built from the ancestry rather than hardcoded, so onboarding a
+   * hostel into a deeper or shallower locality changes the trail without a
+   * code change. That was the point of the review's note that breadcrumb
+   * generation "should automatically insert intermediate entities": the
+   * earlier trail lost Ghatkesar and Yamnampet entirely, which are the two
+   * entities a student actually searches.
+   *
+   * Reversed because the ancestry arrives nearest-first and a trail reads
+   * broadest-first. An unpublished area is skipped: a crumb is a link, and a
+   * link into a gated page is a link into a 404.
+   */
   const breadcrumbs: Breadcrumb[] = [{ name: "Stayo", url: siteUrl() }];
-  if (facts.city) {
-    // A city page only exists once curated; until then the crumb still needs
-    // a destination, and the hub is the honest one.
+
+  const ancestry = [...facts.areaAncestry].reverse();
+  for (const area of ancestry) {
+    // Explicit opt-in, not opt-out: an area whose publication state is unknown
+    // must not be linked. A missing flag should cost a link, not produce a 404.
+    if (area.published !== true) continue;
+    breadcrumbs.push({ name: area.name, url: areaUrl(area.slug) });
+  }
+
+  // No curated area yet: the city still names where the hostel is, and the
+  // hub is the honest destination for it.
+  if (ancestry.length === 0 && facts.city) {
     breadcrumbs.push({ name: facts.city, url: hubUrl() });
   }
-  if (facts.areaName && facts.areaSlug && input.areaIsPublished) {
-    breadcrumbs.push({ name: facts.areaName, url: areaUrl(facts.areaSlug) });
-  }
+
   breadcrumbs.push({ name: facts.name, url: canonicalUrl });
 
+  // Up the chain, nearest first: "Hostels in Yamnampet", then Ghatkesar,
+  // then Hyderabad. Each is a real page once published.
   const parents: SeoLink[] = [];
-  if (facts.areaName && facts.areaSlug && input.areaIsPublished) {
-    parents.push({ href: areaUrl(facts.areaSlug), label: `Hostels in ${facts.areaName}` });
+  for (const area of facts.areaAncestry) {
+    if (area.published !== true) continue;
+    parents.push({ href: areaUrl(area.slug), label: `Hostels in ${area.name}` });
   }
   const publishedColleges = new Set(input.publishedCollegeSlugs ?? []);
   for (const college of facts.colleges) {

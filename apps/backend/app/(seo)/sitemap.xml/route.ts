@@ -30,6 +30,10 @@ export async function GET() {
 
     const shards = [
       { name: "static.xml" },
+      // Localities, cities and campuses. Separate from the hostel shards
+      // because they change on curation rather than on onboarding, so they
+      // invalidate on a different rhythm.
+      { name: "places.xml" },
       ...shardPlan(total).map((name) => ({ name })),
     ];
 

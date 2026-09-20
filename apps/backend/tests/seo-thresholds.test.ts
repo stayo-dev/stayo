@@ -1,11 +1,12 @@
 /**
- * The content gate.
+ * The content gate, and the tiered enrichment that replaced the old
+ * publish-at-three rule.
  *
- * The property being defended: a collection page and the sitemap entry for
- * that page must agree, always. A sitemap advertising URLs that 404 teaches
- * Google to distrust the sitemap — and since both callers reach the same
- * exported function, they cannot disagree unless someone writes a second copy.
- * The last test in this file is what stops that. ADR-226.
+ * The property being defended is that a collection page and its sitemap
+ * entry always agree. A sitemap advertising URLs that 404 teaches Google to
+ * distrust the sitemap — and since both callers reach the same exported
+ * function they cannot disagree unless someone writes a second copy. The
+ * last test in this file is what stops that. ADR-226.
  */
 
 import { describe, it, expect } from "vitest";
@@ -13,7 +14,10 @@ import {
   MIN_LISTINGS_AREA,
   MIN_LISTINGS_CITY,
   MIN_LISTINGS_COLLEGE,
+  MIN_LISTINGS_COMPARISON,
   MIN_LISTINGS_INTENT,
+  MIN_LISTINGS_RECOMMENDATIONS,
+  collectionFeatures,
   collectionGate,
   minimumFor,
   passesGate,
@@ -21,66 +25,90 @@ import {
 
 const published = { exists: true, isPublished: true };
 
-describe("area pages", () => {
-  it.each([0, 1, 2])("does not exist at %i listings", (count) => {
-    const gate = collectionGate({ kind: "area", ...published, listingCount: count });
-    expect(gate.status).toBe("thin");
+describe("a locality page publishes on its first listing", () => {
+  /**
+   * The rule this replaced withheld the page until three. Someone searching
+   * "Yamnampet hostel" today should still land on Stayo — the page is about
+   * the place, and the listing is one of the things on it.
+   */
+  it.each(["area", "city", "college"] as const)("%s publishes at one listing", (kind) => {
+    expect(collectionGate({ kind, ...published, listingCount: 1 }).status).toBe("ok");
   });
 
-  it("exists at the threshold", () => {
-    expect(collectionGate({ kind: "area", ...published, listingCount: MIN_LISTINGS_AREA }).status).toBe("ok");
+  it("still refuses a dimension with nothing behind it at all", () => {
+    for (const kind of ["area", "city", "college", "intent"] as const) {
+      expect(collectionGate({ kind, ...published, listingCount: 0 }).status).toBe("thin");
+    }
   });
 
   it("reports what it needed, so a caller can log why a page is absent", () => {
-    const gate = collectionGate({ kind: "area", ...published, listingCount: 1 });
-    expect(gate).toEqual({ status: "thin", needed: MIN_LISTINGS_AREA, have: 1 });
+    expect(collectionGate({ kind: "area", ...published, listingCount: 0 })).toEqual({
+      status: "thin",
+      needed: MIN_LISTINGS_AREA,
+      have: 0,
+    });
   });
 });
 
-describe("intent pages clear a higher bar than their parent", () => {
-  it("is stricter than an area, because an intent page is a subset of one", () => {
+describe("intent pages still clear a higher bar", () => {
+  it("is stricter than its parent, because it is a subset of one", () => {
     expect(MIN_LISTINGS_INTENT).toBeGreaterThan(MIN_LISTINGS_AREA);
   });
 
-  it("does not exist at 4 listings even though an area would", () => {
-    expect(collectionGate({ kind: "area", ...published, listingCount: 4 }).status).toBe("ok");
-    expect(collectionGate({ kind: "intent", ...published, listingCount: 4 }).status).toBe("thin");
+  it.each([1, 2])("does not exist at %i listings even though the area does", (count) => {
+    expect(collectionGate({ kind: "area", ...published, listingCount: count }).status).toBe("ok");
+    expect(collectionGate({ kind: "intent", ...published, listingCount: count }).status).toBe("thin");
   });
 
-  it("exists at 5", () => {
-    expect(collectionGate({ kind: "intent", ...published, listingCount: 5 }).status).toBe("ok");
+  it("exists once the filter can actually narrow something", () => {
+    expect(collectionGate({ kind: "intent", ...published, listingCount: MIN_LISTINGS_INTENT }).status).toBe("ok");
+  });
+});
+
+describe("the page grows richer as inventory arrives, with no deploy", () => {
+  it("shows neither section at one listing", () => {
+    expect(collectionFeatures(1)).toEqual({ comparison: false, recommendations: false });
+  });
+
+  it("adds comparison at two — the first point comparing is possible", () => {
+    expect(collectionFeatures(2)).toEqual({ comparison: true, recommendations: false });
+  });
+
+  it("adds recommendations at three — recommending one of two is not a recommendation", () => {
+    expect(collectionFeatures(3)).toEqual({ comparison: true, recommendations: true });
+  });
+
+  it("keeps both on as inventory grows", () => {
+    expect(collectionFeatures(40)).toEqual({ comparison: true, recommendations: true });
+  });
+
+  it("orders the tiers as the review specified: publish 1, compare 2, recommend 3", () => {
+    expect(MIN_LISTINGS_AREA).toBeLessThan(MIN_LISTINGS_COMPARISON);
+    expect(MIN_LISTINGS_COMPARISON).toBeLessThan(MIN_LISTINGS_RECOMMENDATIONS);
   });
 });
 
 describe("publication is an admin decision, separate from inventory", () => {
   it("is missing when the row is unpublished, however much inventory it has", () => {
-    const gate = collectionGate({ kind: "area", exists: true, isPublished: false, listingCount: 500 });
-    expect(gate.status).toBe("missing");
+    expect(collectionGate({ kind: "area", exists: true, isPublished: false, listingCount: 500 }).status).toBe("missing");
   });
 
   it("is missing when no such row exists", () => {
-    const gate = collectionGate({ kind: "college", exists: false, isPublished: true, listingCount: 9 });
-    expect(gate.status).toBe("missing");
+    expect(collectionGate({ kind: "college", exists: false, isPublished: true, listingCount: 9 }).status).toBe("missing");
   });
 });
 
-describe("today's production reality", () => {
-  /**
-   * One discoverable hostel. Every collection page must be absent — this is
-   * the assertion that says the engine is safe to deploy before there is
-   * inventory to fill it.
-   */
-  it("emits no collection page at all at one listing", () => {
-    for (const kind of ["area", "city", "college", "intent"] as const) {
-      expect(passesGate({ kind, ...published, listingCount: 1 })).toBe(false);
-    }
+describe("today's production graph", () => {
+  /** Hyderabad → Ghatkesar → Yamnampet → SNIST → one hostel. */
+  it("publishes every level of the first cluster on one listing", () => {
+    expect(passesGate({ kind: "city", ...published, listingCount: 1 })).toBe(true);    // Hyderabad
+    expect(passesGate({ kind: "area", ...published, listingCount: 1 })).toBe(true);    // Ghatkesar
+    expect(passesGate({ kind: "area", ...published, listingCount: 1 })).toBe(true);    // Yamnampet
+    expect(passesGate({ kind: "college", ...published, listingCount: 1 })).toBe(true); // SNIST
   });
 
-  it("opens each kind at its own threshold with no code change", () => {
-    expect(passesGate({ kind: "city", ...published, listingCount: MIN_LISTINGS_CITY })).toBe(true);
-    expect(passesGate({ kind: "area", ...published, listingCount: MIN_LISTINGS_AREA })).toBe(true);
-    expect(passesGate({ kind: "college", ...published, listingCount: MIN_LISTINGS_COLLEGE })).toBe(true);
-    expect(passesGate({ kind: "intent", ...published, listingCount: MIN_LISTINGS_INTENT })).toBe(true);
+  it("still withholds intent pages until the cluster has depth", () => {
+    expect(passesGate({ kind: "intent", ...published, listingCount: 1 })).toBe(false);
   });
 });
 

@@ -45,6 +45,11 @@ const WRITE_PATHS: { file: string; why: string; visibilityChanged: boolean }[] =
     why: "losing VERIFIED drops the hostel out of DISCOVERABLE",
     visibilityChanged: true,
   },
+  {
+    file: "src/services/discovery/slug-resolution.ts",
+    why: "a rename leaves the OLD slug's cache holding a valid page, so it keeps serving 200 instead of redirecting",
+    visibilityChanged: true,
+  },
 ];
 
 describe("every write path that changes a public page busts its cache", () => {
@@ -109,5 +114,28 @@ describe("the ISR ceiling is the backstop for a missed call", () => {
   it("re-renders a hostel listed after the last build instead of 404ing it", () => {
     const page = read("app/(seo)/hostels/[slug]/page.tsx");
     expect(page).toMatch(/export const dynamicParams = true/);
+  });
+});
+
+
+describe("renaming a slug busts BOTH slugs", () => {
+  const source = read("src/services/discovery/slug-resolution.ts");
+
+  it("invalidates the new slug", () => {
+    expect(source).toMatch(/slug:\s*result\.to/);
+  });
+
+  it("invalidates the retired slug — the one that would keep serving the page", () => {
+    expect(source).toMatch(/slug:\s*result\.from/);
+  });
+
+  it("busts the sitemap, because the set of URLs changed", () => {
+    expect(source).toContain("visibilityChanged: true");
+  });
+
+  it("does both writes in one transaction", () => {
+    // A slug swapped without its history row 404s every link already sent;
+    // a history row without the swap is a redirect loop.
+    expect(source).toContain("prisma.$transaction");
   });
 });

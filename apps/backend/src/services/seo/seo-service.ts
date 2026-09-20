@@ -5,7 +5,7 @@ import { discoveryService, DISCOVERABLE } from "@/src/services/discovery/discove
 import { reviewsService } from "@/src/services/discovery/reviews-service";
 import { advertisedStartingPrice } from "@/src/services/discovery/listing-projection";
 import { seoTags } from "@/lib/cache/public-listing-cache";
-import { buildCollegeSlug } from "./slug";
+import { buildCollegeSlug, normaliseSlug } from "./slug";
 import { hostelPageSpec, type SeoPageSpec } from "./page-spec";
 import type { CollegeFact, HostelFacts, ReviewFact } from "./types";
 
@@ -139,6 +139,10 @@ export function toHostelFacts(
   extra: {
     updatedAt?: Date | string | null;
     reviews?: { count: number; average: number | null; items: ReviewFact[] };
+    /** Nearest first: [Yamnampet, Ghatkesar, Hyderabad]. */
+    areaChain?: { name: string; slug: string; kind: string }[];
+    /** Curated campuses, nearest first. Replaces the navigation-derived guess. */
+    colleges?: CollegeFact[];
   } = {},
 ): HostelFacts {
   const hostel = listing?.hostel ?? {};
@@ -148,11 +152,18 @@ export function toHostelFacts(
     slug: String(hostel.public_slug ?? ""),
     name: String(hostel.name ?? ""),
 
-    // Phase 1 has no `areas` table, so the locality is not yet known and the
-    // city carries the page. Phase 3 fills this in without touching the page.
-    areaName: null,
-    areaSlug: null,
-    city: hostel.city ?? null,
+    /**
+     * The curated locality chain, nearest first. Empty until an admin assigns
+     * an area, at which point the breadcrumb, the postal address and the
+     * locality links all deepen on their own — no code change. ADR-226.
+     */
+    areaName: extra.areaChain?.[0]?.name ?? null,
+    areaSlug: extra.areaChain?.[0]?.slug ?? null,
+    parentAreaName: extra.areaChain?.[1]?.name ?? null,
+    parentAreaSlug: extra.areaChain?.[1]?.slug ?? null,
+    cityAreaSlug: extra.areaChain?.find((a) => a.kind === "CITY")?.slug ?? null,
+    areaAncestry: extra.areaChain ?? [],
+    city: extra.areaChain?.find((a) => a.kind === "CITY")?.name ?? hostel.city ?? null,
     state: hostel.state ?? null,
     address: hostel.address ?? null,
 
@@ -186,7 +197,14 @@ export function toHostelFacts(
     availabilityConfirmed: Boolean(listing?.availability_confirmed),
     platformListed: Boolean(listing?.platform_listed),
 
-    colleges: resolveColleges(listing),
+    /**
+     * Curated `hostel_colleges` rows when they exist, falling back to the
+     * admin-entered `navigation.referenceName` and the owner's `places[]`.
+     * The fallback is what made college names usable before there was a
+     * colleges table; it stays so a hostel nobody has linked yet still says
+     * which campus it is near.
+     */
+    colleges: extra.colleges?.length ? extra.colleges : resolveColleges(listing),
     places: (listing?.places ?? []).map((place: any) => ({
       name: String(place?.name ?? ""),
       distance: place?.distance ? String(place.distance) : null,
@@ -250,7 +268,34 @@ async function loadHostelFacts(slug: string): Promise<HostelFacts | null> {
       // widening `getListing`'s payload for one consumer.
       prisma.hostels.findFirst({
         where: { ...DISCOVERABLE, public_slug: slug },
-        select: { updated_at: true },
+        select: {
+          updated_at: true,
+          /**
+           * Three levels of ancestry, which covers
+           * Yamnampet → Ghatkesar → Hyderabad. Fetched as a nested select
+           * rather than a recursive walk: the hierarchy is shallow by design
+           * and three round trips per page render is not worth the
+           * generality.
+           */
+          area: {
+            select: {
+              name: true, slug: true, kind: true, is_published: true,
+              parent: {
+                select: {
+                  name: true, slug: true, kind: true, is_published: true,
+                  parent: { select: { name: true, slug: true, kind: true, is_published: true } },
+                },
+              },
+            },
+          },
+          colleges: {
+            orderBy: [{ distance_rank: "asc" }, { created_at: "asc" }],
+            select: {
+              distance_text: true,
+              college: { select: { name: true, short_name: true, slug: true, is_published: true } },
+            },
+          },
+        },
       }),
       /**
        * Hostel-scoped published reviews, read tolerantly. A failure here must
@@ -261,8 +306,30 @@ async function loadHostelFacts(slug: string): Promise<HostelFacts | null> {
       reviewsService.listPublished(slug).catch(() => null),
     ]);
 
+    // Nearest first. An unpublished area is still used for the address and
+    // the copy — it is a true fact about where the hostel is — but nothing
+    // links to its page until an admin publishes it.
+    const areaChain: { name: string; slug: string; kind: string; published: boolean }[] = [];
+    let node: any = (row as any)?.area;
+    while (node && areaChain.length < 4) {
+      areaChain.push({ name: node.name, slug: node.slug, kind: node.kind, published: Boolean(node.is_published) });
+      node = node.parent;
+    }
+
+    const colleges = ((row as any)?.colleges ?? [])
+      .filter((link: any) => link.college)
+      .map((link: any) => ({
+        name: link.college.name,
+        shortName: link.college.short_name ?? null,
+        slug: link.college.slug,
+        distanceText: link.distance_text ?? null,
+        published: Boolean(link.college.is_published),
+      }));
+
     return toHostelFacts(listing, {
       updatedAt: row?.updated_at ?? null,
+      areaChain,
+      colleges,
       reviews: reviews
         ? {
             count: Number(reviews.summary?.count ?? 0),
@@ -281,10 +348,23 @@ async function loadHostelFacts(slug: string): Promise<HostelFacts | null> {
           }
         : undefined,
     });
-  } catch {
-    // `getListing` throws ApiError.notFound for anything not DISCOVERABLE.
-    // A page turns that into a 404; it is not an error worth logging.
-    return null;
+  } catch (error: any) {
+    /**
+     * ONLY a genuine "not listed" becomes a 404.
+     *
+     * `getListing` throws `ApiError.notFound` for anything not DISCOVERABLE,
+     * and that is a real 404. Everything else — a dropped pooler connection,
+     * a query error — must NOT be, and this used to swallow all of them.
+     * Telling Google a live hostel is permanently gone because the database
+     * blipped for two seconds is how a page falls out of the index for weeks;
+     * a 500 is retried, a 404 is believed. Observed during verification: the
+     * Supabase pooler returned P1001 mid-session and every page reading
+     * through it would have 404'd.
+     */
+    if (error?.statusCode === 404 || error?.code === "NOT_FOUND") return null;
+
+    console.error("[seo] hostel page load failed:", slug, error?.message ?? error);
+    throw error;
   }
 }
 
@@ -309,11 +389,16 @@ export async function loadHostelPage(
     facts,
     spec: hostelPageSpec({
       facts,
-      // Phase 1 has no curated areas or colleges, so no collection page exists
-      // to link to yet. Passing nothing is what keeps the internal graph free
-      // of links to gated pages.
-      areaIsPublished: false,
-      publishedCollegeSlugs: [],
+      /**
+       * Only published entities are linked. The gate decides whether a
+       * collection page exists; this decides whether anything points at it,
+       * and the two must agree or the internal graph gains a link into a 404.
+       * Areas carry their own flag through `areaAncestry`, since a locality
+       * can be published while its parent is not.
+       */
+      publishedCollegeSlugs: facts.colleges
+        .filter((college) => college.published)
+        .map((college) => college.slug),
     }),
   };
 }
@@ -461,6 +546,305 @@ export async function loadHubListings(limit = 50): Promise<HubListing[]> {
       }));
     },
     ["seo", "hub", String(limit)],
+    { tags: [seoTags.sitemap()], revalidate: PAGE_REVALIDATE_SECONDS },
+  )();
+}
+
+/* ── Collection pages (locality, city, college) ──────────────────────────── */
+
+import { collectionGate, collectionFeatures, type CollectionKind } from "./thresholds";
+import { collectionPageSpec, summariseListings } from "./page-spec";
+import { resolveIntentSegments, type IntentDefinition } from "./intents";
+import { areaUrl, collegeUrl } from "./seo-links";
+import type { CollectionSubject, ListingCardFact, SeoLink } from "./types";
+
+export type CollectionStatus = "ok" | "thin" | "missing";
+
+export interface CollectionPageResult {
+  status: CollectionStatus;
+  subject?: CollectionSubject;
+  listings?: ListingCardFact[];
+  features?: ReturnType<typeof collectionFeatures>;
+  spec?: ReturnType<typeof collectionPageSpec>;
+}
+
+/** Maps a discovery search card onto the narrow shape a collection renders. */
+function toCard(card: any, distanceText?: string | null): ListingCardFact {
+  return {
+    slug: String(card.slug ?? ""),
+    name: String(card.name ?? ""),
+    areaName: card.area_name ?? null,
+    city: card.city ?? null,
+    hostelType: card.hostel_type ?? null,
+    startingPrice: card.starting_price ?? null,
+    sharing: Array.isArray(card.sharing) ? card.sharing : [],
+    foodIncluded: Boolean(card.food_included),
+    photo: Array.isArray(card.photos) ? card.photos[0] ?? null : null,
+    vacantBeds: card.vacant_beds ?? null,
+    availabilityConfirmed: true,
+    distanceText: distanceText ?? null,
+  };
+}
+
+/** The hostel ids in an area, INCLUDING every descendant area. */
+async function hostelIdsForArea(areaId: string): Promise<string[]> {
+  // Depth-limited walk rather than a recursive CTE: the hierarchy is
+  // city → locality → sub-locality by design, and a bounded walk keeps this
+  // expressible in Prisma rather than raw SQL.
+  const ids = [areaId];
+  let frontier = [areaId];
+
+  for (let depth = 0; depth < 3 && frontier.length > 0; depth += 1) {
+    const children: { id: string }[] = await prisma.areas.findMany({
+      where: { parent_id: { in: frontier } },
+      select: { id: true },
+    });
+    frontier = children.map((child) => child.id);
+    ids.push(...frontier);
+  }
+
+  const hostels: { id: string }[] = await prisma.hostels.findMany({
+    where: { ...DISCOVERABLE, area_id: { in: ids } },
+    select: { id: true },
+  });
+
+  return hostels.map((hostel) => hostel.id);
+}
+
+/**
+ * A locality, city or college page.
+ *
+ * ONE GATE, TWO CALLERS: the page route and the sitemap shard both resolve
+ * the status through `collectionGate` here, so the sitemap can never
+ * advertise a URL that 404s. `tests/seo-thresholds.test.ts` asserts they
+ * import the same symbol.
+ *
+ * Listings are read through `discoveryService.search` with an explicit id
+ * filter rather than fetched-then-filtered. That matters at scale: search
+ * caps candidates and filters in memory, so an area page that pulled an
+ * arbitrary page of candidates and then narrowed would return a short list
+ * silently once inventory grew.
+ */
+async function loadCollection(
+  kind: CollectionKind,
+  slug: string,
+  intent: IntentDefinition | null,
+): Promise<CollectionPageResult> {
+  const normalised = normaliseSlug(slug);
+
+  if (kind === "college") {
+    const college = await prisma.colleges.findFirst({
+      where: { slug: normalised },
+      select: {
+        id: true, slug: true, name: true, short_name: true, intro: true, is_published: true,
+        area: { select: { name: true, slug: true, is_published: true, state: true } },
+        hostels: {
+          orderBy: [{ distance_rank: "asc" }, { created_at: "asc" }],
+          select: { distance_text: true, hostel_id: true },
+        },
+      },
+    });
+
+    if (!college) return { status: "missing" };
+
+    const distanceBy = new Map<string, string | null>(
+      college.hostels.map((h: any) => [String(h.hostel_id), h.distance_text ?? null]),
+    );
+    const results = await discoveryService.search({
+      hostelIds: Array.from(distanceBy.keys()),
+      limit: 24,
+      ...(intent?.filters ?? {}),
+    } as any);
+
+    const listings = (results?.results ?? []).map((card: any) =>
+      toCard(card, distanceBy.get(card.id) ?? null),
+    );
+
+    const gate = collectionGate({
+      kind: intent ? "intent" : "college",
+      exists: true,
+      isPublished: college.is_published,
+      listingCount: listings.length,
+    });
+    if (gate.status !== "ok") return { status: gate.status };
+
+    const subject: CollectionSubject = {
+      kind: "college",
+      slug: college.slug,
+      name: college.name,
+      shortName: college.short_name,
+      intro: college.intro,
+      parentName: college.area?.is_published ? college.area?.name ?? null : null,
+      parentSlug: college.area?.is_published ? college.area?.slug ?? null : null,
+      state: college.area?.state ?? null,
+    };
+
+    return buildCollection(subject, listings, intent);
+  }
+
+  const area = await prisma.areas.findFirst({
+    where: { slug: normalised },
+    select: {
+      id: true, slug: true, name: true, kind: true, intro: true, is_published: true, state: true,
+      parent: { select: { name: true, slug: true, is_published: true } },
+    },
+  });
+
+  if (!area) return { status: "missing" };
+
+  const ids = await hostelIdsForArea(area.id);
+  const results = ids.length
+    ? await discoveryService.search({ hostelIds: ids, limit: 24, ...(intent?.filters ?? {}) } as any)
+    : { results: [] };
+
+  const listings = (results?.results ?? []).map((card: any) => toCard(card));
+
+  const gate = collectionGate({
+    kind: intent ? "intent" : area.kind === "CITY" ? "city" : "area",
+    exists: true,
+    isPublished: area.is_published,
+    listingCount: listings.length,
+  });
+  if (gate.status !== "ok") return { status: gate.status };
+
+  const subject: CollectionSubject = {
+    kind: area.kind === "CITY" ? "city" : "area",
+    slug: area.slug,
+    name: area.name,
+    intro: area.intro,
+    parentName: area.parent?.is_published ? area.parent?.name ?? null : null,
+    parentSlug: area.parent?.is_published ? area.parent?.slug ?? null : null,
+    state: area.state,
+  };
+
+  return buildCollection(subject, listings, intent);
+}
+
+async function buildCollection(
+  subject: CollectionSubject,
+  listings: ListingCardFact[],
+  intent: IntentDefinition | null,
+): Promise<CollectionPageResult> {
+  const stats = summariseListings(listings);
+  const [siblings, intents] = await Promise.all([
+    loadSiblings(subject),
+    loadIntentLinks(subject, listings.length),
+  ]);
+
+  return {
+    status: "ok",
+    subject,
+    listings,
+    features: collectionFeatures(listings.length),
+    spec: collectionPageSpec({ subject, stats, listings, intent, siblings, intents }),
+  };
+}
+
+/** Across the graph: sibling localities, or the other campuses in this area. */
+async function loadSiblings(subject: CollectionSubject): Promise<SeoLink[]> {
+  if (subject.kind === "college") {
+    if (!subject.parentSlug) return [];
+    const peers = await prisma.colleges.findMany({
+      where: { is_published: true, area: { slug: subject.parentSlug }, slug: { not: subject.slug } },
+      select: { slug: true, name: true, short_name: true },
+      take: 8,
+    });
+    return peers.map((peer: any) => ({
+      href: collegeUrl(peer.slug),
+      label: `Hostels near ${peer.short_name || peer.name}`,
+    }));
+  }
+
+  // Children first — a city's localities are the useful subdivision — then
+  // true siblings when there are no children to offer.
+  const children = await prisma.areas.findMany({
+    where: { is_published: true, parent: { slug: subject.slug } },
+    select: { slug: true, name: true },
+    take: 8,
+  });
+  if (children.length > 0) {
+    return children.map((child: any) => ({
+      href: areaUrl(child.slug),
+      label: `Hostels in ${child.name}`,
+    }));
+  }
+
+  if (!subject.parentSlug) return [];
+  const peers = await prisma.areas.findMany({
+    where: { is_published: true, parent: { slug: subject.parentSlug }, slug: { not: subject.slug } },
+    select: { slug: true, name: true },
+    take: 8,
+  });
+  return peers.map((peer: any) => ({ href: areaUrl(peer.slug), label: `Hostels in ${peer.name}` }));
+}
+
+/**
+ * Filtered views of THIS page that themselves pass the gate.
+ *
+ * Only offered once the parent has enough inventory for a filter to narrow
+ * anything — otherwise every intent link points at a page saying what this
+ * one already said.
+ */
+async function loadIntentLinks(
+  subject: CollectionSubject,
+  listingCount: number,
+): Promise<SeoLink[]> {
+  const { ALL_INTENTS } = await import("./intents");
+  const { MIN_LISTINGS_INTENT } = await import("./thresholds");
+  if (listingCount < MIN_LISTINGS_INTENT) return [];
+
+  const url = subject.kind === "college" ? collegeUrl : areaUrl;
+  return ALL_INTENTS.slice(0, 8).map((intent) => ({
+    href: url(subject.slug, intent.slug),
+    label: `${intent.label} ${subject.kind === "college" ? "near" : "in"} ${subject.shortName || subject.name}`,
+  }));
+}
+
+export async function loadCollectionPage(
+  kind: "area" | "college",
+  slug: string,
+  intentSegments?: string[],
+): Promise<CollectionPageResult> {
+  const intent = resolveIntentSegments(intentSegments);
+
+  // An unknown intent segment is not a filtered page, it is a 404 — see
+  // `intents.ts` on why the allowlist is closed.
+  if (intentSegments && intentSegments.length > 0 && !intent) return { status: "missing" };
+
+  const tag = kind === "college" ? seoTags.college(normaliseSlug(slug)) : seoTags.area(normaliseSlug(slug));
+
+  return unstable_cache(
+    () => loadCollection(kind, slug, intent),
+    ["seo", "collection", kind, normaliseSlug(slug), intent?.slug ?? "none"],
+    { tags: [tag, seoTags.sitemap()], revalidate: PAGE_REVALIDATE_SECONDS },
+  )();
+}
+
+/** Published collection URLs that pass the gate — for the sitemap. */
+export async function listCollectionUrls(): Promise<{ loc: string; lastmod: Date | null }[]> {
+  return unstable_cache(
+    async () => {
+      const [areas, colleges] = await Promise.all([
+        prisma.areas.findMany({ where: { is_published: true }, select: { slug: true, updated_at: true } }),
+        prisma.colleges.findMany({ where: { is_published: true }, select: { slug: true, updated_at: true } }),
+      ]);
+
+      const entries: { loc: string; lastmod: Date | null }[] = [];
+
+      // Resolved through the SAME loader the page uses, so a URL can only
+      // enter the sitemap if the page would actually render.
+      for (const area of areas) {
+        const page = await loadCollection("area", area.slug, null);
+        if (page.status === "ok") entries.push({ loc: areaUrl(area.slug), lastmod: area.updated_at ?? null });
+      }
+      for (const college of colleges) {
+        const page = await loadCollection("college", college.slug, null);
+        if (page.status === "ok") entries.push({ loc: collegeUrl(college.slug), lastmod: college.updated_at ?? null });
+      }
+
+      return entries;
+    },
+    ["seo", "collection-urls"],
     { tags: [seoTags.sitemap()], revalidate: PAGE_REVALIDATE_SECONDS },
   )();
 }

@@ -913,3 +913,33 @@ A **deliberately separate sibling** to the [[Database#`platform_admins` / `hoste
 - Applied via hand-run SQL migration (`prisma migrate deploy` is unusable against this project — see the note on `20260916120000_guardian_verification_policy`); **not yet confirmed applied to any environment** as of this change.
 
 
+
+## Location graph — `areas`, `colleges`, `hostel_colleges`, `hostels.area_id` (migration 090, ADR-227)
+
+Stayo's first geographic model. Before this there was none: no lat/lng anywhere, no colleges table, no locality column — the only structured location was an admin-entered Google Place ID plus a free-text landmark on `hostels.navigation`.
+
+**`areas`** — `(id, slug UNIQUE, name, kind, parent_id → areas, state, intro, is_published, created_at, updated_at)`. `kind` is `CITY | LOCALITY`, plain text per this schema's convention. **Self-referencing**: a city is an area with no parent, so one table, one route and one generator serve every level and the hierarchy can deepen without a schema change. `intro` is admin-written editorial; null renders nothing, and it is what stops two locality pages reading like one template twice.
+
+**`colleges`** — `(id, slug UNIQUE, name, short_name, area_id → areas, intro, is_published, timestamps)`. `short_name` ("SNIST") drives the slug in preference to the full name: it is what a student types and what `hostels.navigation.referenceName` already records.
+
+**`hostel_colleges`** — `(id, hostel_id CASCADE, college_id CASCADE, distance_text, distance_rank, created_at)`, unique on `(hostel_id, college_id)`. **`distance_text` is FREE TEXT** — "400 m", "5 min walk" — per [[Decisions#ADR-088|ADR-088]]: a numeric metres column invites a precision nobody measured. It renders on the page and is never lifted into a structured numeric property.
+
+**`hostels.area_id`** — nullable uuid, `ON DELETE SET NULL`. ⚠️ **This is the hazardous part of migration 090.** It is a new scalar on a heavily-read table, and declaring it in `schema.prisma` makes Prisma request it on every `include:`-only read of `hostels` — of which this codebase has ~10, including `admissionsService.getPublicHostel`. Declaring before applying reproduces the 2026-08-22 `navigation` outage exactly. The migration file carries the ordering in a header box: apply SQL → verify via `information_schema` → only then declare and ship.
+
+RLS is enabled on all three new tables with **no permissive policy** — the server reaches them as table owner over the direct connection, which bypasses RLS, while anon/`authenticated` Supabase clients get nothing.
+
+**Applied to production 2026-09-20 and verified** (all four tables present, `hostels.area_id` present, RLS on for each). Applied through the **session-mode pooler** (`…pooler.supabase.com:5432`): `DIRECT_URL`'s host is IPv6-only and does not resolve from the dev machine, and the default `DATABASE_URL` is transaction-pooled on `:6543`.
+
+**Seeded and published:** Hyderabad (CITY) → Ghatkesar → Yamnampet; SNIST in Yamnampet; Sri Adithya ↔ SNIST at "400 m".
+
+## `hostel_slug_history` (migration 089, ADR-227)
+
+`(id, hostel_id CASCADE, slug text UNIQUE, created_at)`, indexed on `(hostel_id, created_at DESC)`, RLS enabled with no policy.
+
+Every retired `public_slug`. A hostel's slug is in Google's index and in WhatsApp messages already sent, so a rename must not break either — `resolveHostelSlug` turns a retired value into a permanent redirect to the current one. `slug` is **globally** unique, not per-hostel: a retired slug that resolved for two hostels would make a redirect a wrong answer rather than a redirect.
+
+Shipped and applied *before* anything renamed, so the redirect existed before there was a retired slug. The live hostel was then re-minted from `sri-adithya-boys-hostel-36094ab4` to `sri-adithya-boys-hostel-yamnampet-36094ab4`.
+
+⚠️ **Renaming must go through `renameHostelSlugAndRevalidate`.** The swap and the history row are one transaction — a slug changed without its history row 404s every link already sent — and the rename must bust **both** slugs' caches. See [[Bugs]].
+
+Related: [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]], [[Features]]

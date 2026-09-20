@@ -80,13 +80,45 @@ export function organisation(siteUrl: string): JsonLd {
   };
 }
 
+/**
+ * The postal address, with each geographic entity in its own field.
+ *
+ * WHY THIS IS NOT ONE STRING. The hostel row previously held
+ * `"Yamnampet,Ghatkesar"` and that whole string went into `streetAddress`.
+ * Those are two places Google already knows, and concatenated they become one
+ * string it knows nothing about — the locality signal is lost precisely where
+ * it is most valuable. Modelled apart:
+ *
+ *   streetAddress    Yamnampet    the finest locality, or a real street line
+ *   addressLocality  Ghatkesar    its parent area
+ *   addressRegion    Telangana
+ *   addressCountry   India
+ *
+ * `addressLocality` is the PARENT rather than the city, because the parent is
+ * the entity a searcher types ("boys hostel Ghatkesar"). The city stays
+ * reachable through the breadcrumb chain and the area hierarchy.
+ */
 function postalAddress(facts: HostelFacts): JsonLd | null {
+  // The owner's own line wins when it says more than the locality does —
+  // "Plot 12, Road No 5" is a street; "Yamnampet" is the locality repeated.
+  const ownLine = (facts.address || "").trim();
+  const locality = facts.areaName || facts.city || null;
+  const isJustTheLocality =
+    Boolean(locality) && ownLine.toLowerCase() === String(locality).toLowerCase();
+
+  const streetAddress = ownLine && !isJustTheLocality ? ownLine : locality;
+
+  // Never the same value twice: "Yamnampet, Yamnampet" reads as broken data.
+  const parent = facts.parentAreaName || facts.city || null;
+  const addressLocality =
+    parent && parent.toLowerCase() !== String(streetAddress ?? "").toLowerCase() ? parent : null;
+
   const address = compact({
     "@type": "PostalAddress",
-    streetAddress: facts.address || null,
-    addressLocality: facts.areaName || facts.city || null,
+    streetAddress,
+    addressLocality,
     addressRegion: facts.state || null,
-    addressCountry: "IN",
+    addressCountry: "India",
   });
 
   // `addressCountry` alone is not an address. If nothing locates the hostel,
@@ -279,8 +311,12 @@ export function collectionNode(input: {
           address: compact({
             "@type": "PostalAddress",
             addressLocality: subject.name,
+            // The parent area, so a locality page names its city the same way
+            // a hostel page does.
             addressRegion: subject.state || null,
-            addressCountry: "IN",
+            // "India", matching the hostel node — a site that spells its own
+            // country two ways in one crawl is describing two places.
+            addressCountry: "India",
           }),
         });
 

@@ -83,6 +83,22 @@ export interface DiscoverSearchParams {
   sort?: DiscoverSort;
   limit?: number;
   offset?: number;
+  /**
+   * Restrict to an explicit set of hostels — how the locality and college
+   * pages ask for "the hostels in Yamnampet" or "the hostels near SNIST".
+   *
+   * Pushed into the SQL `where`, NOT applied to the results. That matters:
+   * availability and price are computed from room rows, so this search
+   * fetches the matching set up to MAX_CANDIDATES and sorts in memory. A
+   * collection page that pulled an arbitrary 500 candidates and then filtered
+   * by area would return a short list — silently, with no error — the moment
+   * the listed-hostel count approached that cap. Narrowing first is what
+   * keeps the cap safe as inventory grows. ADR-226.
+   *
+   * An empty array means "nothing matches" and is answered without a query;
+   * `undefined` means "no restriction".
+   */
+  hostelIds?: string[];
 }
 
 /** Photos are a Json column that has held both an array and a `{urls:[…]}` shape. */
@@ -315,6 +331,13 @@ export class DiscoveryService {
 
     return getOrSetJson(cacheKey, SEARCH_CACHE_SECONDS, async () => {
       const where: any = { ...DISCOVERABLE };
+
+      if (params.hostelIds) {
+        if (params.hostelIds.length === 0) {
+          return { total: 0, limit, offset, results: [], facets: { cities: [] } };
+        }
+        where.id = { in: params.hostelIds };
+      }
 
       if (params.city) where.city = { equals: params.city, mode: "insensitive" };
       if (params.hostelType) where.hostel_type = params.hostelType;

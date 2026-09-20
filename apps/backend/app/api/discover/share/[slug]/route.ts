@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { discoveryService } from "@/src/services/discovery/discovery-service";
 import { buildShareCard, renderSharePage, renderUnlistedPage } from "@/src/services/discovery/share-card";
 import { frontendUrl } from "@/lib/config/domains";
+import { resolveHostelSlug } from "@/src/services/discovery/slug-resolution";
 import { getLogger } from "@/lib/logger";
 
 const logger = getLogger("api.discover.share");
@@ -26,6 +27,19 @@ export async function GET(_req: NextRequest, { params }: { params: { slug: strin
 
   try {
     const hostel = await discoveryService.getShareCard(params.slug);
+
+    if (!hostel) {
+      /**
+       * A link already pasted into fifty chats must survive a rename. Checked
+       * before the unlisted card, because "this hostel was renamed" and "this
+       * hostel is gone" are different answers and only one of them should
+       * stop the preview working. ADR-226.
+       */
+      const resolved = await resolveHostelSlug(params.slug);
+      if (resolved.kind === "retired") {
+        return NextResponse.redirect(`${site}/h/${resolved.currentSlug}`, 301);
+      }
+    }
 
     if (!hostel) {
       return new NextResponse(renderUnlistedPage(site), {

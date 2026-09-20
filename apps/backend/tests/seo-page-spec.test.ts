@@ -18,6 +18,14 @@ function facts(overrides: Partial<HostelFacts> = {}): HostelFacts {
     name: "Sri Adithya Boys Hostel",
     areaName: "Yamnampet",
     areaSlug: "yamnampet",
+    parentAreaName: "Ghatkesar",
+    parentAreaSlug: "ghatkesar",
+    cityAreaSlug: "hyderabad",
+    areaAncestry: [
+      { name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY" },
+      { name: "Ghatkesar", slug: "ghatkesar", kind: "LOCALITY" },
+      { name: "Hyderabad", slug: "hyderabad", kind: "CITY" },
+    ],
     city: "Hyderabad",
     state: "Telangana",
     address: "Yamnampet",
@@ -46,6 +54,18 @@ function facts(overrides: Partial<HostelFacts> = {}): HostelFacts {
     updatedAt: null,
     ...overrides,
   };
+}
+
+/** The production graph — Hyderabad → Ghatkesar → Yamnampet — all published. */
+function published(overrides: Partial<HostelFacts> = {}): HostelFacts {
+  return facts({
+    areaAncestry: [
+      { name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY", published: true },
+      { name: "Ghatkesar", slug: "ghatkesar", kind: "LOCALITY", published: true },
+      { name: "Hyderabad", slug: "hyderabad", kind: "CITY", published: true },
+    ],
+    ...overrides,
+  });
 }
 
 function card(overrides: Partial<ListingCardFact> = {}): ListingCardFact {
@@ -93,18 +113,42 @@ describe("hostel page", () => {
     });
   });
 
-  it("does not link to an area page that has not passed its threshold", () => {
-    const spec = hostelPageSpec({ facts: facts(), areaIsPublished: false });
+  it("does not link an area whose page is not published", () => {
+    const unpublished = facts({
+      areaAncestry: [
+        { name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY", published: false },
+        { name: "Ghatkesar", slug: "ghatkesar", kind: "LOCALITY", published: false },
+      ],
+    });
+    const spec = hostelPageSpec({ facts: unpublished });
     expect(spec.links.parents.some((link) => link.href.includes("/hostels-in/"))).toBe(false);
     expect(spec.breadcrumbs.some((crumb) => crumb.url.includes("/hostels-in/"))).toBe(false);
   });
 
-  it("links to the area page once it has", () => {
-    const spec = hostelPageSpec({ facts: facts(), areaIsPublished: true });
-    expect(spec.links.parents[0]).toEqual({
-      href: "https://yourstayo.com/hostels-in/yamnampet",
-      label: "Hostels in Yamnampet",
+  it("does not link an area whose publication state is unknown", () => {
+    // Fail safe: a missing flag costs a link rather than producing a 404.
+    const unknown = facts({
+      areaAncestry: [{ name: "Yamnampet", slug: "yamnampet", kind: "LOCALITY" }],
     });
+    expect(hostelPageSpec({ facts: unknown }).links.parents).toHaveLength(0);
+  });
+
+  it("links every published area, nearest first", () => {
+    const spec = hostelPageSpec({ facts: published() });
+    expect(spec.links.parents.map((l) => l.href)).toEqual([
+      "https://yourstayo.com/hostels-in/yamnampet",
+      "https://yourstayo.com/hostels-in/ghatkesar",
+      "https://yourstayo.com/hostels-in/hyderabad",
+    ]);
+  });
+
+  it("walks the whole chain in the breadcrumb, broadest first", () => {
+    // The trail the review asked for: the old one lost Ghatkesar and
+    // Yamnampet, which are the two entities a student actually searches.
+    const spec = hostelPageSpec({ facts: published() });
+    expect(spec.breadcrumbs.map((c) => c.name)).toEqual([
+      "Stayo", "Hyderabad", "Ghatkesar", "Yamnampet", "Sri Adithya Boys Hostel",
+    ]);
   });
 
   it("names its nearest college in copy even before that page exists", () => {
