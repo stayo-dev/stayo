@@ -4,6 +4,8 @@ import {
   ChevronLeft,
   ChevronLeft as MoveLeft,
   ChevronRight as MoveRight,
+  ArrowDown,
+  ArrowUp,
   ImagePlus,
   Loader2,
   Play,
@@ -16,7 +18,7 @@ import { stayoToast } from '@shared/ui-patterns/Toast';
 import { marketingService, type MarketingPhoto } from '@features/hostel-marketing/api';
 
 import { M } from './marketingTheme';
-import { PHOTO_CATEGORIES } from './photoCategories';
+import { PHOTO_CATEGORIES, groupTourSections, moveSection } from './photoCategories';
 import {
   IMAGE_TYPES,
   MAX_MEDIA,
@@ -58,13 +60,18 @@ export function PhotosScreen({
   open,
   hostelId,
   photos,
+  sections,
   onChange,
+  onSectionsChange,
   onClose,
 }: {
   open: boolean;
   hostelId: string | undefined;
   photos: MarketingPhoto[];
+  /** The tour's section order. Absent on a draft saved before it existed. */
+  sections: string[] | undefined;
   onChange: (next: MarketingPhoto[]) => void;
+  onSectionsChange: (next: string[]) => void;
   onClose: () => void;
 }) {
   const inputRef = useRef<HTMLInputElement>(null);
@@ -196,6 +203,14 @@ export function PhotosScreen({
   const busy = pending > 0;
   const imageCount = photos.filter((photo) => photo.kind !== 'video').length;
 
+  // The tour exactly as a tenant will see it — same function the public
+  // listing groups with, so this strip cannot promise an order the listing
+  // does not keep. Only sections that have photos are shown: an empty one is
+  // invisible on the listing, so offering it here would be a button that
+  // moves nothing.
+  const tour = groupTourSections(photos, sections);
+  const visibleKeys = tour.map((section) => section.key);
+
   return createPortal(
     <div
       className="fixed inset-0 z-[60] flex flex-col"
@@ -235,9 +250,53 @@ export function PhotosScreen({
         <p className="mb-3.5 text-[12px] leading-[1.6] text-muted-foreground">
           The order here is the order visitors swipe through — use ‹ › to rearrange. Tap ★ to set the
           cover photo, which shows first in Discovery search. Label each one with the part of the
-          hostel it shows; the listing groups them into a photo tour.
+          hostel it shows; the listing groups them into a photo tour, in the section order you set
+          below.
           {photos.length > 0 && ` · ${photos.length} of ${MAX_MEDIA}`}
         </p>
+
+        {tour.length > 1 && (
+          <div className="mb-4 rounded-[14px] bg-card p-3" style={{ border: `1px solid ${M.sheetLine}` }}>
+            <p className="mb-2 font-display text-[12.5px] font-bold text-foreground">Section order</p>
+            <p className="mb-2.5 text-[11.5px] leading-[1.5] text-muted-foreground">
+              The order your photo tour shows these in. Lead with whatever sells your hostel.
+            </p>
+            <ul className="flex flex-col gap-1.5">
+              {tour.map((section, index) => (
+                <li
+                  key={section.key}
+                  className="flex items-center gap-2 rounded-[10px] px-2.5 py-1.5"
+                  style={{ background: M.dashedBg }}
+                >
+                  <span className="text-[12px] font-semibold text-foreground">{section.label}</span>
+                  <span className="text-[11px] text-muted-foreground">{section.items.length}</span>
+                  <span className="ml-auto flex gap-1">
+                    <button
+                      type="button"
+                      aria-label={`Move ${section.label} earlier`}
+                      disabled={index === 0}
+                      onClick={() => onSectionsChange(moveSection(sections, section.key, -1, visibleKeys))}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-card disabled:opacity-35"
+                      style={{ border: `1px solid ${M.sheetLine}` }}
+                    >
+                      <ArrowUp className="h-3.5 w-3.5 text-foreground" strokeWidth={2.2} />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Move ${section.label} later`}
+                      disabled={index === tour.length - 1}
+                      onClick={() => onSectionsChange(moveSection(sections, section.key, 1, visibleKeys))}
+                      className="flex h-7 w-7 items-center justify-center rounded-lg bg-card disabled:opacity-35"
+                      style={{ border: `1px solid ${M.sheetLine}` }}
+                    >
+                      <ArrowDown className="h-3.5 w-3.5 text-foreground" strokeWidth={2.2} />
+                    </button>
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
 
         <input
           ref={inputRef}

@@ -4,6 +4,8 @@ import { useMarketingSubmission } from '@features/hostel-marketing/hooks/useMark
 import { DrawerSection, KeyValueRows } from './AdminDrawer';
 import { diffMarketingContent, type ContentDiff } from './marketingDiff';
 
+import { groupTourSections } from '@features/hostel-drilldown/marketing/photoCategories';
+
 export const REVIEW_SECTIONS = ['basics', 'photos', 'beds', 'amenities', 'places', 'mess'] as const;
 export type ReviewSection = (typeof REVIEW_SECTIONS)[number];
 
@@ -195,26 +197,38 @@ export function MarketingReviewBody({
         {(c.photos ?? []).length === 0 ? (
           <div className="px-[18px] py-4"><Missing>No photos submitted</Missing></div>
         ) : (
-          <div className="grid grid-cols-3 gap-2 p-[18px]">
-            {c.photos.map((p: any, i: number) => (
-              <button
-                key={i}
-                type="button"
-                onClick={() => setLightbox(i)}
-                title="Open full size"
-                className="group relative block overflow-hidden rounded-[10px] border border-[#EFE6DA]"
-              >
-                <img
-                  src={p.url}
-                  alt={p.caption || `Photo ${i + 1}`}
-                  className="h-20 w-full object-cover transition group-hover:scale-[1.04]"
-                />
-                <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100">
-                  <Maximize2 className="h-4 w-4 text-white" strokeWidth={2.2} />
+          <>
+            {/* The order the listing's photo tour will group these in — the
+                owner arranges it, so it is part of what is being approved. */}
+            <div className="flex flex-wrap items-center gap-1.5 px-[18px] pt-[18px] text-[11.5px] text-[#6E6459]">
+              <span className="font-semibold text-[#2F2A24]">Tour order:</span>
+              {groupTourSections(c.photos ?? [], c.photoSections).map((section, index) => (
+                <span key={section.key} className="rounded-lg bg-[#F5EFE8] px-2 py-0.5">
+                  {index + 1}. {section.label} · {section.items.length}
                 </span>
-              </button>
-            ))}
-          </div>
+              ))}
+            </div>
+            <div className="grid grid-cols-3 gap-2 px-[18px] pb-[18px] pt-2.5">
+              {c.photos.map((p: any, i: number) => (
+                <button
+                  key={i}
+                  type="button"
+                  onClick={() => setLightbox(i)}
+                  title="Open full size"
+                  className="group relative block overflow-hidden rounded-[10px] border border-[#EFE6DA]"
+                >
+                  <img
+                    src={p.url}
+                    alt={p.caption || `Photo ${i + 1}`}
+                    className="h-20 w-full object-cover transition group-hover:scale-[1.04]"
+                  />
+                  <span className="absolute inset-0 flex items-center justify-center bg-black/0 opacity-0 transition group-hover:bg-black/35 group-hover:opacity-100">
+                    <Maximize2 className="h-4 w-4 text-white" strokeWidth={2.2} />
+                  </span>
+                </button>
+              ))}
+            </div>
+          </>
         )}
       </Section>
 

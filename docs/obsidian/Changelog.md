@@ -10,6 +10,16 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-20**: **Owners can arrange their photo tour's sections** ([[Decisions#ADR-228|ADR-228]], [[Features]], [[APIs]], [[Business-Rules]]).
+  - The listing's photo tour grouped photos in one fixed order — rooms, bathrooms, mess, common, study, outside, more — hardcoded in three places and changeable by nobody, owner or admin. The owner now arranges it, in a "Section order" strip in the Photos screen, above the grid.
+  - The strip shows **only sections that have photos**, and the up/down buttons step over the empty ones — an empty section never appears on the listing, so a control that moved it would be a button that does nothing. It keeps its stored slot for when a photo arrives.
+  - Stored as `content.photoSections` in the marketing revision (**no migration** — it is JSON), so it goes through review like any other listing edit and **reordering sends a live listing back for re-review**. The reviewer sees the numbered order with per-section counts in the Photos section of the review drawer.
+  - A stored order is always repaired into a complete one (`orderPhotoSections`): unknown keys dropped, repeats counted once, unplaced sections keep their standard position. Both ends index this list, so a missing key would silently drop a section of photos from the listing.
+  - The **flat photo order is unchanged in meaning** — it still drives the listing hero and the order within a section. Section order drives the tour.
+  - `PhotoTour.tsx`'s duplicate `SECTION_ORDER` is gone: the public tour, the owner's strip and the admin's review line all call one `groupTourSections`, so what an owner arranges is what a tenant is shown. `GET /api/discover/hostels/:slug` now carries `hostel.photo_sections`.
+  - **Verified:** 20 new pure tests (13 frontend, 7 backend) plus the existing tour/normalisation/projection suites pass; `tsc --noEmit` clean for every touched file in both apps; `check:architecture` passes.
+  - **Not verified:** no screen opened in a browser — nobody has moved a section, and no listing has rendered a non-standard order against real data.
+
 - **2026-09-20**: **WhatsApp invoice delivery becomes mandatory — the invoice PDF itself, not a text nudge** ([[Decisions#ADR-225|ADR-225]], [[Features]], [[APIs]], [[Database]]).
   - Replaces the same-day ADR-224 "best-effort text nudge" with a WhatsApp **document-template** message carrying the actual invoice PDF — a required leg of the notification workflow, sent alongside email (never instead of it), both channels independent and both carrying the identical document.
   - Built entirely on infrastructure that already existed: `whatsAppTemplateDeliveryService` (the repo's existing idempotent template-send-and-log service, gained one additive `headerDocument` field), `whatsapp_logs` for delivery tracking (no new columns on `owner_invoices`, no new table — status is read via a per-invoice idempotency-key prefix), `owner_whatsapp_identities` for the verified number, and `ownerInvoiceDocumentService` for the PDF (the same one the email attaches — never re-rendered twice for no reason).

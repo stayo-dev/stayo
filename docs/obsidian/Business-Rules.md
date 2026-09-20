@@ -786,6 +786,19 @@ See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose,
 - **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
 - **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
 
+## The listing's photo tour — what groups it, and who decides the order (2026-08-20, order owner-arranged 2026-09-20)
+
+See [[Decisions#ADR-228|ADR-228]]. A listing's photos are grouped into a tour by the part of the hostel each shows, and the rules live in `photoCategories.ts` (frontend) and `photo-tour.ts` / `marketing-content.ts` (backend), mirrored rather than shared because the two apps are separate builds.
+
+- **Seven sections, fixed** — Rooms, Bathrooms, Mess & kitchen, Common areas, Study & work, Building & outside, More photos. A closed set rather than free text: four owners typing "Room", "rooms", "Bedroom" and "4-sharing" would be four sections of one photo each, and search stops being comparable.
+- **An uncategorised photo lands in "More photos", never nowhere.** Everything uploaded before categories existed has no category, and none of it may disappear from a grouped view.
+- **An empty section never renders** — on the listing, and therefore not in the owner's order strip either.
+- **The order is the owner's** (2026-09-20). Stored on the revision as `content.photoSections`, arranged in the Photos screen, and **reviewed like every other listing claim** — reordering a live listing sends it back for re-review. Stayo's standard order (rooms first, because that is what someone is deciding about) is the default for anyone who never touches it.
+- **A stored order is always completed before use.** Unknown keys dropped, repeats counted once, unplaced sections appended in standard position. Both the owner's strip and the public tour index this list, so a key missing from it would silently drop a whole section of photos off the listing.
+- **Two orders, two jobs.** The flat photo order (the ‹ › buttons on each tile) decides the listing hero and the order *within* a section; the section order decides the tour. Neither redefines the other.
+- **A video travels with the photos of the same place**, never into a section of its own, and a section's thumbnail prefers a still — a video cannot be one.
+- **The full-screen viewer walks the tour's own order**, so "next" from the last room photo is the first photo of whatever section the owner put next.
+
 ## Resident reviews — the category set, and what "overall" means (2026-08-19, extended 2026-08-25, 2026-08-26)
 
 See [[Decisions#ADR-086|ADR-086]], [[Decisions#ADR-115|ADR-115]] and [[Decisions#ADR-121|ADR-121]]. See [[Database#hostel_reviews (migration 071 — 2026-08-19; confirmed applied to the dev Supabase project 2026-08-25)|hostel_reviews]] and [[APIs#Reviews|the Reviews API table]]. Who may write one, `stayed_here`/`stay_months`, and the identity-aware-but-public read path are covered by [[Decisions#ADR-086|ADR-086]] and [[Decisions#ADR-101|ADR-101]] — this section is about the review's own content, not who may submit it.
