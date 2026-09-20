@@ -1230,3 +1230,36 @@ See [[Decisions#ADR-220|ADR-220]].
 - Publishing shows what changed — added, reworded, removed — and how many tenants signed the current version, before it happens.
 
 Variable tokens are compared **by name, not by brace spelling**: `{{MONTHLY_RENT}}` and `{MONTHLY_RENT}` are the same variable, because the backend substitutes both. A draft written with the editor's old single-brace chips resolves correctly and is not reported as broken.
+
+## Generic owner payments are never a subscription payment (2026-09-20, [[Decisions#ADR-224|ADR-224]])
+
+A one-off amount an admin/manager records for an owner (`owner_payments` — tenant onboarding cost, custom setup fee, ad-hoc support) can **never**, by construction, activate, renew, change the plan of, or otherwise touch an owner's `owner_subscriptions` row. The two domains share no foreign key in either direction. This matters because the obvious shortcut — reusing `subscription_payments` with a null `plan_id` — would have made *some* generic charge accidentally eligible for the subscription-approval transaction's plan-classification logic (`classifyPlanChange`), which assumes every payment it sees is either NEW/RENEWAL/UPGRADE/DOWNGRADE/EXTRA_BEDS for a real plan.
+
+- **No review workflow.** Unlike a subscription payment (`SUBMITTED → UNDER_REVIEW → APPROVED/REJECTED`, because an owner can submit one), a generic owner payment is entered directly by an admin/manager and is `RECORDED` immediately — there is no owner-submission path for this type of charge at all.
+- **Correction is void-and-recreate, never edit.** `owner_payments`/`owner_invoices` rows are immutable once created (no PATCH/DELETE endpoint exists). A mistake (wrong amount, duplicate, wrong owner) is corrected by setting `status = VOIDED` with a required `void_reason`, then recording a fresh corrective payment — the same "financial ledger rows are not mutated" convention `architectural-invariants-check.ts` already enforces for tenant-rent `payments`.
+- **Invoice notification is best-effort on two independent channels, neither a gate on validity ([[Decisions#ADR-225|ADR-225]]).** A payment and its invoice are created atomically (`prisma.$transaction`); the invoice PDF is then sent by email **and** by WhatsApp, each independently — a failure in one (missing owner email, Resend down, no verified WhatsApp connection, WhatsApp template not approved) never rolls back the payment/invoice, never blocks the other channel, and is recorded for an admin to retry (`resend` / `resend-whatsapp`).
+- **WhatsApp invoice delivery never falls back to freeform text ([[Decisions#ADR-225|ADR-225]]).** Unlike the very first version of this feature (a best-effort text nudge, restricted by Meta's 24-hour customer-service window), the invoice PDF must travel as a WhatsApp **document-template** message. If the configured template (`WHATSAPP_OWNER_INVOICE_TEMPLATE_NAME`) is missing or not `APPROVED`, the send reports `TEMPLATE_NOT_CONFIGURED` — it never silently substitutes a text message, because a text message cannot carry the invoice document the business requirement calls for.
+- **Idempotent on a client-supplied key.** `owner_payments.idempotency_key` (nullable, unique) makes a repeated request with the same key return the original row instead of creating a duplicate charge — the double-click/retry guard, adapted from the tenant-payment `payments.idempotency_key` pattern. WhatsApp retries use a separate, incrementing per-invoice key against the existing `whatsapp_logs.idempotency_key` (`owner-invoice-whatsapp:<invoiceId>:<n>`) so a genuine retry is never silently deduped by that table's own uniqueness guard.
+## What a public hostel page may say (2026-09-20, ADR-226)
+
+**One hostel, one indexable URL.** `/hostels/:slug` is canonical. `/h/:slug` (the share unfurl) and `/discover/h/:slug` (the app) both point their `rel=canonical` at it; `/visit/:slug` is self-canonical and `noindex`, because its visibility gate is looser than `DISCOVERABLE` and it can resolve for a hostel that has no canonical page.
+
+**A page may state only what a column backs.** Applied as hard omissions in the structured data, each pinned by a test:
+
+| Claim | Emitted only when |
+|---|---|
+| `aggregateRating` | **this hostel** has ≥1 published review *and* the page renders those reviews. Never the host's cross-hostel average. |
+| `Offer.availability` | `availability_confirmed` — a `PLATFORM_LISTED` hostel has no real rooms and may not claim `InStock`. |
+| `Offer` at all | the tier has a price > 0. An unpriced room is unpriced, not free. |
+| `priceRange` | something is priced. |
+| `geo` / `hasMap` | never in this phase — there is no latitude or longitude in the schema. |
+| `telephone` | never — the owner's number is not public on any Stayo surface. |
+| `FAQPage` | never — no Q&A rows exist, and generating them is invented content. |
+
+**Availability is a band, never a count.** "Beds available" or "Currently full". Under ISR the page can be an hour stale, and a wrong bed count on a page someone is choosing a home from is the failure [[Decisions#ADR-073|ADR-073]] exists to prevent. The exact number stays on the app page.
+
+**Sharing options come from real rooms, prices from the approved revision.** Search filters on `rooms.capacity`, so a page reached by filtering for a single room must not then say the hostel offers only 4-bed. Prices remain the advertised offer ([[Decisions#ADR-076|ADR-076]]) — what is on sale, not what is billed.
+
+**A generated collection page exists only with enough inventory behind it** — locality 3, city 2, college 3, intent 5 — and below that it **404s rather than `noindex`ing**. The same function gates the page and its sitemap entry, so the sitemap can never advertise a URL that 404s.
+
+Related: [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-086|ADR-086]], [[Features]]

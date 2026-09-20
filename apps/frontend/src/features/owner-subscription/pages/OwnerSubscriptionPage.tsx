@@ -2,6 +2,9 @@ import { useMemo, useState } from 'react';
 import { AlertTriangle, CheckCircle2, Clock, Download, FileText, Landmark, Loader2, ShieldCheck } from 'lucide-react';
 import { MoreScreenHeader } from '@features/owner-more/components/MoreScreenHeader';
 import { ownerSubscriptionApi } from '../api';
+import { ownerPaymentsApi } from '@features/owner-payments/api';
+import { useOwnerPayments } from '@features/owner-payments/hooks/useOwnerPayments';
+import { ownerPaymentMethodLabel, ownerPaymentStatusLabel } from '@features/owner-payments/paymentsView';
 import {
   useCancelDowngrade,
   useFoundingRenewalPreview,
@@ -56,6 +59,8 @@ export function OwnerSubscriptionPage() {
   const overviewQuery = useOwnerSubscription();
   const overview = overviewQuery.data;
   const sub = overview?.subscription;
+  const ownerPaymentsQuery = useOwnerPayments();
+  const ownerPayments = ownerPaymentsQuery.data?.payments ?? [];
 
   const statusView = sub ? deriveStatusView(sub) : null;
   // FOUNDING is auto-assigned to the first 10 owners and is never owner-selectable —
@@ -424,7 +429,70 @@ export function OwnerSubscriptionPage() {
           <InvoiceRow key={inv.id} inv={inv} />
         ))}
       </HistorySection>
+
+      {/* ── Generic payment history (NOT subscription payments) ────── */}
+      <HistorySection title="Payment History" empty="No other payments on your account.">
+        {ownerPayments.map((p) => (
+          <OwnerPaymentRow key={p.id} payment={p} />
+        ))}
+      </HistorySection>
     </Shell>
+  );
+}
+
+function OwnerPaymentRow({ payment }: { payment: import('@features/owner-payments/api').OwnerPayment }) {
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  const download = async () => {
+    if (!payment.invoice) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { blob, filename } = await ownerPaymentsApi.downloadInvoice(payment.invoice.id);
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = filename;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+    } catch (e) {
+      setError(mapBackendError(e, "Couldn't download that invoice. Please try again."));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  return (
+    <div className={`flex items-start gap-3 px-4 py-3 ${payment.status === 'VOIDED' ? 'opacity-60' : ''}`}>
+      <FileText className="mt-0.5 h-4 w-4 flex-none text-muted-foreground" strokeWidth={2} />
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center justify-between">
+          <span className="text-[12.5px] font-semibold text-foreground">{formatPaise(payment.amount_paise)}</span>
+          <span className="text-[10px] font-bold uppercase text-muted-foreground">{ownerPaymentStatusLabel(payment.status)}</span>
+        </div>
+        <span className="text-[11.5px] text-muted-foreground">{payment.description}</span>
+        <span className="block text-[11px] text-muted-foreground">
+          {ownerPaymentMethodLabel(payment.payment_method)} · {formatDate(payment.created_at)}
+        </span>
+        {payment.invoice && (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={download}
+              disabled={busy}
+              className="inline-flex items-center gap-1 text-[11.5px] font-semibold text-primary disabled:opacity-60"
+            >
+              {busy ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={2} /> : <Download className="h-3.5 w-3.5" strokeWidth={2} />}
+              {busy ? 'Preparing…' : 'View Invoice'}
+            </button>
+          </div>
+        )}
+        {error && <span className="mt-1 block text-[11px] text-destructive">{error}</span>}
+      </div>
+    </div>
   );
 }
 

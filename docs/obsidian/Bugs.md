@@ -2863,6 +2863,36 @@ Worse, `rulePayload(ruleVersion)` was called without `variables`, so even a UI t
 
 **Fix:** the stub is deleted; the tenant reads the composed document on its own screen. See [[Decisions#ADR-217|ADR-217]].
 
+## 2026-09-18 — Listing cards' banner colour looked like a status/category signal but was arbitrary (fixed)
+
+**Symptom.** Reported by the user from a screenshot: two "Sri Adithya Boys Hostel" cards on `/admin/listings` (same name, different owners — Srinivas Rao and Shiva Prakash) had different banner colours (amber-brown vs green), which read as if colour meant something — status, category, a flag — right next to an actual status pill ("Approved") in the same corner. It didn't: it was confusing precisely because a real signal (the status pill) and a fake one (the banner tint) sat in the same visual slot.
+
+**Root cause.** `ListingsPage.tsx`'s card banner used `tintForId(h.id)` (`platforms/admin/theme/palette.ts`) — a deterministic hash of the hostel's UUID into one of 5 fixed colours, designed for row-avatar stability (owners/leads lists, where each row's colour is a decorative anchor, not information). Applied to a large banner sitting beside a genuine status pill, the same mechanism reads as meaningful when it is coincidental — two hostels sharing a name but not an owner then look like they might be sorted or flagged differently by colour.
+
+**Fix.** Two changes to `ListingsPage.tsx`'s card, `platforms/admin/pages/ListingsPage.tsx`:
+1. Banner is now a single flat gradient on every card (`#3A332C → #201C18`) — no more per-hostel tint, so colour no longer competes with the actual status pill for meaning.
+2. Card text hierarchy flipped: **owner name is now the bold primary line**, hostel name moved to the smaller secondary line (with city). Two hostels can share a name; they never share an owner, so the owner is the field that actually disambiguates two cards — the UI now leads with the field that does the disambiguating instead of the one that doesn't.
+
+`tintForId` itself is unchanged and still correctly used for small avatar-initials chips elsewhere (`StayoListedPanel.tsx`, owner/lead rows) — those aren't sitting next to a status pill, so the same mechanism isn't misleading there.
+
+**Verified:** `tsc --noEmit` (frontend) zero new errors; `check:architecture` passes. Not exercised live/in a browser.
+
+**See:** [[Features]], [[Changelog]]
+
+## 2026-09-18 — Live-listing review endpoint checked `role === 'ADMIN'` directly, so a permitted Manager would 403 (fixed)
+
+**Symptom.** Caught while adding an Unpublish control to the admin listing editor page ([[Features]]) — not yet reported by a real Manager. `POST /api/platform-admin/hostels/:id/listing-review` (Request changes / Unpublish a live listing, [[Decisions#ADR-089|ADR-089]]) checked `session.role !== "ADMIN"` directly and returned 403 for anyone else, unlike every sibling `/platform-admin/hostels/*` route.
+
+**Root cause.** This endpoint predates [[Decisions#ADR-214|ADR-214]] (the Manager role) and was never migrated to `requireAdminOrManagerPermission`/`assertHostelAccess` the way `GET/PATCH /api/platform-admin/hostels/[id]` and the other route groups listed in ADR-214 Phase 2 were. A Manager granted `MANAGE_HOSTELS` and assigned to a hostel could view and edit it, but not act on its live listing — a silent capability gap, not a crash.
+
+**Fix.** Swapped the direct role check for `requireAdminOrManagerPermission(session, "MANAGE_HOSTELS")` + `assertHostelAccess(session, id)`, matching the sibling hostel routes exactly. ADMIN behaviour is unchanged; a Manager with the permission and hostel assignment can now use Request Changes/Unpublish, and one without either gets the same 403 any other gated route would give.
+
+**Lesson.** A route added before a new role/permission system existed doesn't get migrated automatically — grep for direct `session.role ===` checks in a route group when extending permission-gating to it, rather than assuming every route in the group already went through the ADR-214 sweep.
+
+**Verified:** `npx tsc --noEmit` (backend) zero new errors. Not exercised live against a real Manager session in this change.
+
+**See:** [[Decisions#ADR-214|ADR-214]], [[Decisions#ADR-089|ADR-089]], [[APIs]], [[Changelog]]
+
 ## 2026-09-18 — A clause the owner deleted still printed on the signed PDF (fixed)
 
 "Leave out" set `enabled: false` on a rule category. The owner's editor honoured it and the tenant's view honoured it, but `generatePdfBuffer` iterated `data.hostelRules.categories` **raw** — so a section an owner had deliberately withdrawn still appeared on the PDF their tenant signed and the business filed.
@@ -2926,3 +2956,37 @@ The storage existed and was persisted; only the editor never touched it.
 
 Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 
+
+## 2026-09-20 — Every owner, admin and tenant URL was marked indexable in production (fixed)
+
+**Found** while auditing the public site for [[Decisions#ADR-226|ADR-226]], by fetching the live domain rather than by reading the code. Nothing reported it, and nothing would have.
+
+**Area:** [[Frontend]] — `apps/frontend/vercel.json`, the `headers` block matching `/(.*)`.
+
+**Symptom:** `curl -sI https://yourstayo.com/owner/dashboard` returned `x-robots-tag: index, follow`. Every path on the domain carried it — the owner app, the admin console, the tenant portal, activation links, password-reset links and the receipt-verification URLs.
+
+**Root cause:** a single `X-Robots-Tag: index, follow` header applied to `/(.*)` alongside the CSP and the other security headers. It reads like a security header and sat among them, but `index, follow` is the crawler *default* — the directive bought nothing it did not already have, while applying it to the paths that needed the opposite.
+
+**Fix:** the blanket header is deleted rather than narrowed. `noindex, nofollow` is now declared per app prefix (both `/owner` and `/owner/:path*` — in Vercel those are different matchers, and covering only one leaves the other on the default), and `/discover` and `/visit` get `noindex, follow` so their links still reach the canonical pages. The prefix list has one source, `PRIVATE_PATH_PREFIXES` in `src/services/seo/seo-links.ts`, which also generates `robots.txt`; `tests/seo-robots-parity.test.ts` reads `vercel.json` as text and fails if the two drift or if a blanket `index, follow` reappears.
+
+**Not fixed by this alone:** whatever Google has already indexed stays indexed until recrawled. **Not verified:** the header change has not been deployed, so the live response has not been re-checked.
+
+**Lesson:** a directive that matches the default is invisible in review — it looks like a no-op and reads as intent, so nobody asks what it applies to. The two places that declare crawl policy are now generated from one list, because they had already drifted apart once.
+
+## 2026-09-20 — A hostel page claimed a rating aggregated across all of its owner's hostels (fixed before shipping)
+
+**Found** by rendering the new page against the production database, not by a test — the unit tests for the JSON-LD builder passed throughout, because the defect was in the *mapping* that fed it, not in the builder.
+
+**Area:** [[Backend]] — `src/services/seo/seo-service.ts`'s `toHostelFacts`.
+
+**Symptom:** the page emitted `aggregateRating` for a hostel, sourced from `listing.host.stats.review_count` / `.rating`.
+
+**Root cause:** two faults behind one symptom. `loadHostStats` (`src/services/host-profile/host-stats.ts`) is **host-level by design** — its own comment says "across every hostel the owner runs" — so for any multi-hostel owner it would have put reviews written about one hostel into another hostel's structured data. And the page rendered no reviews section at all, so the rating appeared in markup that no reader could see, which Google's guidelines explicitly forbid.
+
+**Why it was not caught:** Stayo's one listed hostel belongs to an owner with exactly one hostel, so the host-level and hostel-level numbers are numerically identical today. Every assertion passed. The defect is only visible with a second hostel — or by reading the source of the number.
+
+**Fix:** reviews now come from `reviewsService.listPublished(slug)`, the same hostel-scoped read the app uses, composed rather than re-counted and read tolerantly (a failure renders no reviews section instead of a 500). The reviews themselves travel on `HostelFacts` beside the count, the page renders them, and the JSON-LD emits matching `Review` nodes — so the aggregate and the visible rating cannot diverge. `tests/seo-service.test.ts` pins that host-level stats are ignored even when present.
+
+**Lesson:** a passing test proves the function is right, not that it was given the right input. The unit under test was the JSON-LD builder; the thing that was wrong was which number reached it — and the only reason it surfaced at all was running the page against real data.
+
+**See:** [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-200|ADR-200]] (host stats and their intended scope), [[Decisions#ADR-086|ADR-086]] (reviewer identity).

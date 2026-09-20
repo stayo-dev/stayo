@@ -10,6 +10,7 @@ import { checkOtpTemplateContract } from "../lib/services/notifications/provider
 import { checkInvitationTemplateContract } from "../lib/services/notifications/providers/whatsapp/invitation-template-contract";
 import { checkOnboardingTemplateContract } from "../lib/services/notifications/providers/whatsapp/onboarding-template-contract";
 import { checkOwnerWelcomeTemplateContract } from "../lib/services/notifications/providers/whatsapp/owner-welcome-template-contract";
+import { checkOwnerInvoiceTemplateContract } from "../lib/services/notifications/providers/whatsapp/owner-invoice-template-contract";
 import {
   checkPlatformLeadTemplate,
   PLATFORM_LEAD_TEMPLATE_KEYS,
@@ -82,6 +83,10 @@ async function main() {
     await checkOne("invitation", checkInvitationTemplateContract),
     await checkOne("onboarding-complete", checkOnboardingTemplateContract),
     await checkOne("owner-welcome", checkOwnerWelcomeTemplateContract),
+    // NOT_FOUND is expected pre-launch (the template has not been created in
+    // WhatsApp Manager yet) — checkOne's generic branch reports it as a WARN,
+    // never a deploy failure, same as any other unverified/skipped template.
+    await checkOne("owner-invoice", checkOwnerInvoiceTemplateContract),
     await checkFunnelTemplates(),
   ];
   return codes.some((c) => c !== 0) ? 1 : 0;

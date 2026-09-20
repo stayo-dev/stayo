@@ -468,6 +468,55 @@ export const platformAdminService = {
     return { blob: response.data as Blob, filename: match?.[1] ?? `${invoiceId}.pdf` };
   },
 
+  // ── Generic owner payments (NOT subscription payments) ───────────────────
+  // A one-off charge Stayo collects from an owner for something other than
+  // their subscription — tenant onboarding cost, custom setup work, etc.
+  // Deliberately a separate endpoint family from every `subscription-*`
+  // method above (see the schema comment on `owner_payments` in
+  // prisma/schema.prisma) — never routes through `recordCashSubscriptionPayment`.
+  getOwnerPayments: async (ownerId: string) => {
+    const response = await api.get(`/platform-admin/owners/${ownerId}/payments`);
+    return unwrap(response) as { payments: any[] };
+  },
+  recordOwnerPayment: async (
+    ownerId: string,
+    body: {
+      amount_paise: number;
+      payment_method: 'CASH' | 'UPI' | 'BANK_TRANSFER';
+      description: string;
+      transaction_reference?: string;
+      proof_file_url?: string;
+      notes?: string;
+      idempotency_key?: string;
+    },
+  ) => {
+    const response = await api.post(`/platform-admin/owners/${ownerId}/payments`, body);
+    return unwrap(response) as { payment: any; invoice: any; already_existed: boolean };
+  },
+  /** Two-step upload: get a proof URL, then pass it as `proof_file_url` to `recordOwnerPayment`. */
+  uploadOwnerPaymentProof: async (file: File): Promise<{ url: string }> => {
+    const form = new FormData();
+    form.append('file', file);
+    const response = await api.post('/platform-admin/owner-payments/proof', form);
+    return unwrap(response) as { url: string };
+  },
+  downloadOwnerInvoice: async (invoiceId: string): Promise<{ blob: Blob; filename: string }> => {
+    const response = await api.get(`/platform-admin/owner-invoices/${invoiceId}`, { responseType: 'blob' });
+    const disposition = String(response.headers?.['content-disposition'] ?? '');
+    const match = disposition.match(/filename="?([^"]+)"?/);
+    return { blob: response.data as Blob, filename: match?.[1] ?? `${invoiceId}.pdf` };
+  },
+  /** Retry emailing an invoice — the escape hatch after a missing/failed owner email. */
+  resendOwnerInvoice: async (invoiceId: string) => {
+    const response = await api.post(`/platform-admin/owner-invoices/${invoiceId}/resend`, {});
+    return unwrap(response) as { sent: boolean; reason: string | null };
+  },
+  /** Retry sending the invoice PDF as a WhatsApp document-template message. Sends the SAME invoice, never creates a new one. */
+  resendOwnerInvoiceWhatsApp: async (invoiceId: string) => {
+    const response = await api.post(`/platform-admin/owner-invoices/${invoiceId}/resend-whatsapp`, {});
+    return unwrap(response) as { sent: boolean; reason: string | null; detail: string | null };
+  },
+
   getBillingSettings: async () => {
     const response = await api.get('/platform-admin/billing-settings');
     return unwrap(response) as { settings: any; configured: boolean };

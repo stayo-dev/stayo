@@ -73,6 +73,22 @@ export function MarketingFooter() {
                 {l.label}
               </Link>
             ))}
+            {/*
+              The one crawlable bridge from this SPA into the indexable tree.
+
+              A plain <a>, NOT a react-router <Link>: `/hostels` is not an SPA
+              route at all. It is rewritten to the server-rendered pages in
+              `apps/backend` (see `vercel.json`), so a client-side navigation
+              would hand it to this router, find nothing, and render the 404.
+
+              It matters because this site is client-rendered: a crawler
+              fetching yourstayo.com gets one `index.html` and sees no listings
+              anywhere. This link is how it reaches them by following the site
+              rather than only by reading the sitemap. ADR-226.
+            */}
+            <a href="/hostels" className="text-[13.5px] text-background/58 hover:text-background">
+              Browse hostels
+            </a>
           </div>
         </div>
 

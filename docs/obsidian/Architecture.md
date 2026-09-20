@@ -134,3 +134,18 @@ These exist because of **real past bugs** — the "first hostel" and required-`h
 - [[Database]] for schema/migrations
 - [[Business-Rules]] for the domain model this architecture serves
 - [[Decisions]] for the architectural decisions inferred from this code
+
+## `apps/backend` serves public pages, not only the API (2026-09-20, ADR-226)
+
+`apps/backend/app/` is now split into two route groups, each with its own root layout:
+
+- **`app/(app)/`** — the pre-existing tree: the Sanity landing page, the admin/owner dashboard pages, the Studio. Its `layout.tsx` is the original one, still wrapping everything in `Providers`.
+- **`app/(seo)/`** — the public indexable pages. A bare root layout: no `Providers`, no React Query, no auth, its own stylesheet rather than `globals.css`.
+
+Route groups do not appear in URLs, so **no path changed** when this landed. The split exists because `Providers` is a `"use client"` component whose effect redirects any path outside `["/login","/register","/"]` to `/login` — a public page under it would render correct HTML and then bounce, for a reader and for Googlebot.
+
+These pages appear on the public domain through rewrites in `apps/frontend/vercel.json` (`/hostels`, `/hostels/:slug`, `/sitemap.xml`, `/sitemaps/:shard`, `/robots.txt`, and **`/_next/:path*`**, without which the pages arrive unstyled — the frontend CSP's `script-src 'self'` rules out `assetPrefix`). The SPA catch-all stays last, because Vercel matches rewrites in array order.
+
+**Deploy order is load-bearing:** `apps/backend` first, `apps/frontend` second. They are separate Vercel projects, so a rewrite pointing at a route that has not shipped is a 404 on a live domain.
+
+Decision logic lives in pure modules under `apps/backend/src/services/seo/` — the page components only arrange what those return. See [[Decisions#ADR-226|ADR-226]], [[Backend]], [[Frontend]], [[APIs]].

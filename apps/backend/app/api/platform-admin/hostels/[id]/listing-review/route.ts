@@ -3,6 +3,7 @@ export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
 import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { requireAdminOrManagerPermission, assertHostelAccess } from "@/src/services/managers/manager-authorization";
 import { marketingReviewService } from "@/src/services/marketing/marketing-review-service";
 import type { PostApprovalAction } from "@/src/services/marketing/post-approval-transitions";
 
@@ -19,10 +20,12 @@ import type { PostApprovalAction } from "@/src/services/marketing/post-approval-
  */
 export async function POST(req: NextRequest, { params }: { params: Promise<{ id: string }> }) {
   const session = await getSession(req);
-  if (!session || session.role !== "ADMIN") return apiError("Forbidden", "FORBIDDEN", 403);
   const { id } = await params;
 
   try {
+    await requireAdminOrManagerPermission(session, "MANAGE_HOSTELS");
+    await assertHostelAccess(session, id);
+
     const body = await req.json().catch(() => ({}));
     const action = String(body?.action || "") as PostApprovalAction;
     if (action !== "REQUEST_CHANGES" && action !== "UNPUBLISH") {
@@ -30,7 +33,7 @@ export async function POST(req: NextRequest, { params }: { params: Promise<{ id:
     }
 
     const result = await marketingReviewService.actOnLiveListing(
-      session.sub,
+      (session as any).sub,
       id,
       action,
       String(body?.note ?? ""),

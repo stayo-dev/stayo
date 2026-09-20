@@ -1,0 +1,324 @@
+/*
+ * Styles for Stayo's indexable pages.
+ *
+ * Deliberately NOT `app/globals.css`: that file pulls the whole Tailwind
+ * surface plus a pre-rebrand palette (Playfair/Poppins, saffron/navy) onto a
+ * page that needs neither. These pages are judged on how fast the first screen
+ * paints, so this is hand-written CSS with no framework and no runtime.
+ *
+ * Palette is the canonical brand set, Stayo-Brand-Assetes/stayo-brand-assets/
+ * color/colors.css, matched to the marketing tokens the SPA uses.
+ */
+
+:root {
+  --clay: #b46a55;
+  --terracotta: #a45d44;
+  --dusty-orange: #d2986c;
+  --latte: #ebd9c4;
+  --charcoal: #2f2f2f;
+  --cream: #f7f3ee;
+
+  --page: #fbf8f3;
+  --surface: #ffffff;
+  --ink: #2f2f2f;
+  --ink-muted: #6b6259;
+  --line: rgba(47, 47, 47, 0.12);
+  --accent: var(--terracotta);
+
+  --radius: 14px;
+  --gutter: 20px;
+  --measure: 1080px;
+}
+
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+}
+
+html {
+  -webkit-text-size-adjust: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--page);
+  color: var(--ink);
+  font-family: var(--font-body), system-ui, -apple-system, "Segoe UI", sans-serif;
+  font-size: 16px;
+  line-height: 1.6;
+  -webkit-font-smoothing: antialiased;
+}
+
+h1,
+h2,
+h3 {
+  font-family: var(--font-display), var(--font-body), system-ui, sans-serif;
+  color: var(--ink);
+  line-height: 1.2;
+  margin: 0 0 0.4em;
+  text-wrap: balance;
+}
+
+h1 { font-size: clamp(1.7rem, 4.5vw, 2.5rem); font-weight: 800; letter-spacing: -0.02em; }
+h2 { font-size: clamp(1.25rem, 3vw, 1.6rem); font-weight: 700; letter-spacing: -0.01em; }
+h3 { font-size: 1.05rem; font-weight: 700; }
+
+p { margin: 0 0 1em; }
+a { color: var(--terracotta); }
+
+img {
+  max-width: 100%;
+  height: auto;
+  display: block;
+}
+
+/* ── Shell ─────────────────────────────────────────────────────────────── */
+
+.wrap {
+  width: 100%;
+  max-width: var(--measure);
+  margin: 0 auto;
+  padding: 0 var(--gutter);
+}
+
+.site-header,
+.site-footer {
+  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.site-footer {
+  border-bottom: 0;
+  border-top: 1px solid var(--line);
+  margin-top: 56px;
+  padding: 32px 0;
+  color: var(--ink-muted);
+  font-size: 0.9rem;
+}
+
+.site-header .wrap {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  min-height: 60px;
+  gap: 16px;
+}
+
+.brand {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: 1.2rem;
+  color: var(--terracotta);
+  text-decoration: none;
+  letter-spacing: -0.02em;
+}
+
+main { display: block; }
+
+/* ── Breadcrumbs ───────────────────────────────────────────────────────── */
+
+.breadcrumbs {
+  font-size: 0.85rem;
+  color: var(--ink-muted);
+  padding: 16px 0 4px;
+}
+
+.breadcrumbs ol {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.breadcrumbs li + li::before {
+  content: "›";
+  margin-right: 6px;
+  color: var(--ink-muted);
+}
+
+/* ── Hostel hero ───────────────────────────────────────────────────────── */
+
+.hero { padding: 8px 0 4px; }
+
+.hero .meta {
+  color: var(--ink-muted);
+  font-size: 0.95rem;
+  margin-bottom: 12px;
+}
+
+.facts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin: 0 0 20px;
+  padding: 0;
+  list-style: none;
+}
+
+.fact {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 5px 13px;
+  font-size: 0.88rem;
+  font-weight: 600;
+}
+
+.fact--price { background: var(--terracotta); border-color: var(--terracotta); color: #fff; }
+.fact--open  { background: #e8f3ec; border-color: #bcdcc8; color: #1f6b42; }
+.fact--full  { background: #f6ece9; border-color: #e3c7c0; color: #8a3b28; }
+
+/* ── Gallery ───────────────────────────────────────────────────────────── */
+
+.gallery {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-bottom: 28px;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.gallery img {
+  width: 100%;
+  aspect-ratio: 4 / 3;
+  object-fit: cover;
+  background: var(--latte);
+}
+
+@media (min-width: 720px) {
+  .gallery { grid-template-columns: 2fr 1fr 1fr; grid-template-rows: 1fr 1fr; }
+  .gallery img { aspect-ratio: auto; height: 100%; min-height: 0; }
+  .gallery img:first-child { grid-row: span 2; }
+}
+
+/* ── Sections ──────────────────────────────────────────────────────────── */
+
+section { margin: 0 0 32px; }
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 18px;
+}
+
+.grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  padding: 0;
+  margin: 0;
+  list-style: none;
+}
+
+.tier {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  padding: 14px 16px;
+}
+
+.tier .price {
+  font-family: var(--font-display), sans-serif;
+  font-weight: 800;
+  font-size: 1.3rem;
+  color: var(--terracotta);
+}
+
+.tier .sub { color: var(--ink-muted); font-size: 0.88rem; }
+
+.chips { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
+
+.chip {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+  padding: 7px 12px;
+  font-size: 0.9rem;
+}
+
+.rows { list-style: none; margin: 0; padding: 0; }
+
+.rows li {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--line);
+}
+
+.rows li:last-child { border-bottom: 0; }
+.rows .label { font-weight: 600; }
+.rows .value { color: var(--ink-muted); text-align: right; }
+
+/* ── Call to action ────────────────────────────────────────────────────── */
+
+.cta {
+  display: inline-block;
+  background: var(--terracotta);
+  color: #fff;
+  text-decoration: none;
+  font-weight: 700;
+  border-radius: 10px;
+  padding: 13px 22px;
+}
+
+.cta:hover { background: #8e4d37; }
+
+/* ── Listing cards (collection pages) ──────────────────────────────────── */
+
+.listings { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 280px), 1fr)); padding: 0; margin: 0; list-style: none; }
+
+.listing {
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+
+.listing img { aspect-ratio: 3 / 2; object-fit: cover; width: 100%; background: var(--latte); }
+.listing .body { padding: 14px 16px; }
+.listing h3 { margin-bottom: 4px; }
+.listing h3 a { text-decoration: none; color: var(--ink); }
+.listing h3 a:hover { color: var(--terracotta); }
+.listing .sub { color: var(--ink-muted); font-size: 0.88rem; margin: 0; }
+
+/* ── Link clusters (the internal graph) ────────────────────────────────── */
+
+.linkset { display: flex; flex-wrap: wrap; gap: 8px; padding: 0; margin: 0; list-style: none; }
+
+.linkset a {
+  display: inline-block;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  padding: 7px 14px;
+  font-size: 0.9rem;
+  text-decoration: none;
+  color: var(--ink);
+}
+
+.linkset a:hover { border-color: var(--terracotta); color: var(--terracotta); }
+
+.footer-links { display: flex; flex-wrap: wrap; gap: 14px; padding: 0; margin: 0 0 12px; list-style: none; }
+.footer-links a { color: var(--ink-muted); text-decoration: none; }
+.footer-links a:hover { color: var(--terracotta); }
+
+/* ── Mess table ────────────────────────────────────────────────────────── */
+
+.menu { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+.menu th, .menu td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+.menu th { font-weight: 700; white-space: nowrap; }
+.menu tr:last-child td, .menu tr:last-child th { border-bottom: 0; }
+.table-scroll { overflow-x: auto; }
+
+.muted { color: var(--ink-muted); }
+.lede { font-size: 1.05rem; color: var(--ink-muted); max-width: 68ch; }
+
+@media (prefers-reduced-motion: reduce) {
+  * { animation: none !important; transition: none !important; }
+}

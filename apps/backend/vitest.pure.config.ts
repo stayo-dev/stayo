@@ -259,6 +259,24 @@ export default defineConfig({
       'tests/coverage-request-handler.test.ts',
       'tests/lead-acquisition-source.test.ts',
       'tests/homepage-curation.test.ts',
+      /**
+       * ADR-226 — the programmatic SEO engine. Every rule about what an
+       * indexable page may claim lives in a pure module precisely so it can be
+       * verified here, with no database: the main suite cannot reach one.
+       */
+      'tests/seo-jsonld.test.ts',
+      'tests/seo-thresholds.test.ts',
+      'tests/seo-sitemap.test.ts',
+      'tests/seo-page-spec.test.ts',
+      'tests/seo-copy.test.ts',
+      'tests/seo-slug.test.ts',
+      'tests/seo-intents.test.ts',
+      // Reads vercel.json and the robots route as text — no client, no database.
+      'tests/seo-robots-parity.test.ts',
+      // Mocks `@/lib/db` and `next/cache` — no client, no database.
+      'tests/seo-service.test.ts',
+      // Reads the write-path services as text — no client, no database.
+      'tests/seo-cache-invalidation.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come
