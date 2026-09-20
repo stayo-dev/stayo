@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 
-import { listSitemapHostels } from "@/src/services/seo/seo-service";
+import { listSitemapHostels, listCollectionUrls } from "@/src/services/seo/seo-service";
 import {
   parseHostelShard,
   renderUrlSet,
@@ -56,6 +56,30 @@ export async function GET(_request: Request, { params }: { params: { shard: stri
         })),
       ),
     );
+  }
+
+  if (shard === "places.xml") {
+    try {
+      // Resolved through the SAME loader the pages use, so a URL can only
+      // appear here if the page would actually render. A sitemap that
+      // advertises 404s teaches Google to distrust the sitemap.
+      const entries = await listCollectionUrls();
+      return xml(
+        renderUrlSet(
+          entries.map((entry) => ({
+            loc: entry.loc,
+            lastmod: entry.lastmod,
+            changefreq: "weekly" as const,
+            priority: 0.7,
+          })),
+        ),
+      );
+    } catch (error) {
+      console.error("[sitemap] places shard failed:", error);
+      // An empty urlset rather than a 404: the index names this shard, and a
+      // named shard that 404s is a broken sitemap rather than an empty one.
+      return xml(renderUrlSet([]));
+    }
   }
 
   const shardNumber = parseHostelShard(shard);

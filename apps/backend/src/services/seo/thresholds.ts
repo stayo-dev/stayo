@@ -1,61 +1,86 @@
 /**
- * The content gate: how much real inventory a generated page needs before it
- * is allowed to exist.
+ * How much real inventory a generated page needs, and which parts of it
+ * switch on as inventory grows.
  *
  * PURE MODULE — no I/O.
  *
- * WHY THIS IS THE CENTRE OF THE ENGINE. Programmatic SEO fails in exactly one
- * way: a template multiplied across a dimension that has no content behind it,
- * producing thousands of near-identical pages with one or two results each.
- * Google calls that a doorway network and it costs the whole domain, not just
- * those pages.
+ * ## The rule changed, deliberately
  *
- * Stayo has ONE discoverable hostel today. Every locality page, college page
- * and intent page it could generate right now would be a single-result page.
- * So the generators are all built, and this gate is what decides which of them
- * render — and the same gate decides which enter the sitemap, because a URL
- * that is crawlable but absent from the sitemap is still a URL Google finds.
+ * This gate originally withheld a locality page until three listings, to
+ * avoid the one way programmatic SEO reliably fails: a template multiplied
+ * across a dimension with nothing behind it, producing near-identical pages
+ * with one result each. That reasoning still holds for a page that is only a
+ * filtered list.
  *
- * THE INVARIANT THAT MAKES THIS SCALE: nothing here is a feature flag and
- * nothing here is manual. Onboarding the third hostel in Yamnampet is what
- * publishes `/hostels-in/yamnampet` — no deploy, no toggle, no ticket. That is
- * the whole "10 hostels to 10,000 without changing the architecture" claim,
- * and it lives in these four numbers. See ADR-226.
+ * It does not hold for a page that is genuinely *about a place*. Someone
+ * searching "Yamnampet hostel" today should land on Stayo even though one
+ * verified hostel is listed there — and the page they land on is not a bare
+ * result set: it carries the locality's own editorial intro, its position in
+ * the Hyderabad → Ghatkesar → Yamnampet chain, the campuses it serves, and
+ * the hostel itself. That is a document about Yamnampet, not a doorway.
+ *
+ * So publication starts at one listing, and the page gets *richer* rather
+ * than *existing* as inventory arrives:
+ *
+ *   1 listing   → the page publishes
+ *   2 listings  → a comparison section appears
+ *   3+ listings → recommendations appear
+ *
+ * The doorway risk moves to where it actually belongs: intent pages, which
+ * are by construction a subset of their parent and therefore the pages most
+ * likely to duplicate one that already exists.
+ *
+ * ## The invariant that still holds
+ *
+ * Nothing here is a feature flag and nothing is manual. Onboarding a hostel
+ * is what publishes and then enriches these pages — no deploy, no toggle.
+ * That is the whole "10 hostels to 10,000 without changing the architecture"
+ * claim, and it lives in these four numbers. See ADR-226.
  */
 
 /**
- * A locality page needs three listings to say something a hostel page does not.
- * At one, the "page" is a link to that hostel; at two, it is a list nobody
- * needs. Three is where a price range, a sharing mix and a comparison start
- * being real information.
+ * One verified listing is enough for a locality page to be worth landing on.
+ * The page is about the place; the listing is one of the things on it.
  */
-export const MIN_LISTINGS_AREA = 3;
+export const MIN_LISTINGS_AREA = 1;
 
-/** Same reasoning as an area. A college with two nearby hostels is a stub. */
-export const MIN_LISTINGS_COLLEGE = 3;
+/** Same reasoning. A college page with one nearby hostel still answers the search. */
+export const MIN_LISTINGS_COLLEGE = 1;
+
+/** A city aggregates its localities, so it can never need more than one. */
+export const MIN_LISTINGS_CITY = 1;
 
 /**
- * Higher, deliberately. An intent page ("girls hostels in Yamnampet") is BY
- * CONSTRUCTION a subset of its parent area page, so it is the page most likely
- * to duplicate one that already exists. A 3-listing area crossed with 10
- * intents would emit 10 pages built from the same 3 rows — the doorway pattern
- * in miniature. Five means an intent page only appears once its parent has
- * enough inventory that the filtered view is genuinely a different answer.
+ * Higher, and this is where the doorway risk actually lives. An intent page
+ * ("girls hostels in Yamnampet") is BY CONSTRUCTION a subset of its parent
+ * locality page. Below three, the filter does not narrow anything a reader
+ * could not see on the parent, so the two pages say the same thing twice.
  */
-export const MIN_LISTINGS_INTENT = 5;
+export const MIN_LISTINGS_INTENT = 3;
 
-/** A city page aggregates its localities, so it clears earlier. */
-export const MIN_LISTINGS_CITY = 2;
+/** A second listing is the first point at which comparing is possible at all. */
+export const MIN_LISTINGS_COMPARISON = 2;
+
+/** Recommending one of two is not a recommendation. */
+export const MIN_LISTINGS_RECOMMENDATIONS = 3;
 
 export type CollectionKind = "area" | "city" | "college" | "intent";
 
 export type GateOutcome =
   /** Enough inventory, and published: render it and put it in the sitemap. */
   | { status: "ok" }
-  /** Real dimension, not enough behind it yet. 404 — see below. */
+  /** A real dimension with nothing behind it yet. 404 — see below. */
   | { status: "thin"; needed: number; have: number }
   /** No such row, or an admin has not published it. 404. */
   | { status: "missing" };
+
+/** Which sections of a collection page are switched on at this inventory. */
+export interface CollectionFeatures {
+  /** Side-by-side price/sharing/food comparison. */
+  comparison: boolean;
+  /** "You might also consider" — needs a field to choose from. */
+  recommendations: boolean;
+}
 
 export function minimumFor(kind: CollectionKind): number {
   switch (kind) {
@@ -72,16 +97,15 @@ export function minimumFor(kind: CollectionKind): number {
 
 /**
  * The one gate. Called by the page route AND by the sitemap shard builder —
- * `tests/seo-thresholds.test.ts` asserts they import this same symbol, because
- * the failure this prevents is specific: a page that 404s while the sitemap
- * still advertises it, which is how a site teaches Google to distrust its own
- * sitemap.
+ * `tests/seo-thresholds.test.ts` asserts they import this same symbol,
+ * because the failure it prevents is specific: a page that 404s while the
+ * sitemap still advertises it, which is how a site teaches Google to
+ * distrust its own sitemap.
  *
  * Below threshold the answer is `thin`, and callers turn that into a **404,
  * not a `noindex`**. A `noindex` page is still fetched, still costs crawl
- * budget and still has to be rendered; and since a thin collection appears in
- * no sitemap and on no internal link, nothing reaches it anyway. Not existing
- * is both cheaper and more honest than existing and asking to be ignored.
+ * budget and still has to be rendered; and a thin collection appears in no
+ * sitemap and on no internal link, so nothing reaches it anyway.
  */
 export function collectionGate(input: {
   kind: CollectionKind;
@@ -102,4 +126,18 @@ export function collectionGate(input: {
 /** Convenience for sitemap builders, which only care about the boolean. */
 export function passesGate(input: Parameters<typeof collectionGate>[0]): boolean {
   return collectionGate(input).status === "ok";
+}
+
+/**
+ * What a published collection page shows at this inventory level.
+ *
+ * Kept beside the gate rather than in the component, so "when does the
+ * comparison appear" is a rule with a test rather than a condition buried in
+ * JSX — and so the page grows on its own as hostels are onboarded.
+ */
+export function collectionFeatures(listingCount: number): CollectionFeatures {
+  return {
+    comparison: listingCount >= MIN_LISTINGS_COMPARISON,
+    recommendations: listingCount >= MIN_LISTINGS_RECOMMENDATIONS,
+  };
 }

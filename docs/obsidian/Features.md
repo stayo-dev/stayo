@@ -1687,3 +1687,21 @@ What it refuses to show, each with a test: a rating with no published review beh
 **Also fixed here:** `X-Robots-Tag: index, follow` was being served on every URL including `/owner/*`, `/admin/*` and `/tenant/*` — see [[Bugs]].
 
 Related: [[Decisions#ADR-226|ADR-226]], [[APIs]], [[Architecture]], [[Changelog]]
+
+### Locality and college pages — the first cluster is live (2026-09-20, ADR-227)
+
+The geographic graph is real and published: **Hyderabad → Ghatkesar → Yamnampet → SNIST → Sri Adithya Boys Hostel**. Every level is an indexable page:
+
+- `/hostels-in/hyderabad`, `/hostels-in/ghatkesar`, `/hostels-in/yamnampet`
+- `/hostels-near/snist` — likely the highest-value of them, since students search the campus before the locality
+- `/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4`
+
+**A locality page now publishes on its first listing**, reversing ADR-226's publish-at-three rule. It is a document about a place — the area's intro, its position in the chain, the campuses it serves — not a filtered list. Sections switch on as inventory arrives with no deploy: **1 publishes, 2 adds a comparison table, 3+ adds recommendations**. Intent pages stay gated at 3, which is where the thin-page risk actually lives.
+
+**Breadcrumbs walk the area ancestry**, so they deepen on their own as the graph does. **Each geographic entity has its own address field** — `streetAddress` the locality, `addressLocality` its parent — rather than one concatenated string.
+
+**Slugs are locality-suffixed and permanent.** The live hostel was re-minted, and its old slug redirects forever on both the page and the share route.
+
+Also added: a canonical consistency audit and frozen SEO snapshots in the pure suite, and reusable related-hostel generators (same area, same campus, similar price, same room types) that deduplicate across strategies so one hostel never appears under two headings.
+
+Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]

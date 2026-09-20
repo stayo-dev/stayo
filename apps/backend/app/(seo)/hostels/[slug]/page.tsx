@@ -4,6 +4,7 @@ import { notFound, permanentRedirect } from "next/navigation";
 import { loadHostelPage, listDiscoverableSlugs } from "@/src/services/seo/seo-service";
 import { serialiseJsonLd } from "@/src/services/seo/jsonld";
 import { normaliseSlug } from "@/src/services/seo/slug";
+import { resolveHostelSlug } from "@/src/services/discovery/slug-resolution";
 import { availabilityBand, priceLabel, sharingLabel } from "@/src/services/seo/copy";
 import { ogImageUrl } from "@/src/services/discovery/share-card";
 import { frontendUrl } from "@/lib/config/domains";
@@ -91,8 +92,16 @@ export default async function HostelPage({ params }: { params: { slug: string } 
   // serve 200 — that is one hostel at two indexable addresses.
   if (slug !== params.slug) permanentRedirect(`/hostels/${slug}`);
 
-  const page = await loadHostelPage(slug);
-  if (!page) notFound();
+  let page = await loadHostelPage(slug);
+
+  if (!page) {
+    // Before 404ing, ask whether this slug was retired by a rename. An
+    // indexed URL and a WhatsApp message both outlive a rename, so a retired
+    // slug redirects permanently rather than dying. ADR-226.
+    const resolved = await resolveHostelSlug(slug);
+    if (resolved.kind === "retired") permanentRedirect(`/hostels/${resolved.currentSlug}`);
+    notFound();
+  }
 
   const { facts, spec } = page;
   const band = availabilityBand(facts);

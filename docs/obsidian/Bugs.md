@@ -3013,3 +3013,37 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 **Lesson:** the plan for ADR-226 specified `GREATEST(hostels.updated_at, approved_revision.updated_at)` and the implementation shipped only the first half. Nothing caught it — the field was populated, plausible, and wrong, which is the failure mode a test asserting "lastmod is a real date" would also have missed. It took changing real data and watching the number not move.
 
 **See:** [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-076|ADR-076]], [[Changelog]].
+
+## 2026-09-20 — A renamed hostel's old URL kept serving the page instead of redirecting (fixed)
+
+**Found** by renaming the live hostel to its locality slug and then requesting the old URL, expecting a redirect.
+
+**Area:** [[Backend]] — `src/services/discovery/slug-resolution.ts`.
+
+**Symptom:** `/hostels/<old-slug>` returned **200 with a fully rendered page**. The `/h/<old-slug>` share route redirected correctly, so the two surfaces disagreed about the same hostel.
+
+**Root cause:** `loadHostelPage` caches by slug for an hour. A rename leaves the OLD slug's cache entry holding a perfectly valid payload, so the page keeps rendering from it and the redirect branch is never reached. The rename wrote the database correctly; nothing invalidated the address it had just retired.
+
+**Why it matters more than a stale page:** for that hour the hostel has two live URLs serving identical content — exactly the duplicate-content split [[Decisions#ADR-226|ADR-226]] exists to close — and the retired one is the URL Google already has indexed.
+
+**Fix:** `renameHostelSlugAndRevalidate` busts both slugs, with `visibilityChanged: true` since the set of URLs changed. Pinned in `tests/seo-cache-invalidation.test.ts`.
+
+**Lesson:** the third cache-invalidation defect in this engine, and the same shape each time — a write path that changes what a page says without telling the cache. The invariant check catches a *forbidden* direct `revalidateTag`; it cannot catch a *missing* call, so every new write path needs adding to the coverage test by hand.
+
+## 2026-09-20 — A dropped database connection would have told Google a live hostel was permanently gone (fixed)
+
+**Found** during verification, when the Supabase pooler returned `P1001` mid-session and a collection page 500'd — which drew attention to what the *hostel* page does in the same situation.
+
+**Area:** [[Backend]] — `src/services/seo/seo-service.ts`'s `loadHostelFacts`.
+
+**Symptom:** none yet, in production. The loader caught **every** error and returned `null`, which the route turns into `notFound()` — a 404.
+
+**Root cause:** the catch was written for one case, `getListing` throwing `ApiError.notFound` for a hostel that is not `DISCOVERABLE`. It swallowed everything else with it: a dropped pooler connection, a query error, a Redis failure.
+
+**Why it matters:** a 500 is retried and costs nothing; **a 404 is believed**. A transient blip during a crawl would have told Google a live, indexed hostel page was permanently gone, and getting back in takes weeks of recrawling. The Supabase pooler dropped connections repeatedly during this session, so the window is real rather than theoretical.
+
+**Fix:** only `statusCode === 404` / `code === "NOT_FOUND"` returns null; everything else is logged and rethrown, so the route 500s. Both branches pinned in `tests/seo-service.test.ts`.
+
+**Lesson:** a bare `catch {}` around a call that can fail for more than one reason converts every failure into the single answer the author had in mind. On an indexable page the difference between 404 and 500 is the difference between "delete this from the index" and "try again".
+
+**See:** [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]].

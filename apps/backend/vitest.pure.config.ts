@@ -277,6 +277,10 @@ export default defineConfig({
       'tests/seo-service.test.ts',
       // Reads the write-path services as text — no client, no database.
       'tests/seo-cache-invalidation.test.ts',
+      // Canonical audit + rendered-HTML snapshots. Read route files as text.
+      'tests/seo-canonical-audit.test.ts',
+      'tests/seo-snapshot.test.ts',
+      'tests/seo-related.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

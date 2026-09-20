@@ -1,0 +1,402 @@
+// Vitest Snapshot v1, https://vitest.dev/guide/snapshot.html
+
+exports[`collection pages > freezes an intent variant, which must differ from its parent > locality+boys 1`] = `
+{
+  "breadcrumbs": [
+    "Stayo → https://yourstayo.com",
+    "Ghatkesar → https://yourstayo.com/hostels-in/ghatkesar",
+    "Hostels in Yamnampet → https://yourstayo.com/hostels-in/yamnampet",
+    "Boys hostels in Yamnampet → https://yourstayo.com/hostels-in/yamnampet/boys",
+  ],
+  "canonicalUrl": "https://yourstayo.com/hostels-in/yamnampet/boys",
+  "description": "See the verified boys hostels in Yamnampet · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+  "h1": "Boys hostels in Yamnampet",
+  "headingOrder": [
+    "h1",
+  ],
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@id": "https://yourstayo.com/hostels-in/yamnampet/boys#collection",
+    "@type": "CollectionPage",
+    "about": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "India",
+        "addressLocality": "Yamnampet",
+        "addressRegion": "Telangana",
+      },
+      "name": "Yamnampet",
+    },
+    "description": "See the verified boys hostels in Yamnampet · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+    "mainEntity": {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "image": "https://ik.imagekit.io/x/cover.jpg",
+          "name": "Sri Adithya Boys Hostel",
+          "position": 1,
+          "url": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+        },
+      ],
+      "numberOfItems": 1,
+    },
+    "name": "Boys hostels in Yamnampet",
+    "url": "https://yourstayo.com/hostels-in/yamnampet/boys",
+  },
+  "jsonLdTypes": [
+    "CollectionPage",
+    "BreadcrumbList",
+  ],
+  "kind": "area",
+  "links": {
+    "app": [
+      "https://yourstayo.com/discover/h",
+    ],
+    "intents": [],
+    "parents": [
+      "https://yourstayo.com/hostels-in/yamnampet",
+      "https://yourstayo.com/hostels-in/ghatkesar",
+    ],
+    "siblings": [],
+  },
+  "robots": {
+    "follow": true,
+    "index": true,
+  },
+  "title": "Boys hostels in Yamnampet — 1 verified option from ₹8,200 | Stayo",
+}
+`;
+
+exports[`collection pages > freezes the admin-written intro path, which is what makes two localities differ > locality+intro 1`] = `
+{
+  "h1": "Hostels in Yamnampet",
+  "lede": "Yamnampet sits on the Warangal highway, five minutes from SNIST.",
+  "title": "Hostels in Yamnampet — 1 verified hostel from ₹8,200 | Stayo",
+}
+`;
+
+exports[`collection pages > freezes the city page > city 1`] = `
+{
+  "breadcrumbs": [
+    "Stayo → https://yourstayo.com",
+    "Hostels in Hyderabad → https://yourstayo.com/hostels-in/hyderabad",
+  ],
+  "canonicalUrl": "https://yourstayo.com/hostels-in/hyderabad",
+  "description": "See the verified hostel or PG in Hyderabad · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+  "h1": "Hostels in Hyderabad",
+  "headingOrder": [
+    "h1",
+  ],
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@id": "https://yourstayo.com/hostels-in/hyderabad#collection",
+    "@type": "CollectionPage",
+    "about": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "India",
+        "addressLocality": "Hyderabad",
+        "addressRegion": "Telangana",
+      },
+      "name": "Hyderabad",
+    },
+    "description": "See the verified hostel or PG in Hyderabad · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+    "mainEntity": {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "image": "https://ik.imagekit.io/x/cover.jpg",
+          "name": "Sri Adithya Boys Hostel",
+          "position": 1,
+          "url": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+        },
+      ],
+      "numberOfItems": 1,
+    },
+    "name": "Hostels in Hyderabad",
+    "url": "https://yourstayo.com/hostels-in/hyderabad",
+  },
+  "jsonLdTypes": [
+    "CollectionPage",
+    "BreadcrumbList",
+  ],
+  "kind": "city",
+  "links": {
+    "app": [
+      "https://yourstayo.com/discover/h",
+    ],
+    "intents": [],
+    "parents": [],
+    "siblings": [],
+  },
+  "robots": {
+    "follow": true,
+    "index": true,
+  },
+  "title": "Hostels in Hyderabad — 1 verified hostel from ₹8,200 | Stayo",
+}
+`;
+
+exports[`collection pages > freezes the college page > college 1`] = `
+{
+  "breadcrumbs": [
+    "Stayo → https://yourstayo.com",
+    "Yamnampet → https://yourstayo.com/hostels-in/yamnampet",
+    "Hostels near SNIST → https://yourstayo.com/hostels-near/snist",
+  ],
+  "canonicalUrl": "https://yourstayo.com/hostels-near/snist",
+  "description": "See the verified hostel or PG near SNIST · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+  "h1": "Hostels near SNIST",
+  "headingOrder": [
+    "h1",
+  ],
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@id": "https://yourstayo.com/hostels-near/snist#collection",
+    "@type": "CollectionPage",
+    "about": {
+      "@type": "CollegeOrUniversity",
+      "alternateName": "SNIST",
+      "name": "Sreenidhi Institute of Science and Technology",
+    },
+    "description": "See the verified hostel or PG near SNIST · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+    "mainEntity": {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "image": "https://ik.imagekit.io/x/cover.jpg",
+          "name": "Sri Adithya Boys Hostel",
+          "position": 1,
+          "url": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+        },
+      ],
+      "numberOfItems": 1,
+    },
+    "name": "Hostels near SNIST",
+    "url": "https://yourstayo.com/hostels-near/snist",
+  },
+  "jsonLdTypes": [
+    "CollectionPage",
+    "BreadcrumbList",
+  ],
+  "kind": "college",
+  "links": {
+    "app": [
+      "https://yourstayo.com/discover/h",
+    ],
+    "intents": [],
+    "parents": [
+      "https://yourstayo.com/hostels-in/yamnampet",
+    ],
+    "siblings": [],
+  },
+  "robots": {
+    "follow": true,
+    "index": true,
+  },
+  "title": "Hostels near SNIST — 1 verified hostel from ₹8,200 | Stayo",
+}
+`;
+
+exports[`collection pages > freezes the locality page > locality 1`] = `
+{
+  "breadcrumbs": [
+    "Stayo → https://yourstayo.com",
+    "Ghatkesar → https://yourstayo.com/hostels-in/ghatkesar",
+    "Hostels in Yamnampet → https://yourstayo.com/hostels-in/yamnampet",
+  ],
+  "canonicalUrl": "https://yourstayo.com/hostels-in/yamnampet",
+  "description": "See the verified hostel or PG in Yamnampet · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+  "h1": "Hostels in Yamnampet",
+  "headingOrder": [
+    "h1",
+  ],
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@id": "https://yourstayo.com/hostels-in/yamnampet#collection",
+    "@type": "CollectionPage",
+    "about": {
+      "@type": "Place",
+      "address": {
+        "@type": "PostalAddress",
+        "addressCountry": "India",
+        "addressLocality": "Yamnampet",
+        "addressRegion": "Telangana",
+      },
+      "name": "Yamnampet",
+    },
+    "description": "See the verified hostel or PG in Yamnampet · from ₹8,200/month · single, 2-bed, 4-bed sharing. Real prices, real availability on Stayo.",
+    "mainEntity": {
+      "@context": "https://schema.org",
+      "@type": "ItemList",
+      "itemListElement": [
+        {
+          "@type": "ListItem",
+          "image": "https://ik.imagekit.io/x/cover.jpg",
+          "name": "Sri Adithya Boys Hostel",
+          "position": 1,
+          "url": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+        },
+      ],
+      "numberOfItems": 1,
+    },
+    "name": "Hostels in Yamnampet",
+    "url": "https://yourstayo.com/hostels-in/yamnampet",
+  },
+  "jsonLdTypes": [
+    "CollectionPage",
+    "BreadcrumbList",
+  ],
+  "kind": "area",
+  "links": {
+    "app": [
+      "https://yourstayo.com/discover/h",
+    ],
+    "intents": [],
+    "parents": [
+      "https://yourstayo.com/hostels-in/ghatkesar",
+    ],
+    "siblings": [],
+  },
+  "robots": {
+    "follow": true,
+    "index": true,
+  },
+  "title": "Hostels in Yamnampet — 1 verified hostel from ₹8,200 | Stayo",
+}
+`;
+
+exports[`hostel page > freezes the zero-review shape, where aggregateRating must be absent 1`] = `
+{
+  "address": {
+    "@type": "PostalAddress",
+    "addressCountry": "India",
+    "addressLocality": "Ghatkesar",
+    "addressRegion": "Telangana",
+    "streetAddress": "Yamnampet",
+  },
+  "hasAggregateRating": false,
+  "hasGeo": false,
+  "hasReview": false,
+  "hasTelephone": false,
+  "offerCount": 2,
+  "priceRange": "₹8,200–₹8,500",
+}
+`;
+
+exports[`hostel page > freezes what it tells Google 1`] = `
+{
+  "breadcrumbs": [
+    "Stayo → https://yourstayo.com",
+    "Hyderabad → https://yourstayo.com/hostels-in/hyderabad",
+    "Ghatkesar → https://yourstayo.com/hostels-in/ghatkesar",
+    "Yamnampet → https://yourstayo.com/hostels-in/yamnampet",
+    "Sri Adithya Boys Hostel → https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+  ],
+  "canonicalUrl": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+  "description": "Sri Adithya Boys Hostel is a verified boys hostel in Yamnampet, Hyderabad · 400 m from SNIST · rooms from ₹8,200/month · single, 2-bed, 4-bed sharing.",
+  "h1": "Sri Adithya Boys Hostel, Yamnampet",
+  "headingOrder": [
+    "h1",
+  ],
+  "jsonLd": {
+    "@context": "https://schema.org",
+    "@id": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4#hostel",
+    "@type": "Hostel",
+    "address": {
+      "@type": "PostalAddress",
+      "addressCountry": "India",
+      "addressLocality": "Ghatkesar",
+      "addressRegion": "Telangana",
+      "streetAddress": "Yamnampet",
+    },
+    "amenityFeature": [
+      {
+        "@type": "LocationFeatureSpecification",
+        "name": "High-speed Wi-Fi",
+        "value": true,
+      },
+      {
+        "@type": "LocationFeatureSpecification",
+        "name": "Power backup",
+        "value": true,
+      },
+    ],
+    "currenciesAccepted": "INR",
+    "description": "A boys hostel a short walk from Sreenidhi.",
+    "image": [
+      "https://ik.imagekit.io/x/cover.jpg",
+    ],
+    "makesOffer": [
+      {
+        "@type": "Offer",
+        "availability": "https://schema.org/InStock",
+        "name": "4-Bed",
+        "price": 8200,
+        "priceCurrency": "INR",
+        "priceSpecification": {
+          "@type": "UnitPriceSpecification",
+          "price": 8200,
+          "priceCurrency": "INR",
+          "referenceQuantity": {
+            "@type": "QuantitativeValue",
+            "unitCode": "MON",
+            "value": 1,
+          },
+        },
+      },
+      {
+        "@type": "Offer",
+        "availability": "https://schema.org/InStock",
+        "name": "4-Bed",
+        "price": 8500,
+        "priceCurrency": "INR",
+        "priceSpecification": {
+          "@type": "UnitPriceSpecification",
+          "price": 8500,
+          "priceCurrency": "INR",
+          "referenceQuantity": {
+            "@type": "QuantitativeValue",
+            "unitCode": "MON",
+            "value": 1,
+          },
+        },
+      },
+    ],
+    "name": "Sri Adithya Boys Hostel",
+    "priceRange": "₹8,200–₹8,500",
+    "url": "https://yourstayo.com/hostels/sri-adithya-boys-hostel-yamnampet-36094ab4",
+  },
+  "jsonLdTypes": [
+    "Hostel",
+    "BreadcrumbList",
+  ],
+  "kind": "hostel",
+  "links": {
+    "app": [
+      "https://yourstayo.com/discover/h/sri-adithya-boys-hostel-yamnampet-36094ab4",
+    ],
+    "intents": [],
+    "parents": [
+      "https://yourstayo.com/hostels-in/yamnampet",
+      "https://yourstayo.com/hostels-in/ghatkesar",
+      "https://yourstayo.com/hostels-in/hyderabad",
+      "https://yourstayo.com/hostels-near/snist",
+    ],
+    "siblings": [],
+  },
+  "robots": {
+    "follow": true,
+    "index": true,
+  },
+  "title": "Sri Adithya Boys Hostel, Yamnampet — Boys Hostel from ₹8,200 | Stayo",
+}
+`;

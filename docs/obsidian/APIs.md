@@ -917,3 +917,19 @@ These routes return **HTML and XML, not JSON**, and are the only public *pages* 
 **Deleted:** `apps/frontend/public/sitemap.xml`, `apps/frontend/public/robots.txt`, `apps/backend/public/sitemap.xml`, `apps/backend/public/robots.txt`. On Vercel a file in `public/` is served *before* rewrites are considered, so any survivor silently defeats the routes above.
 
 **Not yet built:** `/hostels-in/:area` and `/hostels-near/:college` are rewritten in `vercel.json` but have no route handler — they 404 today, which is also what the content gate would do at one listing. See [[Decisions#ADR-226|ADR-226]] and [[Features]].
+
+### Collection pages (ADR-227)
+
+| Route | Serves at | Returns |
+|---|---|---|
+| `GET /hostels-in/[area]/[[...intent]]` | `yourstayo.com/hostels-in/:area` | A locality or city page. 404 below threshold, 404 for an unknown area, 308 for a non-canonical slug. |
+| `GET /hostels-near/[college]/[[...intent]]` | `yourstayo.com/hostels-near/:college` | A campus page, with `about: CollegeOrUniversity`. |
+| `GET /sitemaps/places.xml` | — | Published areas and colleges that pass the gate, resolved through the **same loader the pages use**. |
+
+Both are optional catch-alls, so the unfiltered page and its intent variants are one route — the same page with one extra predicate. An intent segment not on the closed allowlist in `intents.ts` **404s**; without that, `/hostels-in/:area/:anything` is unbounded crawl space.
+
+**Changed:** `discoveryService.search` accepts `hostelIds`, pushed into the SQL `where`. Search caps candidates and filters in memory, so a collection page that fetched-then-filtered would silently return short lists once inventory grew.
+
+**Changed:** `/hostels/[slug]` and `/api/discover/share/[slug]` now resolve retired slugs through `hostel_slug_history` and redirect permanently rather than 404ing.
+
+Related: [[Decisions#ADR-227|ADR-227]], [[Database]]

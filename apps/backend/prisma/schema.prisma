@@ -334,6 +334,17 @@ model hostels {
   marketing_revisions            hostel_marketing_revisions[]
   tenant_owner_attestations      tenant_owner_attestations[]
   homepage_feature                  homepage_features?
+
+  /// The curated locality this hostel sits in. ADR-226.
+  ///
+  /// DECLARED ONLY AFTER migration 090 was applied and verified against
+  /// information_schema — declaring a scalar before its column exists makes
+  /// Prisma request it on every `include:`-only read of `hostels`, which is
+  /// what took the public listing pages down on 2026-08-22 (`navigation`).
+  area_id                        String?                          @db.Uuid
+  area                           areas?                           @relation(fields: [area_id], references: [id], onDelete: SetNull)
+  colleges                       hostel_colleges[]
+  slug_history                   hostel_slug_history[]
 }
 
 model identity_tokens {
@@ -4768,4 +4779,91 @@ model homepage_features {
   curator profile? @relation("HomepageCurator", fields: [created_by], references: [id], onDelete: SetNull)
 
   @@index([position, created_at], map: "idx_homepage_features_position")
+}
+
+/// Retired `public_slug` values. Every row 301s to the hostel's current slug,
+/// permanently — an indexed URL and a WhatsApp message both outlive a rename.
+/// Migration 089, ADR-226.
+model hostel_slug_history {
+  id         String   @id @default(uuid()) @db.Uuid
+  hostel_id  String   @db.Uuid
+  /// Globally unique: a retired slug must never resolve for two hostels, or a
+  /// 301 becomes a wrong answer rather than a redirect.
+  slug       String   @unique
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+
+  hostel hostels @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+
+  @@index([hostel_id, created_at(sort: Desc)])
+}
+
+/// The geographic hierarchy: Hyderabad → Ghatkesar → Yamnampet.
+///
+/// Self-referencing rather than a separate `cities` table — a city is an area
+/// with no parent. One table, one route and one generator serve every level,
+/// and the hierarchy can deepen without a schema change. Migration 090.
+model areas {
+  id           String    @id @default(uuid()) @db.Uuid
+  slug         String    @unique
+  name         String
+  /// `CITY` | `LOCALITY`. Plain text, per this schema's convention.
+  kind         String    @default("LOCALITY")
+  parent_id    String?   @db.Uuid
+  state        String?
+  /// Admin-written editorial. Null renders nothing — it is what stops two
+  /// locality pages reading like one template twice.
+  intro        String?
+  is_published Boolean   @default(false)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  parent   areas?     @relation("area_parent", fields: [parent_id], references: [id], onDelete: SetNull)
+  children areas[]    @relation("area_parent")
+  hostels  hostels[]
+  colleges colleges[]
+
+  @@index([parent_id, name])
+  @@index([is_published, kind])
+}
+
+/// Campuses hostels are searched relative to. Students search the college
+/// before the locality, which makes these the highest-intent pages in the
+/// engine. Migration 090.
+model colleges {
+  id           String    @id @default(uuid()) @db.Uuid
+  slug         String    @unique
+  name         String
+  /// "SNIST" — what a student types, and what `hostels.navigation` already
+  /// records. Drives the slug in preference to the full name.
+  short_name   String?
+  area_id      String?   @db.Uuid
+  intro        String?
+  is_published Boolean   @default(false)
+  created_at   DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+
+  area    areas?            @relation(fields: [area_id], references: [id], onDelete: SetNull)
+  hostels hostel_colleges[]
+
+  @@index([area_id, name])
+}
+
+/// Which hostels are near which campus. Migration 090.
+model hostel_colleges {
+  id            String   @id @default(uuid()) @db.Uuid
+  hostel_id     String   @db.Uuid
+  college_id    String   @db.Uuid
+  /// FREE TEXT — "400 m", "5 min walk". ADR-088 keeps distance free text
+  /// because a numeric metres column invites a precision nobody measured. It
+  /// is rendered on the page and never lifted into structured data.
+  distance_text String?
+  /// Curated "nearest first" ordering. Null sorts last.
+  distance_rank Int?
+  created_at    DateTime @default(now()) @db.Timestamptz(6)
+
+  hostel  hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  college colleges @relation(fields: [college_id], references: [id], onDelete: Cascade)
+
+  @@unique([hostel_id, college_id])
+  @@index([college_id, distance_rank])
 }
