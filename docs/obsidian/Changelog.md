@@ -10,6 +10,10 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-21**: **Discovery listing no longer double-counts beds when a hostel advertises two tiers of the same sharing size** ([[Features]], [[Business-Rules]]).
+  - Sri Adithya advertises two 4-bed tiers (₹8,200 / ₹8,500). Both matched the one pool of real 4-bed rooms, so each read "104 beds left" and the header summed them to "208 beds available right now" for a hostel of about 123 beds. The tier/vacancy logic moved out of `ListingPage.tsx` into a pure, tested module (`apps/frontend/src/app/pages/discover/bedOptions.ts`, 9 tests): tiers that share a sharing size now read "Available" with no per-tier number (the split of the pool between them is unknowable), and the header counts each pool of rooms once (104). Single-tier sizes still show the live count; `FULL` and the no-rooms platform-listing case ([[Changelog]] entry above) behave as before.
+  - **Not verified:** not opened in a browser; needs a frontend deploy. The Discover **card** ("Fully booked" on Bhavani) is a separate code path and is unchanged.
+
 - **2026-09-21**: **A platform-listed hostel can now name its owner: `basics.host_name` in the reviewed listing content** ([[Business-Rules]], [[APIs]]).
   - Previously a `PLATFORM_LISTED` hostel always rendered "Listed by Stayo" (a documented rule — all platform listings share one sentinel owner profile, so nothing per-hostel could be shown). `BasicsSchema` (`marketing-content.ts`) gained optional `host_name` (max 80, default null; no migration — `content` is jsonb). `projectListing` puts it in `host.name` for a platform listing only; `hostCardModel.ts` renders "Hosted by <name>" / "Owner" for both the byline and the card, with no photo, stats or Enquire-with-name button, and `platform_listed`/`availability_confirmed` unchanged (still no live vacancy). Owner-managed hostels ignore the field. No editor UI yet — set through the revision content.
   - Data (production): Bhavani Boys Hostel's approved revision v8 carries `host_name: "Samala Poshetty"` (built on an admin's direct-publish v7 — the admin editor was in use concurrently).

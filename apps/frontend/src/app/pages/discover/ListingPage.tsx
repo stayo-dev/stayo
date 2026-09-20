@@ -36,6 +36,7 @@ import { directionsUrl, distanceLine, hasNavigation, mapEmbedUrl, whereYoullBe }
 import { ReviewsSection } from './components/ReviewsSection';
 import { MediaLightbox } from './components/MediaLightbox';
 import { PhotoTour } from './components/PhotoTour';
+import { buildBedOptions, countVacantBeds, type BedOption } from './bedOptions';
 import { useShareHostel } from '@shared/hooks/useShareHostel';
 import ShareSheet from '@shared/ui-patterns/ShareSheet';
 import { buildShareSummary, buildShareUrl } from '@shared/lib/shareListing';
@@ -55,47 +56,6 @@ const MEAL_ICON: Record<string, typeof Coffee> = {
   s: Sun,
   dn: Moon,
 };
-
-/** One selectable option per room size, aggregated from the real room rows. */
-interface BedOption {
-  capacity: number;
-  label: string;
-  price: number | null;
-  /** `null` = open, but no live count to quote (owner-asserted, no real rooms). */
-  availableBeds: number | null;
-  roomType: string | null;
-}
-
-function toBedOptions(rooms: any[]): BedOption[] {
-  const byCapacity = new Map<number, BedOption>();
-
-  for (const room of rooms) {
-    const capacity = Number(room.capacity || 0);
-    if (!capacity) continue;
-
-    const price = Number(room.pricing?.monthly_rent || 0) || null;
-    const available = Number(room.available_beds || 0);
-    const existing = byCapacity.get(capacity);
-
-    if (!existing) {
-      byCapacity.set(capacity, {
-        capacity,
-        label: capacity === 1 ? 'Single room' : `${capacity}-bed sharing`,
-        price,
-        availableBeds: available,
-        roomType: room.room_type ?? null,
-      });
-      continue;
-    }
-
-    existing.availableBeds += available;
-    // Show the cheapest real price in the tier; an unpriced room must not
-    // drag the tier down to nothing.
-    if (price != null && (existing.price == null || price < existing.price)) existing.price = price;
-  }
-
-  return Array.from(byCapacity.values()).sort((a, b) => a.capacity - b.capacity);
-}
 
 /**
  * The public Discovery listing.
@@ -159,43 +119,14 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
    * With no published tiers, this falls back to deriving everything from rooms
    * exactly as it did before marketing pages existed.
    */
-  const bedOptions = useMemo(() => {
-    const fromRooms = toBedOptions(data?.rooms ?? []);
-    const tiers = data?.bed_tiers ?? [];
-    if (tiers.length === 0) return fromRooms;
-
-    return tiers.map((tier) => {
-      const realTier = fromRooms.find((option) => option.capacity === tier.sharing);
-      return {
-        capacity: tier.sharing,
-        label: tier.name || (tier.sharing === 1 ? 'Single room' : `${tier.sharing}-bed sharing`),
-        price: tier.price > 0 ? tier.price : (realTier?.price ?? null),
-        // A tier the owner marked FULL is full regardless of what rooms say;
-        // otherwise the live count wins over any claim. Only where no real
-        // room of this size exists at all (a platform-listed hostel) does an
-        // owner's AVAILABLE stand in — with no count, rather than a made-up one.
-        availableBeds:
-          tier.availability === 'FULL'
-            ? 0
-            : realTier
-              ? realTier.availableBeds
-              : tier.availability === 'AVAILABLE'
-                ? null
-                : 0,
-        roomType: tier.inclusions ?? realTier?.roomType ?? null,
-        // What the real rooms of this size are like to live in — measured by
-        // the owner, summarised by the server (`room-space.ts`).
-        space: (tier as any).space ?? null,
-      };
-    });
-  }, [data?.rooms, data?.bed_tiers]);
+  const bedOptions = useMemo(
+    () => buildBedOptions(data?.rooms ?? [], data?.bed_tiers ?? []),
+    [data?.rooms, data?.bed_tiers],
+  );
   const savedIds = useMemo(() => new Set((saved ?? []).map((item) => item.id)), [saved]);
   const isSaved = hostel ? savedIds.has(hostel.id) : false;
 
-  const totalVacant = useMemo(
-    () => bedOptions.reduce((sum, option) => sum + (option.availableBeds ?? 0), 0),
-    [bedOptions],
-  );
+  const totalVacant = useMemo(() => countVacantBeds(data?.rooms ?? [], data?.bed_tiers ?? []), [data?.rooms, data?.bed_tiers]);
 
   useEffect(() => {
     if (hostel?.name) document.title = `${hostel.name} — Stayo`;
