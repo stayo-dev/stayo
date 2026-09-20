@@ -20,7 +20,8 @@ vi.mock("next/cache", () => ({
   revalidateTag: vi.fn(),
 }));
 
-import { toHostelFacts } from "@/src/services/seo/seo-service";
+import { toHostelFacts, listSitemapHostels } from "@/src/services/seo/seo-service";
+import { prisma } from "@/lib/db";
 
 /** Shaped like `projectListing`'s output, trimmed to what the mapper reads. */
 function listing(overrides: Record<string, any> = {}) {
@@ -228,5 +229,69 @@ describe("what the mapper refuses to carry", () => {
     expect(facts.areaName).toBeNull();
     expect(facts.areaSlug).toBeNull();
     expect(facts.city).toBe("Hyderabad");
+  });
+});
+
+
+describe("sitemap lastmod reflects when the LISTING changed", () => {
+  /**
+   * The defect this pins, found by editing a hostel in production and
+   * watching the timestamp not move: `hostels.updated_at` carries no
+   * `@updatedAt` in schema.prisma, so nothing maintains it — and the edits a
+   * reader would call "this listing changed" (photos, price, menu) are
+   * written to `hostel_marketing_revisions`, not to the hostel row at all.
+   * Reporting only the hostel's timestamp tells Google a page never changes
+   * while its content changes weekly.
+   */
+  const row = (overrides: any = {}) => ({
+    public_slug: "a-hostel-1111aaaa",
+    created_at: new Date("2026-01-01T00:00:00Z"),
+    updated_at: new Date("2026-02-01T00:00:00Z"),
+    marketing_revisions: [],
+    ...overrides,
+  });
+
+  it("prefers the approved revision when its content is newer", async () => {
+    (prisma.hostels.findMany as any).mockResolvedValueOnce([
+      row({ marketing_revisions: [{ updated_at: new Date("2026-09-20T00:00:00Z"), reviewed_at: null }] }),
+    ]);
+
+    const [entry] = await listSitemapHostels(0, 10);
+    expect(entry.updatedAt?.toISOString().slice(0, 10)).toBe("2026-09-20");
+  });
+
+  it("keeps the hostel's own timestamp when it is the newer of the two", async () => {
+    (prisma.hostels.findMany as any).mockResolvedValueOnce([
+      row({
+        updated_at: new Date("2026-09-20T00:00:00Z"),
+        marketing_revisions: [{ updated_at: new Date("2026-03-01T00:00:00Z"), reviewed_at: null }],
+      }),
+    ]);
+
+    const [entry] = await listSitemapHostels(0, 10);
+    expect(entry.updatedAt?.toISOString().slice(0, 10)).toBe("2026-09-20");
+  });
+
+  it("falls back to creation rather than emitting no lastmod at all", async () => {
+    (prisma.hostels.findMany as any).mockResolvedValueOnce([
+      row({ updated_at: null, marketing_revisions: [] }),
+    ]);
+
+    const [entry] = await listSitemapHostels(0, 10);
+    expect(entry.updatedAt?.toISOString().slice(0, 10)).toBe("2026-01-01");
+  });
+
+  it("uses reviewed_at when a revision has no updated_at", async () => {
+    (prisma.hostels.findMany as any).mockResolvedValueOnce([
+      row({ marketing_revisions: [{ updated_at: null, reviewed_at: new Date("2026-08-15T00:00:00Z") }] }),
+    ]);
+
+    const [entry] = await listSitemapHostels(0, 10);
+    expect(entry.updatedAt?.toISOString().slice(0, 10)).toBe("2026-08-15");
+  });
+
+  it("drops a hostel with no slug rather than emitting a broken URL", async () => {
+    (prisma.hostels.findMany as any).mockResolvedValueOnce([row({ public_slug: null })]);
+    expect(await listSitemapHostels(0, 10)).toHaveLength(0);
   });
 });

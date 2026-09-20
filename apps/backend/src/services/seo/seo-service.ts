@@ -349,15 +349,58 @@ export async function listSitemapHostels(
     async () => {
       const rows = await prisma.hostels.findMany({
         where: DISCOVERABLE,
-        select: { public_slug: true, updated_at: true },
+        select: {
+          public_slug: true,
+          updated_at: true,
+          created_at: true,
+          /**
+           * The approved revision's timestamp, because `hostels.updated_at`
+           * alone is NOT when the listing last changed.
+           *
+           * Two reasons. `hostels.updated_at` carries no `@updatedAt` in
+           * `schema.prisma` — it is a plain nullable column that only moves
+           * when code explicitly sets it. And the things a reader would call
+           * "this listing changed" — new photos, a new price, an edited
+           * menu — are written to `hostel_marketing_revisions`, not to the
+           * hostel row at all. Reporting only the hostel's timestamp would
+           * tell Google a page never changes while its content changes
+           * weekly, which is the opposite of the freshness signal this
+           * engine exists to produce.
+           */
+          marketing_revisions: {
+            where: { status: "APPROVED" },
+            orderBy: { version: "desc" },
+            take: 1,
+            select: { updated_at: true, reviewed_at: true },
+          },
+        },
         orderBy: [{ created_at: "asc" }, { id: "asc" }],
         skip: offset,
         take: limit,
       });
 
       return rows
-        .filter((row: { public_slug: string | null }) => Boolean(row.public_slug))
-        .map((row: { public_slug: string | null; updated_at: Date | null }) => ({ slug: row.public_slug as string, updatedAt: row.updated_at ?? null }));
+        .filter((row: any) => Boolean(row.public_slug))
+        .map((row: any) => {
+          const revision = row.marketing_revisions?.[0];
+          const candidates = [
+            row.updated_at,
+            revision?.updated_at,
+            revision?.reviewed_at,
+            // Never null: a listing with no other timestamp still has a
+            // creation date, and omitting lastmod entirely is a weaker
+            // signal than a real, older one.
+            row.created_at,
+          ]
+            .map((value: Date | string | null | undefined) => (value ? new Date(value) : null))
+            .filter((date): date is Date => date !== null && !Number.isNaN(date.getTime()));
+
+          const latest = candidates.length
+            ? new Date(Math.max(...candidates.map((date) => date.getTime())))
+            : null;
+
+          return { slug: row.public_slug as string, updatedAt: latest };
+        });
     },
     ["seo", "sitemap-hostels", String(offset), String(limit)],
     { tags: [seoTags.sitemap()], revalidate: PAGE_REVALIDATE_SECONDS },

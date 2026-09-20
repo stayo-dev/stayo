@@ -2990,3 +2990,26 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 **Lesson:** a passing test proves the function is right, not that it was given the right input. The unit under test was the JSON-LD builder; the thing that was wrong was which number reached it — and the only reason it surfaced at all was running the page against real data.
 
 **See:** [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-200|ADR-200]] (host stats and their intended scope), [[Decisions#ADR-086|ADR-086]] (reviewer identity).
+
+## 2026-09-20 — The sitemap's `lastmod` could not see a listing change (fixed)
+
+**Found** immediately after shipping [[Decisions#ADR-226|ADR-226]], by correcting a hostel's misspelled `city` directly in production and noticing that `hostels.updated_at` did not move.
+
+**Area:** [[Backend]] — `src/services/seo/seo-service.ts`'s `listSitemapHostels`.
+
+**Symptom:** none visible. The sitemap kept reporting the same `<lastmod>` for a hostel whose public page had changed.
+
+**Root cause — two independent faults that happen to coincide:**
+
+1. **`hostels.updated_at` carries no `@updatedAt`** in `schema.prisma`. It is a plain nullable `Timestamptz` that only moves when code explicitly writes it — so a direct update, and any code path that forgets it, leaves it untouched.
+2. **More fundamentally, the hostel row is the wrong place to look.** Everything a reader would call "this listing changed" — new photos, a new price, an edited mess menu — is written to `hostel_marketing_revisions` ([[Decisions#ADR-076|ADR-076]]), not to `hostels` at all. Even a perfectly maintained `hostels.updated_at` would not move when the listing content did.
+
+**Why it mattered more than it looks:** `lastmod` is the signal that tells Google a page is worth recrawling. A listing whose content changes weekly while its `lastmod` never moves teaches the crawler the opposite of the truth — and freshness from live operational data is the specific advantage the engine exists to exploit.
+
+**Fix:** `lastmod` is now the newest of `hostels.updated_at`, the APPROVED revision's `updated_at`, its `reviewed_at`, and `hostels.created_at` as a floor — so a page always carries a real timestamp rather than none, and a content approval moves it. Five cases pinned in `tests/seo-service.test.ts`.
+
+**Not fixed:** `hostels.updated_at` still has no `@updatedAt`. Adding one is a schema change with the unselected-read blast radius described above in the 2026-08-22 `navigation` entry, and the composed `lastmod` no longer depends on it.
+
+**Lesson:** the plan for ADR-226 specified `GREATEST(hostels.updated_at, approved_revision.updated_at)` and the implementation shipped only the first half. Nothing caught it — the field was populated, plausible, and wrong, which is the failure mode a test asserting "lastmod is a real date" would also have missed. It took changing real data and watching the number not move.
+
+**See:** [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-076|ADR-076]], [[Changelog]].

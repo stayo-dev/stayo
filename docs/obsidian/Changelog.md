@@ -1952,3 +1952,8 @@ On `feat/programmatic-seo`. **Not merged, not deployed.**
 - **Added** a `Browse hostels` link to the SPA marketing footer — a plain `<a>`, not a router `Link`, since `/hostels` is a rewrite and not an SPA route. It is the one crawlable bridge from the client-rendered site into the indexable tree.
 
 **Not built:** Phases 2–5 — slug history and 301s, the `areas`/`colleges`/`hostel_colleges` tables, locality and college pages, intent pages. Their generators exist and are tested; they have no routes and no data, and every collection URL 404s at today's one listing, which is what the gate requires.
+
+## 2026-09-20 — SEO sitemap `lastmod` fix ([[Decisions#ADR-226|ADR-226]])
+
+- **Fixed** the sitemap's `lastmod`, which read only `hostels.updated_at` — a column with no `@updatedAt` that listing-content edits never touch, since those write to `hostel_marketing_revisions`. It now composes the newest of the hostel row, the approved revision and, as a floor, the hostel's creation date. See [[Bugs]].
+- **Data:** the one listed hostel's `city` was corrected from `Hydarabad` to `Hyderabad` in production; `address` left as the owner has it.
