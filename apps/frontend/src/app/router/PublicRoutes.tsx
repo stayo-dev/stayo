@@ -55,6 +55,21 @@ function OwnerInviteRedirect() {
   return <Navigate to={token ? `/activation/${token}` : '/activation'} replace />;
 }
 
+/**
+ * `stayo_admin_invitation` and `stayo_admin_invitation_reminder` were approved
+ * in Meta on 2026-09-21 with their URL button hard-coded to
+ * `https://yourstayo.com/admin/activate/{{1}}`, while this app serves the
+ * manager activation screen at `/admin/manager-invitation/:token`.
+ *
+ * Editing an approved template re-triggers Meta review and would strand every
+ * invitation already delivered, so the path is served here instead. Same
+ * reasoning as `OwnerInviteRedirect` above.
+ */
+function ManagerInviteTemplateRedirect() {
+  const { token } = useParams<{ token: string }>();
+  return <Navigate to={token ? `/admin/manager-invitation/${token}` : '/login'} replace />;
+}
+
 function PublicShell() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -128,6 +143,7 @@ export function PublicRoutes() {
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
         <Route path="/admin/manager-invitation/:token" element={<ManagerActivationPage />} />
+        <Route path="/admin/activate/:token" element={<ManagerInviteTemplateRedirect />} />
         <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
         <Route path="/about" element={<AboutPage />} />

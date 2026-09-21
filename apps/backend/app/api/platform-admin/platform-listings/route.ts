@@ -54,7 +54,10 @@ export async function GET(req: NextRequest) {
 
     const ids = hostels.map((h: any) => h.id);
     const enquiries = ids.length
-      ? await prisma.leads.groupBy({
+      // `visitor_leads`, not `leads` — there is no `leads` model. The
+      // `ids.length` guard meant this only threw once a platform listing
+      // actually existed, so the page 500'd the first time one was created.
+      ? await prisma.visitor_leads.groupBy({
           by: ["hostel_id"],
           where: { hostel_id: { in: ids } },
           _count: { _all: true },

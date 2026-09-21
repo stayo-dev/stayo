@@ -21,16 +21,18 @@ import { authOtpService } from "@/lib/services/auth/auth-otp-service";
 import { EmailService } from "@/lib/services/email-service";
 import { frontendUrl } from "@/lib/config/domains";
 import { ManagerServiceError } from "./manager-service";
+import { managerNotificationService } from "./manager-notification-service";
 
 export const MANAGER_OTP_PURPOSE = "MANAGER_INVITE";
 const INVITE_TTL_HOURS = 72;
+const INVITE_TTL_DAYS = INVITE_TTL_HOURS / 24;
 
 function generateToken() {
   return crypto.randomBytes(32).toString("hex");
 }
 
 export class ManagerInvitationService {
-  /** Mints a fresh activation token and emails the link. Safe to call again (resend). */
+  /** Mints a fresh activation token and sends the link. Safe to call again (resend). */
   async sendInvitation(managerProfileId: string) {
     const manager = await prisma.manager_profiles.findUnique({
       where: { id: managerProfileId },
@@ -48,16 +50,99 @@ export class ManagerInvitationService {
       data: { invitation_token: token, invitation_expires_at: expiresAt },
     });
 
+    /**
+     * The email fallback links here directly. WhatsApp cannot: the approved
+     * `stayo_admin_invitation` template hard-codes its button as
+     * `https://yourstayo.com/admin/activate/{{1}}`, and editing an approved
+     * template re-triggers Meta review. The frontend therefore carries a
+     * redirect from `/admin/activate/:token` to this path — the same trick
+     * `OwnerInviteRedirect` already uses for links sent before a rename.
+     */
     const activationLink = frontendUrl(`/admin/manager-invitation/${token}`);
-    const html = `
+
+    // WhatsApp first, email as the fallback — the policy every other
+    // invitation in this codebase follows. A manager is onboarded over the
+    // phone; email is the slowest channel they have.
+    const whatsapp = manager.profile.phone
+      ? await managerNotificationService.sendInvitation({
+          phone: manager.profile.phone,
+          managerName: manager.profile.name,
+          inviterName: await this.inviterName(manager.invited_by),
+          expiryDays: INVITE_TTL_DAYS,
+          activationToken: token,
+        })
+      : { sent: false, error: "Manager has no phone number" };
+
+    // Only on failure. Sending the same single-use activation link down two
+    // channels doubles the places it can be read from, for no gain when the
+    // first one worked.
+    if (!whatsapp.sent) {
+      const html = `
       <p>Hello ${manager.profile.name},</p>
       <p>You've been added as a Manager on Stayo. Activate your account to get started:</p>
       <p><a href="${activationLink}">${activationLink}</a></p>
       <p>This link expires in ${INVITE_TTL_HOURS} hours.</p>
     `;
-    await EmailService.sendEmail(manager.profile.email, "You've been invited to Stayo as a Manager", html);
+      await EmailService.sendEmail(manager.profile.email, "You've been invited to Stayo as a Manager", html);
+    }
 
-    return { activationLink, expiresAt };
+    return {
+      activationLink,
+      expiresAt,
+      whatsapp_sent: whatsapp.sent,
+      whatsapp_error: whatsapp.error,
+      emailed: !whatsapp.sent,
+    };
+  }
+
+  /**
+   * Nudges a manager whose activation link is still live, WITHOUT minting a
+   * new one — the point of the reminder is that the link already sitting in
+   * their chat still works. Returns `sent: false` when there is nothing live
+   * to remind them about, so the caller can fall back to a fresh invitation.
+   */
+  async sendInvitationReminder(managerProfileId: string) {
+    const manager = await prisma.manager_profiles.findUnique({
+      where: { id: managerProfileId },
+      include: { profile: true },
+    });
+    if (!manager) throw new ManagerServiceError("Manager not found", "NOT_FOUND", 404);
+    if (manager.status === "ACTIVE") {
+      throw new ManagerServiceError("Manager has already activated their account", "ALREADY_ACTIVE", 409);
+    }
+
+    const token = manager.profile.invitation_token;
+    const expiresAt = manager.profile.invitation_expires_at;
+    if (!token || !expiresAt || expiresAt <= new Date()) {
+      return { sent: false, reason: "NO_LIVE_INVITATION" as const };
+    }
+    if (!manager.profile.phone) {
+      return { sent: false, reason: "NO_PHONE" as const };
+    }
+
+    const hoursRemaining = (expiresAt.getTime() - Date.now()) / (60 * 60 * 1000);
+    const result = await managerNotificationService.sendInvitationReminder({
+      phone: manager.profile.phone,
+      managerName: manager.profile.name,
+      hoursRemaining,
+      activationToken: token,
+    });
+
+    return { sent: result.sent, error: result.error, expiresAt };
+  }
+
+  /**
+   * The inviter's own name for the template's {{3}}. `invited_by` is
+   * nullable (a manager seeded by script has none), and the template must
+   * still read as a sentence, so this never returns an empty string.
+   */
+  private async inviterName(invitedBy: string | null | undefined): Promise<string> {
+    if (!invitedBy) return "the Stayo team";
+    const inviter = await prisma.profile.findUnique({
+      where: { id: invitedBy },
+      select: { name: true },
+    });
+    return inviter?.name?.trim() || "the Stayo team";
   }
 
   /** Public, token-gated: minimal context for the activation landing page. */

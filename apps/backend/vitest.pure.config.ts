@@ -283,6 +283,14 @@ export default defineConfig({
       'tests/seo-canonical-audit.test.ts',
       'tests/seo-snapshot.test.ts',
       'tests/seo-related.test.ts',
+      /**
+       * Marketplace partner listings + manager invitation delivery. The gate,
+       * the consent guard, the delivery state machine and every WhatsApp
+       * template contract are pure precisely so they can be verified here:
+       * the main suite cannot reach a database.
+       */
+      'tests/partner-templates.test.ts',
+      'tests/partner-lead-gate.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come
