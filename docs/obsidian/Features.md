@@ -1726,7 +1726,7 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 | `LISTING_LIVE` | `stayo_partner_listing_live` | MARKETING (submitted as UTILITY) |
 | `NEW_ENQUIRY` | `stayo_partner_new_enquiry` | UTILITY — the workhorse; never add promotional language, it would be recategorised and frequency-capped |
 | `ENQUIRY_LOCKED` | `stayo_partner_enquiry_locked` | MARKETING, with a `Stop promotions` quick reply |
-| `ACTIVATED` | `stayo_partner_activated` | **Not submitted.** Sends fail by design, logged by name |
+| `ACTIVATED` | `stayo_partner_activated_` | Submitted 2026-09-21, in review. **Trailing underscore is deliberate** — that is the name it was created with, and a Meta template name is fixed at creation |
 
 **Key files:** `src/services/marketing/{partner-quota,partner-consent,partner-delivery-state}.ts` (pure), `partner-lead-delivery-service.ts`, `partner-claim-service.ts`, `partner-portal-service.ts`, `partner-admin-service.ts`; `lib/services/notifications/providers/whatsapp/partner-template-contracts.ts`; `app/api/partner/**`, `app/api/platform-admin/partners/route.ts`, `app/api/platform-admin/platform-listings/[id]/partner/route.ts`; migration 091.
 
@@ -1736,7 +1736,7 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 
 **The held-enquiry fallback is built:** `partner-fallback-policy.ts` (pure) + `partner-fallback-service.ts` + `GET /api/cron/partner-lead-fallback`, daily at `0 4 * * *`. Reaches the student in-app and by email — there is no approved WhatsApp template for it.
 
-**Open:** a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); `stayo_partner_activated` submission to Meta; migration 091 application.
+**Open:** a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); migration 091 application.
 
 ## Manager invitations over WhatsApp (2026-09-21)
 

@@ -22,7 +22,10 @@ describe("partner template registry", () => {
     expect(PARTNER_TEMPLATES.LISTING_LIVE.defaultName).toBe("stayo_partner_listing_live");
     expect(PARTNER_TEMPLATES.NEW_ENQUIRY.defaultName).toBe("stayo_partner_new_enquiry");
     expect(PARTNER_TEMPLATES.ENQUIRY_LOCKED.defaultName).toBe("stayo_partner_enquiry_locked");
-    expect(PARTNER_TEMPLATES.ACTIVATED.defaultName).toBe("stayo_partner_activated");
+    // Trailing underscore, deliberately: that is the name the template was
+    // created with in Meta, and a name is fixed at creation. Dropping it
+    // would fail every send with error 132001.
+    expect(PARTNER_TEMPLATES.ACTIVATED.defaultName).toBe("stayo_partner_activated_");
   });
 
   // All four were submitted under plain English, not en_IN. A template is
@@ -46,9 +49,10 @@ describe("partner template registry", () => {
     expect(PARTNER_TEMPLATES.ENQUIRY_LOCKED.category).toBe("MARKETING");
   });
 
-  it("knows that the post-claim template is not approved yet", () => {
-    expect(isPartnerTemplateApproved("NEW_ENQUIRY")).toBe(true);
-    expect(isPartnerTemplateApproved("ACTIVATED")).toBe(false);
+  it("treats every submitted template as sendable", () => {
+    for (const key of ["NEW_ENQUIRY", "LISTING_LIVE", "ENQUIRY_LOCKED", "ACTIVATED"] as const) {
+      expect(isPartnerTemplateApproved(key)).toBe(true);
+    }
   });
 
   it("lets an env var override a template name without a redeploy", () => {

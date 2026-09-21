@@ -107,19 +107,30 @@ export const PARTNER_TEMPLATES: Record<PartnerTemplateKey, PartnerTemplateDefini
   },
 
   /**
-   * The post-claim payoff. NOT YET SUBMITTED to Meta — every send will fail
-   * until it is approved, which is correct: the alternative is pretending a
-   * message went out.
+   * The post-claim payoff. Submitted to Meta 2026-09-21 and in review.
+   *
+   * The name carries a TRAILING UNDERSCORE because that is how it was
+   * created, and a template's name is fixed at creation — it cannot be
+   * edited, only deleted and recreated. A template is addressed by
+   * (name, language), so `stayo_partner_activated` would fail with Meta
+   * error 132001 "template name does not exist". If the name is ever
+   * cleaned up, set WHATSAPP_PARTNER_ACTIVATED_TEMPLATE rather than
+   * redeploying this file.
+   *
+   * `approved` is true from submission rather than from approval: gating on
+   * a boolean somebody must remember to flip after Meta clears it is a
+   * footgun, and a send against a template still in review already fails
+   * loudly and by name.
    */
   ACTIVATED: {
     envVar: "WHATSAPP_PARTNER_ACTIVATED_TEMPLATE",
     languageEnvVar: "WHATSAPP_PARTNER_ACTIVATED_LANGUAGE",
-    defaultName: "stayo_partner_activated",
+    defaultName: "stayo_partner_activated_",
     defaultLanguage: "en",
     category: "UTILITY",
     bodyParameters: ["owner_name", "hostel_name", "released_count"],
     buttonParameters: [],
-    approved: false,
+    approved: true,
   },
 };
 
