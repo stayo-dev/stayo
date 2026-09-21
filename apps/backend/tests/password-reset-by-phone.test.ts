@@ -3,7 +3,8 @@ import bcrypt from "bcryptjs";
 import { v4 as uuidv4 } from "uuid";
 import { prisma } from "@/lib/db";
 import { authService } from "@/lib/services/auth-service";
-import { verifyResetToken, verifyPassword } from "@/lib/auth";
+import { verifyResetToken } from "@/lib/auth";
+import { setClerkBackendForTests, type ClerkBackend } from "@/lib/auth/clerk-backend";
 import { PASSWORD_RESET_OTP_PURPOSE } from "@/lib/services/auth/password-reset-purpose";
 
 /**
@@ -33,6 +34,24 @@ vi.mock("@/lib/services/notification-service", () => ({
   },
 }));
 
+/**
+ * Clerk is the credential store (ADR-204). A real Clerk instance is not
+ * something a test should write passwords into, so the Backend API is faked
+ * and the assertion is on what reached it — plus the database side (the
+ * legacy hash nulled, `users` linked by profile id).
+ */
+const clerkWrites: Array<{ call: string; args: unknown[] }> = [];
+const fakeClerk = {
+  users: {
+    createUser: async (...args: unknown[]) => { clerkWrites.push({ call: "createUser", args }); return { id: "user_phone_reset" }; },
+    updateUser: async (...args: unknown[]) => { clerkWrites.push({ call: "updateUser", args }); return { id: "user_phone_reset" }; },
+    verifyPassword: async () => ({ verified: true as const }),
+    getUserList: async () => ({ data: [] }),
+  },
+  sessions: { getSessionList: async () => ({ data: [] }), revokeSession: async () => ({}) },
+  signInTokens: { createSignInToken: async () => ({ token: "t" }) },
+} as unknown as ClerkBackend;
+
 const PHONE = "919000000042";
 const OLD_PASSWORD = "OldPassword123!";
 const NEW_PASSWORD = "BrandNewPassword456!";
@@ -55,6 +74,7 @@ async function seedOtp(code: string, overrides: Record<string, unknown> = {}) {
 }
 
 beforeAll(async () => {
+  setClerkBackendForTests(fakeClerk);
   profileId = uuidv4();
   await prisma.profile.create({
     data: {
@@ -70,7 +90,9 @@ beforeAll(async () => {
 });
 
 afterAll(async () => {
+  setClerkBackendForTests(null);
   await (prisma as any).phoneVerificationOtp.deleteMany({ where: { phone: PHONE } });
+  await (prisma as any).users.deleteMany({ where: { profile_id: profileId } });
   await prisma.profile.deleteMany({ where: { id: profileId } });
 });
 
@@ -127,8 +149,14 @@ describe("password reset by phone", () => {
       select: { password_hash: true, password_reset_at: true },
     });
 
-    expect(await verifyPassword(NEW_PASSWORD, profile!.password_hash!)).toBe(true);
-    expect(await verifyPassword(OLD_PASSWORD, profile!.password_hash!)).toBe(false);
+    // The new password went to Clerk, for this profile, and nowhere else.
+    const write = clerkWrites.find((w) => w.call === "createUser" || w.call === "updateUser");
+    expect(JSON.stringify(write?.args)).toContain(NEW_PASSWORD);
+    expect(JSON.stringify(write?.args)).toContain(profileId);
+    // No second password store: the old bcrypt hash is gone, so the old
+    // password is not accepted anywhere.
+    expect(profile!.password_hash).toBeNull();
+    expect(await (prisma as any).users.findUnique({ where: { profile_id: profileId } })).not.toBeNull();
     expect(profile!.password_reset_at).not.toBeNull();
   });
 

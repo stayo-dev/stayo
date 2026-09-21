@@ -76,6 +76,6 @@ export const hostelLeadsApi = {
     data: { email?: string; password: string; confirm_password: string },
   ) => {
     const response = await api.post('/auth/owner-signup', { lead_token: token, ...data });
-    return response.data as { success: boolean; access_token: string; refresh_token: string };
+    return response.data as { success: boolean; sign_in_ticket?: string | null; access_token?: string | null; refresh_token?: string | null };
   },
 };

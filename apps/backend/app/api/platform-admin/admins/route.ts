@@ -2,7 +2,8 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextRequest } from "next/server";
-import { getSession, apiResponse, apiError, hashPassword } from "@/lib/auth";
+import { getSession, apiResponse, apiError } from "@/lib/auth";
+import { credentialService } from "@/src/services/auth/credential-service";
 import { prisma } from "@/lib/db";
 import { PlatformAdminTitle } from "@prisma/client";
 import crypto from "crypto";
@@ -52,20 +53,28 @@ export async function POST(req: NextRequest) {
     const existing = await prisma.profile.findUnique({ where: { email: email.trim() } });
     if (existing) return apiError("A profile with this email already exists", "VALIDATION_ERROR", 409);
 
-    const tempPassword = crypto.randomBytes(6).toString("base64url");
-    const passwordHash = await hashPassword(tempPassword);
+    // 12 random bytes → 16 url-safe characters: long enough for Clerk's
+    // password rules, and still something an admin can read out once.
+    const tempPassword = crypto.randomBytes(12).toString("base64url");
 
     const profile = await prisma.profile.create({
       data: {
         id: crypto.randomUUID(),
-        email: email.trim(),
+        email: email.trim().toLowerCase(),
         name: name.trim(),
-        password_hash: passwordHash,
         role: "ADMIN",
         is_profile_completed: true,
         password_reset_required: true,
       },
     });
+    // The credential is Clerk's (ADR-204); there is no local hash. If Clerk
+    // refuses, the profile is removed so no admin exists without a sign-in.
+    try {
+      await credentialService.ensureLogin(profile, { kind: "new", password: tempPassword });
+    } catch (clerkError) {
+      await prisma.profile.delete({ where: { id: profile.id } }).catch(() => undefined);
+      throw clerkError;
+    }
     const admin = await prisma.platform_admins.create({
       data: { profile_id: profile.id, title: (title as PlatformAdminTitle) ?? "SALES" },
     });

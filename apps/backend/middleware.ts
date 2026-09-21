@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { requiresSessionDespitePublicPrefix, allowsOptionalIdentity } from "@/lib/auth/public-route-exceptions";
 import { verifyToken } from "./lib/auth-edge";
 import { verifySupabaseAccessToken } from "./lib/auth/supabase-jwt-edge";
+import { peekIssuer, verifyClerkAccessToken } from "./lib/auth/clerk-jwt-edge";
+import { supabaseIssuer } from "./lib/config/supabase-auth-config";
 import { getCorsAllowOrigin } from "./lib/config/domains";
 import { checkSessionRevocationEdge, checkIdleTimeoutEdge, touchSessionActivityEdge } from "./lib/redis/session-revocation-edge";
 
@@ -66,22 +68,6 @@ const PUBLIC_ROUTES = [
   "/api/verify",
 ];
 
-/**
- * Routes that may carry a **Clerk** bearer token instead of a Supabase one
- * (ADR-176 Phase 3, minimal dual session authority).
- *
- * Middleware verifies Supabase (and legacy) tokens only; a Clerk session JWT
- * fails both and would be rejected here, before the route ever sees it. Rather
- * than teach the edge runtime a third verifier, these few paths fall through
- * as anonymous when verification fails, and the route does its own Clerk
- * verification with `verifyClerkSession()`.
- *
- * Deliberately tiny and exact-matched. Falling through means "no identity
- * headers", so a route on this list MUST authenticate the caller itself —
- * every other path keeps 401-ing on an unverifiable token exactly as before.
- */
-const CLERK_BEARER_ROUTES = new Set(["/api/auth/me"]);
-
 const PUBLIC_CSRF_ROUTES = [
   // `/api/auth/forgot-password` prefix-matches its `/phone` child too.
   "/api/auth/forgot-password",
@@ -145,7 +131,7 @@ function getCorsHeaders(req: NextRequest) {
     "Access-Control-Allow-Credentials": "true",
     "Access-Control-Allow-Origin": origin,
     "Access-Control-Allow-Methods": "GET,DELETE,PATCH,POST,PUT,OPTIONS",
-    "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization",
+    "Access-Control-Allow-Headers": "X-CSRF-Token, X-Requested-With, Accept, Accept-Version, Content-Length, Content-MD5, Content-Type, Date, X-Api-Version, Authorization, X-Auth-Capabilities",
     "Access-Control-Expose-Headers": "X-CSRF-Token",
     "Vary": "Origin",
   };
@@ -234,19 +220,37 @@ export async function middleware(req: NextRequest) {
     );
   }
 
-  // 4. Verify Token — Supabase Auth (ADR-031) first, legacy HS256 as a
-  //    dual-accept fallback so in-flight sessions issued before the
-  //    migration cutover keep working until they naturally expire.
+  // 4. Verify Token. Clerk is the session authority (ADR-204). Supabase and
+  //    legacy HS256 tokens are still verified, for the transition only:
+  //    `getSession()` refuses either one for a profile that has moved onto
+  //    Clerk, and both verifiers are deleted in Phase 4.
   const requestHeaders = new Headers(req.headers);
   stripIdentityHeaders(requestHeaders);
 
   let sid: string | null = null;
   let revocationSubject: string | null = null;
   let revocationIat: number | undefined;
-  let authMode: "supabase" | "legacy";
+  let authMode: "clerk" | "supabase" | "legacy";
 
-  const supabaseClaims = await verifySupabaseAccessToken(token);
-  if (supabaseClaims) {
+  const issuer = peekIssuer(token);
+  const expectedSupabaseIssuer = supabaseIssuer(process.env.SUPABASE_URL);
+  const looksSupabase = Boolean(issuer && expectedSupabaseIssuer && issuer === expectedSupabaseIssuer);
+
+  const clerkClaims = !looksSupabase && issuer ? await verifyClerkAccessToken(token) : null;
+  const supabaseClaims = clerkClaims ? null : await verifySupabaseAccessToken(token);
+  if (clerkClaims) {
+    authMode = "clerk";
+    requestHeaders.set("x-auth-mode", "clerk");
+    requestHeaders.set("x-auth-user-id", clerkClaims.sub);
+    requestHeaders.set("x-auth-session-id", clerkClaims.sid);
+    requestHeaders.set("x-auth-provider", "clerk");
+    if (clerkClaims.iat) requestHeaders.set("x-auth-issued-at", String(clerkClaims.iat));
+    sid = clerkClaims.sid;
+    // Deny-list subject = the Clerk user id — exactly what credential-service
+    // writes when it revokes everything after a password reset or change.
+    revocationSubject = clerkClaims.sub;
+    revocationIat = clerkClaims.iat;
+  } else if (supabaseClaims) {
     authMode = "supabase";
     requestHeaders.set("x-auth-mode", "supabase");
     requestHeaders.set("x-auth-user-id", supabaseClaims.sub);
@@ -267,10 +271,6 @@ export async function middleware(req: NextRequest) {
     const legacyPayload = await verifyToken(token);
     if (!legacyPayload) {
       if (identityOptional) return asAnonymous();
-      // Neither Supabase nor legacy recognised it. On the Clerk-bearer routes
-      // that is an expected case, not an attack: hand the request on with no
-      // identity headers and let the route verify it as a Clerk token.
-      if (CLERK_BEARER_ROUTES.has(pathname)) return asAnonymous();
       return NextResponse.json(
         { error: { message: "Invalid session", code: "UNAUTHORIZED" } },
         { status: 401, headers: corsHeaders }
@@ -306,10 +306,10 @@ export async function middleware(req: NextRequest) {
     });
   }
 
-  // Supabase tokens are stateless and know nothing about this app's
-  // 30-minute idle-timeout rule (the legacy path enforces it Node-side via
+  // Clerk and Supabase tokens are stateless and know nothing about this
+  // app's idle-timeout rule (the legacy path enforces it Node-side via
   // sessionLifecycleService.touchSession(), unaffected by this addition).
-  if (authMode === "supabase") {
+  if (authMode === "clerk" || authMode === "supabase") {
     try {
       const idle = await checkIdleTimeoutEdge(sid);
       if (!idle.ok) {

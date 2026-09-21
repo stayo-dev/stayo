@@ -15,9 +15,6 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from "vitest";
-import fs from "fs";
-import path from "path";
-import { fileURLToPath } from "url";
 
 const prisma = vi.hoisted(() => ({
   profile: { findUnique: vi.fn(), create: vi.fn(), update: vi.fn(), upsert: vi.fn() },
@@ -29,9 +26,7 @@ vi.mock("@/lib/logger", () => ({
 }));
 
 import { ensureUserForClerkSession } from "@/src/services/auth/clerk-user-sync-service";
-
-const root = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
-const ROUTE = fs.readFileSync(path.join(root, "app/api/auth/me/route.ts"), "utf8");
+import { resolveClerkSession } from "@/lib/auth/clerk-session-resolver";
 
 /** A `users` row already linked to a profile with the given role. */
 const linked = (role: string) => ({
@@ -109,9 +104,12 @@ describe("people we do not know are refused, whatever they signed in with", () =
     expect(prisma.profile.upsert).not.toHaveBeenCalled();
   });
 
-  it("the route turns an unlinked identity into NO_STAYO_ACCOUNT", async () => {
-    // The snapshot above is identity only; refusal is the route's job.
-    expect(ROUTE).toMatch(/if \(!snapshot\.profileId\)[\s\S]{0,200}NO_STAYO_ACCOUNT/);
+  it("the session resolver turns an unlinked identity into NO_STAYO_ACCOUNT", async () => {
+    // The snapshot above is identity only; refusal is the resolver's job, and
+    // it happens on every route now that getSession() resolves Clerk (ADR-204).
+    prisma.users.findUnique.mockResolvedValue({ is_active: true, profile_id: null });
+    const result = await resolveClerkSession({ clerkUserId: "user_2new", sessionId: "sess_1" });
+    expect(result).toMatchObject({ ok: false, code: "NO_STAYO_ACCOUNT" });
   });
 
   it("creates only a `users` row — identity, never authority", async () => {
@@ -122,21 +120,22 @@ describe("people we do not know are refused, whatever they signed in with", () =
   });
 });
 
-describe("webhook email-linking still works for pre-existing invited people", () => {
-  it("links to a profile the owner already created, and reads its role", async () => {
-    // The invitation created the `profiles` row before they ever signed in;
-    // linking to it is not provisioning.
+describe("a sign-in is never matched to a profile by email (ADR-204)", () => {
+  it("does not link an invited person's profile just because the email matches", async () => {
+    // The invitation created the `profiles` row before they ever signed in.
+    // Their Clerk login is linked by id when our backend provisions it (with
+    // externalId = profiles.id) — never by comparing addresses here.
     prisma.users.findUnique.mockResolvedValue(null);
-    prisma.profile.findUnique.mockResolvedValue({ id: "profile-1", login: null });
-    prisma.users.create.mockResolvedValue(linked("TENANT"));
+    prisma.profile.findUnique.mockResolvedValue({ id: "profile-1", email: "invited@example.com", login: null });
 
     const snapshot = await ensureUserForClerkSession({
       clerkUserId: "user_2abc",
       email: "invited@example.com",
     });
 
-    expect(prisma.users.create.mock.calls[0][0].data.profile_id).toBe("profile-1");
-    expect(snapshot.role).toBe("TENANT");
+    expect(prisma.profile.findUnique).not.toHaveBeenCalled();
+    expect(prisma.users.create.mock.calls[0][0].data.profile_id).toBeNull();
+    expect(snapshot.profileLinked).toBe(false);
     expect(prisma.profile.create).not.toHaveBeenCalled();
   });
 });

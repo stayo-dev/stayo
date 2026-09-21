@@ -1,3 +1,4 @@
+import { orderPhotoSections } from "@/src/services/marketing/marketing-content";
 import { parseNavigation } from "./hostel-navigation";
 import { summariseSpace } from "./room-space";
 // The pure helper, not the service: that would pull `@/lib/db` into this graph.
@@ -162,6 +163,11 @@ export function projectListing({ detail, visible, marketing, hostProfile = null,
        * clip they cannot display.
        */
       media: listingMedia(marketing, detail.hostel.photos ?? []),
+      /**
+       * The order the photo tour groups those sections in. Always complete,
+       * so the client never has to know the standard order to fall back to.
+       */
+      photo_sections: orderPhotoSections(marketing?.photoSections),
     },
 
     /**

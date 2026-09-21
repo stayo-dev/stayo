@@ -5,7 +5,8 @@ import { NextRequest, NextResponse } from "next/server";
 import { apiResponse, apiError } from "@/lib/auth";
 import { authService } from "@/lib/services/auth-service";
 import { rateLimitService } from "@/lib/services/rate-limit-service";
-import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { clientAcceptsClerkTicket, setLegacySessionCookies } from "@/lib/auth/session-capabilities";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { z } from "zod";
 
@@ -61,6 +62,7 @@ export async function POST(req: NextRequest) {
       const loginResult = await authService.loginWithPhone(phone, password, {
         ipAddress,
         userAgent,
+        acceptsClerkTicket: clientAcceptsClerkTicket(req),
       });
 
       await rateLimitService.recordAttempt(
@@ -76,13 +78,7 @@ export async function POST(req: NextRequest) {
       // app/api/auth/login/route.ts.
       const response = NextResponse.json(loginResult, { status: 200 });
 
-      response.cookies.set("hms_session", loginResult.access_token, {
-        ...getSessionCookieOptions(ACCESS_TOKEN_MAX_AGE_SECONDS),
-      });
-
-      response.cookies.set("hms_refresh_token", loginResult.refresh_token, {
-        ...getSessionCookieOptions(60 * 60 * 24 * TENANT_REFRESH_DAYS),
-      });
+      setLegacySessionCookies(response, loginResult);
       setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
 
       return response;

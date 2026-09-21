@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { Eye, EyeOff, ShieldCheck } from 'lucide-react';
 import { authService } from '@features/auth/api';
+import { useAuth } from '@context/AuthContext';
 import { MoreScreenHeader } from '../components/MoreScreenHeader';
 import { SaveBar } from '../components/SaveBar';
 import { describePasswordStrength, checkPasswordChange } from '../account/passwordChange';
@@ -44,6 +45,7 @@ export function MorePasswordPage() {
   const [done, setDone] = useState(false);
 
   const strength = describePasswordStrength(next);
+  const { logout } = useAuth();
 
   const change = useMutation({
     mutationFn: () => authService.changePassword(current, next),
@@ -52,6 +54,10 @@ export function MorePasswordPage() {
       setNext('');
       setConfirm('');
       setDone(true);
+      // A password change revokes every session, this one included (ADR-204):
+      // the next request would 401. Say so, then sign out cleanly rather than
+      // letting the owner hit a "session ended" error on their next tap.
+      window.setTimeout(() => void logout(), 1800);
     },
     onError: (err: any) =>
       setError(
@@ -147,7 +153,7 @@ export function MorePasswordPage() {
         {done && (
           <p className="flex items-center gap-2 rounded-xl bg-[#E6F0E8] px-3.5 py-2.5 text-[12.5px] font-medium text-[#3F7D58]">
             <ShieldCheck className="h-4 w-4 flex-none" strokeWidth={2} />
-            Password changed. Use the new one next time you sign in.
+            Password changed. You've been signed out on every device — sign in with the new one.
           </p>
         )}
       </section>

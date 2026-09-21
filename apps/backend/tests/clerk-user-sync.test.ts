@@ -158,6 +158,8 @@ describe("isStaleDelivery", () => {
 
 // ── user.created ────────────────────────────────────────────────────────────
 
+const PROFILE_UUID = "5b1d7c3e-2f4a-4c1b-9d8e-0a1b2c3d4e5f";
+
 describe("handleUserCreated", () => {
   it("creates the login row keyed by clerk_user_id", async () => {
     await handleUserCreated(clerkUser());
@@ -178,15 +180,32 @@ describe("handleUserCreated", () => {
     expect(prisma.users.create).not.toHaveBeenCalled();
   });
 
-  it("links to an existing profile matched by email", async () => {
-    prisma.profile.findUnique.mockResolvedValue({ id: "profile-1", login: null });
+  it("links by external_id — the profile id our own backend gave the Clerk user", async () => {
+    prisma.profile.findUnique.mockResolvedValue({ id: PROFILE_UUID, login: null });
+
+    await handleUserCreated(clerkUser({ external_id: PROFILE_UUID }));
+
+    expect(prisma.profile.findUnique).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: PROFILE_UUID } }),
+    );
+    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBe(PROFILE_UUID);
+  });
+
+  it("never links by email, even when a profile has exactly that address (ADR-204)", async () => {
+    // The mock would hand back a profile for ANY lookup — so the only way the
+    // row stays unlinked is that no lookup happens at all.
+    prisma.profile.findUnique.mockResolvedValue({ id: PROFILE_UUID, email: "ada@example.com", login: null });
 
     await handleUserCreated(clerkUser());
 
-    expect(prisma.profile.findUnique).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { email: "ada@example.com" } }),
-    );
-    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBe("profile-1");
+    expect(prisma.profile.findUnique).not.toHaveBeenCalled();
+    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBeNull();
+  });
+
+  it("ignores an external_id that is not one of our profile ids", async () => {
+    await handleUserCreated(clerkUser({ external_id: "legacy-system-42" }));
+    expect(prisma.profile.findUnique).not.toHaveBeenCalled();
+    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBeNull();
   });
 
   it("never creates a profile when none matches — no auto-provisioning", async () => {
@@ -200,27 +219,27 @@ describe("handleUserCreated", () => {
   it("refuses to steal a profile already bound to another Clerk account", async () => {
     // profile_id is unique; claiming it would throw and Svix would retry forever.
     prisma.profile.findUnique.mockResolvedValue({
-      id: "profile-1",
+      id: PROFILE_UUID,
       login: { clerk_user_id: "user_someone_else" },
     });
 
-    await handleUserCreated(clerkUser());
+    await handleUserCreated(clerkUser({ external_id: PROFILE_UUID }));
 
     expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBeNull();
   });
 
   it("re-links the same account to its own profile without treating it as a conflict", async () => {
     prisma.profile.findUnique.mockResolvedValue({
-      id: "profile-1",
+      id: PROFILE_UUID,
       login: { clerk_user_id: "user_2abc" },
     });
 
-    await handleUserCreated(clerkUser());
+    await handleUserCreated(clerkUser({ external_id: PROFILE_UUID }));
 
-    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBe("profile-1");
+    expect(prisma.users.upsert.mock.calls[0][0].create.profile_id).toBe(PROFILE_UUID);
   });
 
-  it("does not look up a profile for an account with no email", async () => {
+  it("does not look up a profile for an account with no external_id", async () => {
     await handleUserCreated(clerkUser({ email_addresses: [] }));
     expect(prisma.profile.findUnique).not.toHaveBeenCalled();
   });

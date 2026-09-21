@@ -318,7 +318,7 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 
 **Google sign-in** is available to **every** role — owner, tenant, admin. Two rules survive that change and are load-bearing:
 
-1. **It never creates an account — on the plain login path.** `resolveSupabaseSession()` still matches only an existing `profiles` row, by `auth_user_id` or by verified email, and rejects an unknown email with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship.
+1. **It never creates an account — on the plain login path.** `resolveSupabaseSession()` still matches only an existing `profiles` row, by `auth_user_id` or by verified email, and rejects an unknown email with `NO_STAYO_ACCOUNT`, whatever the role. Tenancy remains an owner-initiated relationship. *(2026-09-15, [[Decisions#ADR-204|ADR-204]]: on the Clerk path there is no email match at all — a Google sign-in resolves only if its Clerk user is linked by id, which happens when our backend created that Clerk user with the profile's email and Clerk attached the Google account to it.)*
 2. **It cannot skip activation.** A TENANT whose live tenancy is `INVITED` is rejected with `TENANCY_NOT_ACTIVATED` — the same gate `authService.login()` applies. Previously the blanket tenant block enforced this by accident; now it is explicit.
 
 **Amendment, 2026-08-16 ([[Decisions#ADR-078|ADR-078]]):** rule 1 gained one narrow, explicit exception for **tenants only**, not a relaxation of the rule itself. `POST /api/auth/google/provision` — a separate endpoint, calling a separate function (`provisionMarketplaceTenantFromSupabase()`), never invoked from the login path — may create a new `role: TENANT` marketplace profile (no `tenants` row) when Google has verified the email and no `profiles` row exists for it at all. `resolveSupabaseSession()` itself is unmodified and still enforces rule 1 exactly as before for every other caller, including this same person's *next* login. Owners and admins can never be created this way — nothing calls the provisioning endpoint for `mode="owner"`. See [[Decisions#ADR-078|ADR-078]] for the full design and the invariant test that pins this.
@@ -330,7 +330,15 @@ Changed by [[Decisions#ADR-054|ADR-054]] and [[Decisions#ADR-055|ADR-055]].
 | Email | Possession of the account's inbox | 1 hour | Resend link to `/reset-password` |
 | Phone | A 6-digit WhatsApp OTP | **5 minutes** | Token returned in the API response |
 
-The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so revocation of all other sessions, the one-time-use lock and Supabase identity sync happen once, in one place.
+The phone token is short because, unlike an emailed link, it is handed straight to the browser. Both channels submit to `POST /api/auth/reset-password`, so the one-time-use lock, the credential write and session revocation happen once, in one place.
+
+**Since [[Decisions#ADR-204|ADR-204]] (2026-09-15) the credential and the sessions are Clerk's, and the rules are:**
+
+1. **A password is set in exactly one place: Clerk.** Reset, change, the onboarding first password, tenant activation and signup all go through `credentialService.setPassword` / `ensureLogin`. No code writes `profiles.password_hash`.
+2. **Every password write signs the person out everywhere** — every Clerk session revoked, tokens already minted deny-listed, pre-Clerk sessions refused. **Change password includes the device it was done on**; the person signs in again with the new password.
+3. **A write that did not reach Clerk is a failure, never a success.** The user sees an error and can retry; the reset link is spent either way.
+4. **The proof of ownership is ours** (the emailed link, the WhatsApp code) because it has to reach phone-only tenants whose email is a placeholder. Clerk's own password rules still apply: a breached or too-weak password is refused with Clerk's explanation.
+5. **Identity is never inferred from an email.** A sign-in resolves to a profile only through `users.profile_id`, which our backend writes by id. A signup whose email Clerk already holds (e.g. from someone's Google sign-in) is refused, not merged.
 
 Rules that must not be relaxed:
 
@@ -785,6 +793,19 @@ See [[Decisions#ADR-077|ADR-077]]. Stayo stores a weekly menu twice, on purpose,
 - **The week is always exactly 7 rows.** Padded on the read path, because both the owner's day chips and Discovery's day chips index it positionally — a revision saved before this block existed must not make Tuesday read `undefined`.
 - **`provided` defaults to false.** An unstated claim is false: silence renders as "Meals not provided", never as "meals included".
 - **The reviewer sees the whole week** before approving. Approving a menu you cannot read is not approval.
+
+## The listing's photo tour — what groups it, and who decides the order (2026-08-20, order owner-arranged 2026-09-20)
+
+See [[Decisions#ADR-228|ADR-228]]. A listing's photos are grouped into a tour by the part of the hostel each shows, and the rules live in `photoCategories.ts` (frontend) and `photo-tour.ts` / `marketing-content.ts` (backend), mirrored rather than shared because the two apps are separate builds.
+
+- **Seven sections, fixed** — Rooms, Bathrooms, Mess & kitchen, Common areas, Study & work, Building & outside, More photos. A closed set rather than free text: four owners typing "Room", "rooms", "Bedroom" and "4-sharing" would be four sections of one photo each, and search stops being comparable.
+- **An uncategorised photo lands in "More photos", never nowhere.** Everything uploaded before categories existed has no category, and none of it may disappear from a grouped view.
+- **An empty section never renders** — on the listing, and therefore not in the owner's order strip either.
+- **The order is the owner's** (2026-09-20). Stored on the revision as `content.photoSections`, arranged in the Photos screen, and **reviewed like every other listing claim** — reordering a live listing sends it back for re-review. Stayo's standard order (rooms first, because that is what someone is deciding about) is the default for anyone who never touches it.
+- **A stored order is always completed before use.** Unknown keys dropped, repeats counted once, unplaced sections appended in standard position. Both the owner's strip and the public tour index this list, so a key missing from it would silently drop a whole section of photos off the listing.
+- **Two orders, two jobs.** The flat photo order (the ‹ › buttons on each tile) decides the listing hero and the order *within* a section; the section order decides the tour. Neither redefines the other.
+- **A video travels with the photos of the same place**, never into a section of its own, and a section's thumbnail prefers a still — a video cannot be one.
+- **The full-screen viewer walks the tour's own order**, so "next" from the last room photo is the first photo of whatever section the owner put next.
 
 ## Resident reviews — the category set, and what "overall" means (2026-08-19, extended 2026-08-25, 2026-08-26)
 

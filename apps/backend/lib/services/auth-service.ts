@@ -1,15 +1,19 @@
-import { prisma, supabase } from "../db";
-import { verifyPassword, hashPassword, generateResetToken, verifyResetToken } from "../auth";
+import { randomUUID } from "crypto";
+import { prisma } from "../db";
+import { generateResetToken, verifyResetToken } from "../auth";
 import { EmailService, getEffectiveEmailFrom } from "./email-service";
 import { describeEmailDeliveryConfig } from "./email-delivery";
 import { emailButton, emailLinkFallback, emailNote, emailShell } from "./email-theme";
 import { createHash } from "crypto";
 import { frontendUrl } from "../config/domains";
-import { sessionLifecycleService } from "./session-lifecycle-service";
 import { eventLog } from "./event-log-service";
 import { setOneTimeLock } from "@/lib/redis/rate-limit";
 import { redisKeys } from "@/lib/redis/keys";
+// Legacy session minting for a browser that cannot yet redeem a Clerk ticket,
+// and only for a profile not yet moved onto Clerk. Removed in Phase 4 — see
+// docs/design/2026-09-15-clerk-only-auth.md.
 import { ensureSupabaseIdentity, signInWithSupabasePassword } from "../auth/supabase-identity";
+import { credentialService } from "@/src/services/auth/credential-service";
 import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 import { authOtpService, profilePhoneCandidates } from "./auth/auth-otp-service";
 import { normalizeWhatsAppPhone } from "./notifications/providers/whatsapp/meta-provider";
@@ -18,6 +22,15 @@ import { PASSWORD_RESET_OTP_PURPOSE } from "./auth/password-reset-purpose";
 type AuthSessionMeta = {
   ipAddress?: string | null;
   userAgent?: string | null;
+  /**
+   * The browser can redeem a Clerk sign-in ticket (it sent
+   * `X-Auth-Capabilities: clerk-ticket`, see lib/auth/session-capabilities.ts).
+   * When true every successful sign-in ends in a Clerk session. When false the
+   * caller is a pre-Clerk build of the SPA, served only for the length of a
+   * deploy window: it keeps the legacy session if the profile has not moved,
+   * and is told to reload if it has.
+   */
+  acceptsClerkTicket?: boolean;
 };
 
 type CompletePasswordResetInput = {
@@ -68,26 +81,15 @@ function tokenFingerprint(value: string) {
 }
 
 export class AuthService {
-  private async verifyOrMigrateLegacyPassword(profile: { id: string; password_hash: string | null }, inputPassword: string) {
-    const stored = profile.password_hash;
-    if (!stored) return false;
-
-    try {
-      return await verifyPassword(inputPassword, stored);
-    } catch {
-      // Preserve compatibility with legacy bad rows where a plain-text password
-      // or malformed hash was stored by older backend code.
-      if (stored === inputPassword) {
-        const newHash = await hashPassword(inputPassword);
-        await prisma.profile.update({
-          where: { id: profile.id },
-          data: { password_hash: newHash },
-        });
-        return true;
-      }
-
-      return false;
-    }
+  /**
+   * Clerk checks the password for any profile that has moved onto it; a
+   * profile still waiting to move is checked against its legacy hash. Which
+   * one answered is recorded on the profile object so `createSessionAndTokens`
+   * knows whether this sign-in is the one that carries the password across.
+   */
+  private async checkPassword(profile: any, candidate: string): Promise<boolean> {
+    const result = await credentialService.verifyPassword(profile, candidate);
+    return result.ok;
   }
 
   async login(emailOrPhone: string, password: string, meta: AuthSessionMeta = {}) {
@@ -119,7 +121,7 @@ export class AuthService {
     if (!profile) throw new Error("UNAUTHORIZED: Invalid email, phone, or password");
     if (!profile.is_active) throw new Error("FORBIDDEN: Account is disabled");
 
-    const isValid = await this.verifyOrMigrateLegacyPassword(profile, password);
+    const isValid = await this.checkPassword(profile, password);
     if (!isValid) throw new Error("UNAUTHORIZED: Invalid email, phone, or password");
 
     if (profile.password_reset_required) {
@@ -153,13 +155,19 @@ export class AuthService {
   }
 
   /**
-   * The single session-minting chokepoint (ADR-031) — every login path
-   * (password, phone, owner-signup, tenant-activation auto-login) funnels
-   * through here. `plaintextPassword` is required: it's what lets this
-   * function silently provision-or-link the caller's Supabase identity
-   * (`ensureSupabaseIdentity`) before minting a real Supabase session via
-   * `signInWithPassword` — the plaintext never persists anywhere beyond
-   * this call.
+   * The single session-minting chokepoint — every login path (password,
+   * phone, owner-signup, tenant-signup, tenant-activation auto-login) funnels
+   * through here, *after* the caller has proved the password.
+   *
+   * The session is Clerk's (ADR-204). This returns a single-use sign-in
+   * ticket that the browser redeems with Clerk; Clerk then owns the session
+   * and its refresh. A profile not yet on Clerk is moved onto it here, the
+   * just-proved password carried across (`migrateOnSignIn`), so the whole
+   * user base converges on Clerk one sign-in at a time with no forced reset.
+   *
+   * The Supabase branch at the bottom exists only for a pre-Clerk SPA build
+   * still open in someone's tab during the deploy window, and only for a
+   * profile that has not moved. It is removed in Phase 4.
    */
   async createSessionAndTokens(
     profile: any,
@@ -184,6 +192,46 @@ export class AuthService {
       throw new Error("UNAUTHORIZED: Invalid OWNER: missing owner_id");
     }
 
+    const identity = {
+      role: profile.role,
+      name: profile.name,
+      user_id: profile.id,
+      owner_id: effectiveOwnerId || null,
+      tenant_id: tenantId,
+      is_profile_completed: tenantId ? tenantProfileCompleted : profile.is_profile_completed,
+      tenant_status: tenantStatus,
+    };
+
+    const login = await credentialService.findLogin(profile.id);
+    if (login && !login.isActive) throw new Error("FORBIDDEN: Account is disabled");
+
+    if (meta.acceptsClerkTicket) {
+      let clerkUserId = login?.clerkUserId;
+      if (!clerkUserId) {
+        if (!plaintextPassword) {
+          throw new Error("INTERNAL: a profile not yet on Clerk can only be moved with the password it just proved");
+        }
+        clerkUserId = await credentialService.migrateOnSignIn(profile, plaintextPassword);
+      }
+      const ticket = await credentialService.issueSignInTicket(clerkUserId);
+      return {
+        session_type: "clerk_ticket" as const,
+        sign_in_ticket: ticket,
+        token_type: "clerk_ticket",
+        access_token: null,
+        refresh_token: null,
+        expires_in: null,
+        ...identity,
+      };
+    }
+
+    // ── Legacy: a pre-Clerk SPA build. Removed in Phase 4. ──────────────────
+    // A profile that has moved onto Clerk has no Supabase credential this app
+    // will honour any more (getSession refuses it), so minting one would only
+    // produce a session that 401s on its first request.
+    if (login) {
+      throw new Error("CLIENT_UPDATE_REQUIRED: Stayo has been updated. Reload the page, then sign in again.");
+    }
     if (!plaintextPassword) {
       throw new Error("INTERNAL: createSessionAndTokens requires a plaintext password to provision the Supabase session");
     }
@@ -195,17 +243,13 @@ export class AuthService {
     const session = await signInWithSupabasePassword(profile.email, plaintextPassword);
 
     return {
+      session_type: "supabase" as const,
+      sign_in_ticket: null,
       access_token: session.access_token,
       refresh_token: session.refresh_token,
       expires_in: session.expires_in,
       token_type: "bearer",
-      role: profile.role,
-      name: profile.name,
-      user_id: profile.id,
-      owner_id: effectiveOwnerId || null,
-      tenant_id: tenantId,
-      is_profile_completed: tenantId ? tenantProfileCompleted : profile.is_profile_completed,
-      tenant_status: tenantStatus,
+      ...identity,
     };
   }
 
@@ -222,7 +266,7 @@ export class AuthService {
     if (!profile) throw new Error("UNAUTHORIZED: Invalid phone or password");
     if (!profile.is_active) throw new Error("FORBIDDEN: Account is disabled");
 
-    const isValid = await this.verifyOrMigrateLegacyPassword(profile, password);
+    const isValid = await this.checkPassword(profile, password);
     if (!isValid) throw new Error("UNAUTHORIZED: Invalid phone or password");
 
     if (profile.password_reset_required) {
@@ -280,7 +324,7 @@ export class AuthService {
       throw new Error("UNAUTHORIZED: Invalid request or password already reset");
     }
 
-    const isValid = await this.verifyOrMigrateLegacyPassword(profile, currentPassword);
+    const isValid = await this.checkPassword(profile, currentPassword);
     if (!isValid) {
       throw new Error("UNAUTHORIZED: Current password is incorrect");
     }
@@ -295,12 +339,15 @@ export class AuthService {
       throw new Error("VALIDATION_ERROR: Password must contain at least one letter and one number");
     }
 
-    const hashedNewPassword = await hashPassword(newPassword);
+    // The first password an onboarding tenant chooses goes to Clerk, and the
+    // temporary one stops working everywhere (ADR-204). This used to update
+    // only the local hash, leaving whatever the temporary password had signed
+    // into still alive.
+    await credentialService.setPassword(profile, newPassword);
 
     await prisma.profile.update({
       where: { id: profile.id },
       data: {
-        password_hash: hashedNewPassword,
         password_reset_required: false,
         password_reset_at: new Date(),
         onboarding_expires_at: null,
@@ -526,38 +573,30 @@ export class AuthService {
     const normalizedEmail = resetPayload.email.trim().toLowerCase();
     const profile = await prisma.profile.findUnique({
       where: { email: normalizedEmail },
-      select: { id: true, email: true, role: true, owner_id: true, is_active: true, auth_user_id: true },
+      select: { id: true, email: true, role: true, owner_id: true, is_active: true, password_hash: true },
     });
 
     if (!profile || !profile.is_active) {
       throw new Error("VALIDATION_ERROR: Reset link is invalid or expired");
     }
 
-    const newHash = await hashPassword(input.newPassword);
+    // H2 (ADR-204). The proof of ownership is still ours — the emailed link or
+    // the WhatsApp code, which reach phone-only tenants that no Clerk-sent
+    // email could — but the credential and every session are Clerk's. The new
+    // password is written to Clerk, every Clerk session is revoked, tokens
+    // already minted are deny-listed, and the legacy hash is nulled. This
+    // throws rather than swallowing a failure: the previous version logged a
+    // failed credential sync as a warning and reported success, which left
+    // the old password working after a "successful" reset.
+    await credentialService.setPassword(profile, input.newPassword);
 
     await prisma.profile.update({
       where: { id: profile.id },
       data: {
-        password_hash: newHash,
         password_reset_required: false,
         password_reset_at: new Date(),
       },
     });
-
-    await sessionLifecycleService.revokeSession(undefined, profile.id);
-
-    // Bug fixed here (ADR-031): this used to scan `auth.admin.listUsers()`
-    // unpaginated, silently missing any user past page 1. Also now links
-    // an unlinked profile rather than only best-effort-syncing an already-
-    // linked one — a password reset is a real opportunity to migrate.
-    try {
-      await ensureSupabaseIdentity(
-        { id: profile.id, email: profile.email, auth_user_id: profile.auth_user_id },
-        input.newPassword
-      );
-    } catch (e) {
-      console.warn("[auth.completePasswordReset] Supabase sync skipped/failed", e);
-    }
 
     await eventLog.log("PASSWORD_RESET_COMPLETED", profile.owner_id || profile.id, {
       profile_id: profile.id,
@@ -610,90 +649,67 @@ export class AuthService {
     const existing = await prisma.profile.findUnique({ where: { email: normalizedEmail } });
     if (existing) throw new Error("ALREADY_EXISTS: Email already registered");
 
-    // 2. Create the Supabase Auth identity first — profile.id and
-    //    auth_user_id are both set from it, so this account is born
-    //    linked. Fails loudly rather than silently falling back to a
-    //    local UUID (ADR-031): that old fallback is the root cause of
-    //    today's unreliable Supabase linkage across existing accounts.
-    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
-      email: normalizedEmail,
-      password: data.password,
-      email_confirm: true,
-    });
-    if (authError || !authData.user?.id) {
-      throw new Error(`INTERNAL: Failed to create Supabase identity: ${authError?.message || "unknown error"}`);
-    }
-    const userId = authData.user.id;
-
-    // 3. Hash password and create profile (no hostel — captured in onboarding step 2)
-    const hashedPassword = await hashPassword(data.password);
-
-    try {
-      const profile = await prisma.profile.create({
-        data: {
-          id:       userId,
-          email:    normalizedEmail,
-          password_hash: hashedPassword,
-          name:     data.name,
-          phone:    data.phone || null,
-
-          role:     "OWNER",
-          is_active: true,
-          owner_id:  userId,
-          auth_user_id: userId,
-          auth_linked_at: new Date(),
-        },
-      });
-
-      return profile;
-    } catch (dbError) {
-      // Rollback Supabase user creation if Prisma transaction fails
-      await supabase.auth.admin.deleteUser(userId);
-      throw dbError;
-    }
+    // Born on Clerk (ADR-204): the profile is ours, the credential is Clerk's.
+    return this.createProfileWithLogin(
+      {
+        email: normalizedEmail,
+        name: data.name,
+        phone: data.phone || null,
+        role: "OWNER",
+        is_active: true,
+      },
+      data.password,
+      { ownerIsSelf: true },
+    );
   }
 
   /**
-   * Returns the `auth.users` id to bind a brand-new profile to, creating the
-   * Supabase identity or **adopting an existing orphaned one**.
+   * Create a brand-new profile and give it a Clerk login with the password
+   * the person just chose. There is no local hash and no Supabase identity:
+   * Clerk is the only credential store (ADR-204).
    *
-   * The adoption case is real, not defensive: signing in with Google on the
-   * landing page's lead flow creates an `auth.users` row with no `profiles`
-   * row behind it. When that person later signs up properly, a blind
-   * `admin.createUser` is rejected ("email already registered") and the route
-   * surfaced an opaque 500. Callers have already checked `profiles` for a
-   * duplicate email, so an `auth.users` hit here means an orphan — claim it
-   * and set the password the user just chose.
+   * The profile id is our own UUID. It used to be Supabase's `auth.users.id`,
+   * which welded our primary key to the auth vendor; it is now only ever
+   * *referenced* from the vendor side, as the Clerk user's `externalId`.
+   *
+   * If Clerk refuses (a breached password, an address Clerk already holds,
+   * Clerk unreachable), the profile is removed again so no account exists
+   * without a way to sign in. An address Clerk already holds is refused, not
+   * adopted: binding a stranger's existing Clerk login — created by their
+   * own Google sign-in — to a new account on the strength of an unverified
+   * signup form is exactly the email-matching takeover this design forbids.
    */
-  private async provisionSupabaseIdentity(
-    normalizedEmail: string,
+  private async createProfileWithLogin(
+    fields: Record<string, unknown> & { email: string; role: string },
     password: string,
-  ): Promise<{ userId: string; adopted: boolean }> {
-    const existing = await prisma.$queryRaw<{ id: string }[]>`
-      SELECT id FROM auth.users WHERE lower(email) = lower(${normalizedEmail}) LIMIT 1
-    `;
-
-    if (existing.length > 0) {
-      const authUserId = existing[0].id;
-      const { error } = await supabase.auth.admin.updateUserById(authUserId, {
-        password,
-        email_confirm: true,
-      });
-      if (error) {
-        throw new Error(`INTERNAL: Failed to adopt Supabase identity: ${error.message}`);
-      }
-      return { userId: authUserId, adopted: true };
-    }
-
-    const { data, error } = await supabase.auth.admin.createUser({
-      email: normalizedEmail,
-      password,
-      email_confirm: true,
+    options: { ownerIsSelf?: boolean } = {},
+  ) {
+    const id = randomUUID();
+    const profile = await prisma.profile.create({
+      data: {
+        id,
+        ...fields,
+        ...(options.ownerIsSelf ? { owner_id: id } : {}),
+      },
     });
-    if (error || !data.user?.id) {
-      throw new Error(`INTERNAL: Failed to create Supabase identity: ${error?.message || "unknown error"}`);
+
+    try {
+      await credentialService.ensureLogin(profile, { kind: "new", password });
+    } catch (error: any) {
+      await prisma.profile.delete({ where: { id } }).catch((cleanupError: unknown) => {
+        console.error("[auth.createProfileWithLogin] could not remove profile after Clerk failure", {
+          profile_id: id,
+          error: cleanupError instanceof Error ? cleanupError.message : String(cleanupError),
+        });
+      });
+      const code = String(error?.errors?.[0]?.code || "");
+      if (code === "form_identifier_exists") {
+        throw new Error("ALREADY_EXISTS: This email is already registered. Sign in instead, or use a different email.");
+      }
+      throw error;
     }
-    return { userId: data.user.id, adopted: false };
+
+    return profile;
   }
 
   /**
@@ -726,37 +742,19 @@ export class AuthService {
       if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
     }
 
-    // Born linked — same reasoning as registerOwner() above (ADR-031): no
-    // silent local-UUID fallback.
-    const { userId, adopted } = await this.provisionSupabaseIdentity(normalizedEmail, data.password);
-
-    const hashedPassword = await hashPassword(data.password);
-
-    try {
-      const profile = await prisma.profile.create({
-        data: {
-          id: userId,
-          email: normalizedEmail,
-          password_hash: hashedPassword,
-          name: data.name,
-          phone: data.phone,
-          role: "OWNER",
-          is_active: true,
-          owner_id: userId,
-          phone_verified: data.phoneVerified,
-          mobile_verified: data.phoneVerified,
-          auth_user_id: userId,
-          auth_linked_at: new Date(),
-        },
-      });
-
-      return profile;
-    } catch (dbError) {
-      // Only clean up an identity we created — deleting an adopted one would
-      // destroy a Supabase user that existed before this signup attempt.
-      if (!adopted) await supabase.auth.admin.deleteUser(userId);
-      throw dbError;
-    }
+    return this.createProfileWithLogin(
+      {
+        email: normalizedEmail,
+        name: data.name,
+        phone: data.phone,
+        role: "OWNER",
+        is_active: true,
+        phone_verified: data.phoneVerified,
+        mobile_verified: data.phoneVerified,
+      },
+      data.password,
+      { ownerIsSelf: true },
+    );
   }
 
   /**
@@ -803,80 +801,59 @@ export class AuthService {
       if (existingPhone) throw new Error("ALREADY_EXISTS: Phone number already registered");
     }
 
-    // Born linked — same reasoning as selfSignUpOwner above (ADR-031).
-    const { userId, adopted } = await this.provisionSupabaseIdentity(normalizedEmail, data.password);
-
-    const hashedPassword = await hashPassword(data.password);
-
-    try {
-      const profile = await prisma.profile.create({
-        data: {
-          id: userId,
-          email: normalizedEmail,
-          password_hash: hashedPassword,
-          name: data.name,
-          phone: data.phone ?? null,
-          role: "TENANT",
-          is_active: true,
-          // No owner_id: this account belongs to no hostel until an owner
-          // invites them. The column is nullable precisely for this.
-          phone_verified: data.phoneVerified,
-          mobile_verified: data.phoneVerified,
-          is_profile_completed: true,
-          auth_user_id: userId,
-          auth_linked_at: new Date(),
-        },
-      });
-
-      return profile;
-    } catch (dbError) {
-      // Only clean up an identity we created — deleting an adopted one would
-      // destroy a Supabase user that existed before this signup attempt.
-      if (!adopted) await supabase.auth.admin.deleteUser(userId);
-      throw dbError;
-    }
+    return this.createProfileWithLogin(
+      {
+        email: normalizedEmail,
+        name: data.name,
+        phone: data.phone ?? null,
+        role: "TENANT",
+        is_active: true,
+        // No owner_id: this account belongs to no hostel until an owner
+        // invites them. The column is nullable precisely for this.
+        phone_verified: data.phoneVerified,
+        mobile_verified: data.phoneVerified,
+        is_profile_completed: true,
+      },
+      data.password,
+    );
   }
 
+  /**
+   * Change password (ADR-204). The current password is checked by Clerk (or,
+   * for a profile not yet moved, its legacy hash); the new one is written to
+   * Clerk; and **every** session is revoked — this device's included. That is
+   * the deliberate choice: a password change is usually a reaction to a
+   * suspected compromise, and a session that survives it on the device where
+   * the change was made is one an attacker holding that device keeps. The
+   * client is told to sign in again.
+   */
   async changePassword(userId: string, oldPassword: string, newPassword: string) {
-    const profile = await prisma.profile.findUnique({ where: { id: userId } });
+    const profile = await prisma.profile.findUnique({
+      where: { id: userId },
+      select: { id: true, email: true, password_hash: true },
+    });
     if (!profile) throw new Error("NOT_FOUND: User not found");
 
-    const isValid = await verifyPassword(oldPassword, profile.password_hash || "");
-    if (!isValid) throw new Error("UNAUTHORIZED: Current password is incorrect");
+    const current = await credentialService.verifyPassword(profile, oldPassword);
+    if (!current.ok) throw new Error("UNAUTHORIZED: Current password is incorrect");
 
-    // Sync new password with Supabase Auth. Bug fixed here (ADR-031): this
-    // used to pass the local `profiles.id` straight to `updateUserById`,
-    // which only worked for profiles that happened to be born with
-    // profiles.id === auth.users.id — every unlinked profile 500'd the
-    // whole password change. If unlinked, provisioning IS the update (the
-    // new password becomes the initial Supabase password).
-    if (profile.auth_user_id) {
-      const { error: supabaseError } = await supabase.auth.admin.updateUserById(profile.auth_user_id, {
-        password: newPassword,
-      });
-      if (supabaseError) {
-        throw new Error(`INTERNAL: Failed to update auth provider password: ${supabaseError.message}`);
-      }
-    } else {
-      await ensureSupabaseIdentity({ id: profile.id, email: profile.email, auth_user_id: null }, newPassword);
-    }
+    await credentialService.setPassword(profile, newPassword);
 
-    const newHash = await hashPassword(newPassword);
-    await prisma.profile.update({
-      where: { id: userId },
-      data: { password_hash: newHash },
-    });
-
-    return { success: true, message: "Password updated successfully" };
+    return {
+      success: true,
+      reauth_required: true,
+      message: "Password updated. Please sign in again with your new password.",
+    };
   }
 
+  /** Step-up re-verification (`/api/auth/confirm-identity`). Clerk answers. */
   async verifyUserPassword(userId: string, password: string): Promise<boolean> {
     const profile = await prisma.profile.findUnique({
       where: { id: userId },
-      select: { id: true, password_hash: true },
+      select: { id: true, email: true, password_hash: true },
     });
     if (!profile) return false;
-    return this.verifyOrMigrateLegacyPassword(profile, password);
+    return (await credentialService.verifyPassword(profile, password)).ok;
   }
 
   /**

@@ -191,6 +191,29 @@ export default defineConfig({
       'tests/clerk-me-handshake.test.ts',
       'tests/auth-me-dual-session.test.ts',
       'tests/clerk-controlled-onboarding.test.ts',
+      // Profile takeover (C1, 2026-09-14 audit): who may read/write a profile
+      // by id, what a profile response may carry, and that a Supabase identity
+      // is never attached to a profile by email match. All `vi.mock` the DB.
+      // The source-level hardening spec only `fs.read`s source files; it sat in
+      // the DB suite and so went unrun whenever the test DB was down.
+      'tests/profiles-route-authorization.test.ts',
+      'tests/supabase-session-linking.test.ts',
+      'tests/auth-hardening-security.test.ts',
+      // OTP-table lockdown (C3, 2026-09-14 audit): source-level guard that the
+      // RLS/revoke migration stays intact and the OTP service never grows a
+      // browser-Supabase read path. Only reads source files. The runtime proof
+      // lives in tests/otp-rls-db.test.ts (DB-backed, not in this pure suite).
+      'tests/otp-rls-lockdown.test.ts',
+      // Admin-route authorization (C2, 2026-09-14 audit): the reconciliation
+      // routes flipped from OWNER to ADMIN, and an enumerating guard that every
+      // /api/admin route is admin-gated or decommissioned. Both mock/read only.
+      'tests/reconciliation-admin-authz.test.ts',
+      'tests/admin-routes-guarded.test.ts',
+      // Clerk is the only authentication provider (ADR-204) — Clerk-native H2.
+      'tests/credential-service.test.ts',
+      'tests/password-flows-clerk.test.ts',
+      'tests/clerk-session-resolver.test.ts',
+      'tests/tenant-self-signup.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
       'tests/bulk-import-parse-errors.test.ts',

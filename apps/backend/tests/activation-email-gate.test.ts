@@ -13,9 +13,13 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const mocks = vi.hoisted(() => ({
   findVerified: vi.fn(),
   assertAvailable: vi.fn(),
+  findLogin: vi.fn(),
 }));
 
 vi.mock("@/lib/db", () => ({ prisma: {} }));
+vi.mock("@/src/services/auth/credential-service", () => ({
+  credentialService: { findLogin: mocks.findLogin },
+}));
 vi.mock("@/lib/services/auth/email-otp-service", async (importOriginal) => ({
   ...(await importOriginal<any>()),
   emailOtpService: { findVerified: mocks.findVerified, assertAvailable: mocks.assertAvailable, consume: vi.fn() },
@@ -30,27 +34,36 @@ beforeEach(() => {
   vi.clearAllMocks();
   mocks.findVerified.mockResolvedValue({ id: "otp-1", email: "ravi@gmail.com" });
   mocks.assertAvailable.mockResolvedValue(undefined);
+  mocks.findLogin.mockResolvedValue(null);
 });
 
 describe("who is asked for an email", () => {
-  it("asks someone invited by phone alone — their profile holds only the stand-in", () => {
-    expect(hasOwnLogin({ email: "+918008046952@hms.temp", auth_user_id: null, password_hash: null })).toBe(false);
+  it("asks someone invited by phone alone — their profile holds only the stand-in", async () => {
+    expect(await hasOwnLogin({ email: "+918008046952@hms.temp", auth_user_id: null, password_hash: null })).toBe(false);
   });
 
   /** They were never asked before; a login does not make the stand-in real. */
-  it("asks someone who activated earlier with the stand-in as their login", () => {
-    expect(hasOwnLogin({ email: "+918008046952@hms.temp", auth_user_id: "auth-1" })).toBe(false);
+  it("asks someone who activated earlier with the stand-in as their login", async () => {
+    expect(await hasOwnLogin({ email: "+918008046952@hms.temp", auth_user_id: "auth-1" })).toBe(false);
+    mocks.findLogin.mockResolvedValue({ clerkUserId: "user_1", isActive: true });
+    expect(await hasOwnLogin({ id: "p1", email: "+918008046952@hms.temp" })).toBe(false);
   });
 
   /** Typed by the owner, proved by nobody. */
-  it("asks when the only address is one the owner typed", () => {
-    expect(hasOwnLogin({ email: "ravi@gmail.com", auth_user_id: null, password_hash: null })).toBe(false);
+  it("asks when the only address is one the owner typed", async () => {
+    expect(await hasOwnLogin({ id: "p1", email: "ravi@gmail.com", auth_user_id: null, password_hash: null })).toBe(false);
   });
 
   /** ADR-110: onboarding never rewrites an existing login. */
-  it("does not ask someone who already signs in with a real address", () => {
-    expect(hasOwnLogin({ email: "ravi@gmail.com", auth_user_id: "auth-1" })).toBe(true);
-    expect(hasOwnLogin({ email: "ravi@gmail.com", password_hash: "x" })).toBe(true);
+  it("does not ask someone who already signs in with a real address", async () => {
+    expect(await hasOwnLogin({ email: "ravi@gmail.com", auth_user_id: "auth-1" })).toBe(true);
+    expect(await hasOwnLogin({ email: "ravi@gmail.com", password_hash: "x" })).toBe(true);
+  });
+
+  /** ADR-204: a profile born on Clerk has neither legacy marker. */
+  it("does not ask someone whose login is a Clerk one", async () => {
+    mocks.findLogin.mockResolvedValue({ clerkUserId: "user_1", isActive: true });
+    expect(await hasOwnLogin({ id: "p1", email: "ravi@gmail.com", auth_user_id: null, password_hash: null })).toBe(true);
   });
 });
 

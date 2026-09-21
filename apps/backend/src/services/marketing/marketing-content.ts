@@ -57,6 +57,32 @@ const PHOTO_CATEGORY_KEYS = PHOTO_CATEGORIES.map((category) => category.key) as 
   ...PhotoCategoryKey[],
 ];
 
+/**
+ * The section order a listing's photo tour is grouped in: the owner's own
+ * arrangement, repaired into a complete one.
+ *
+ * Complete rather than partial, because both the tour and the owner's strip
+ * index this list — a key missing from it would silently drop a whole section
+ * of photos off the listing. So anything the owner did not place keeps its
+ * standard position at the end, an unknown key (a category that has since been
+ * renamed, or hand-edited JSON) is dropped, and a repeated one counts once.
+ *
+ * An owner may lead with the mess or the common room; the standard order is
+ * Stayo's default, not a rule. See ADR-228.
+ */
+export function orderPhotoSections(order: readonly string[] | null | undefined): PhotoCategoryKey[] {
+  const canonical = PHOTO_CATEGORIES.map((category) => category.key);
+  const arranged: PhotoCategoryKey[] = [];
+  for (const key of order ?? []) {
+    const known = canonical.find((candidate) => candidate === key);
+    if (known && !arranged.includes(known)) arranged.push(known);
+  }
+  for (const key of canonical) {
+    if (!arranged.includes(key)) arranged.push(key);
+  }
+  return arranged;
+}
+
 const PhotoSchema = z.object({
   url: z.string().url(),
   /** Shown over the photo, e.g. "hostel · common area". */
@@ -207,6 +233,11 @@ const BasicsSchema = z.object({
 export const MarketingContentSchema = z.object({
   basics: BasicsSchema.default({ highlights: [], host_name: null }),
   photos: z.array(PhotoSchema).max(24).default([]),
+  /**
+   * The order the photo tour's sections appear in, owner-arranged. Repaired
+   * into a complete order by `normaliseContent` — see `orderPhotoSections`.
+   */
+  photoSections: z.array(z.enum(PHOTO_CATEGORY_KEYS)).max(PHOTO_CATEGORIES.length).default([]),
   beds: z.array(BedTierSchema).max(12).default([]),
   amenities: z.array(AmenitySchema).max(40).default([]),
   places: z.array(PlaceSchema).max(20).default([]),
@@ -232,6 +263,7 @@ const EMPTY_MESS_DAY = { b: "", l: "", s: "", dn: "" };
 export const EMPTY_CONTENT: MarketingContent = {
   basics: { tagline: null, about: null, highlights: [], host_name: null },
   photos: [],
+  photoSections: PHOTO_CATEGORIES.map((category) => category.key),
   beds: [],
   amenities: [],
   places: [],
@@ -293,6 +325,7 @@ export function normaliseContent(raw: unknown): MarketingContent {
   return {
     ...content,
     photos: normalisedPhotos,
+    photoSections: orderPhotoSections(content.photoSections),
     beds: [...content.beds].sort((a, b) => a.sharing - b.sharing),
     places: [...content.places].sort((a, b) => a.sort - b.sort).map((place, index) => ({ ...place, sort: index })),
     mess: { ...content.mess, meals: messMeals, week: messWeek },

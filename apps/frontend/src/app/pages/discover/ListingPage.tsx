@@ -1152,7 +1152,12 @@ export function ListingPage({ previewRevisionId }: { previewRevisionId?: string 
       </div>
 
       {tourOpen && (
-        <PhotoTour media={media as any} hostelName={hostel.name} onClose={() => setTourOpen(false)} />
+        <PhotoTour
+          media={media as any}
+          sectionOrder={hostel.photo_sections ?? null}
+          hostelName={hostel.name}
+          onClose={() => setTourOpen(false)}
+        />
       )}
 
       {lightbox !== null && media.length > 0 && (

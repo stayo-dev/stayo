@@ -53,6 +53,20 @@ describe("projectListing", () => {
       .toEqual(["/owner-2.jpg", "/owner-1.jpg", "/owner-3.jpg"]);
   });
 
+  it("carries the owner's photo tour order to the listing", () => {
+    const arranged = { ...marketing, photoSections: ["mess", "rooms"] };
+    const out = projectListing({ detail, visible, marketing: arranged });
+    expect(out.hostel.photo_sections.slice(0, 2)).toEqual(["mess", "rooms"]);
+    expect(out.hostel.photo_sections).toHaveLength(7);
+  });
+
+  it("gives a listing that never arranged sections the standard order", () => {
+    // Including one with no marketing content at all — the tour still has to
+    // know what order to group in.
+    expect(projectListing({ detail, visible, marketing }).hostel.photo_sections[0]).toBe("rooms");
+    expect(projectListing({ detail, visible, marketing: null }).hostel.photo_sections[0]).toBe("rooms");
+  });
+
   it("drops amenities the owner switched off", () => {
     expect(projectListing({ detail, visible, marketing }).amenities.map((a: any) => a.key))
       .toEqual(["wifi"]);

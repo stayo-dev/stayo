@@ -7,8 +7,7 @@ import { getLogger } from "@/lib/logger";
 import { prisma } from "@lib/db";
 import { sessionLifecycleService } from "@/lib/services/session-lifecycle-service";
 import { resolveSupabaseSession } from "@/lib/auth/supabase-session";
-import { verifyClerkSession } from "@/lib/auth/clerk-session";
-import { ensureUserForClerkSession } from "@/src/services/auth/clerk-user-sync-service";
+import { resolveClerkSession } from "@/lib/auth/clerk-session-resolver";
 
 const logger = getLogger("api.auth.me");
 
@@ -40,51 +39,30 @@ async function supabaseRejection(req: NextRequest) {
 }
 
 /**
- * Resolve a **Clerk** bearer token to the profile it speaks for
- * (ADR-176 Phase 3, minimal dual session authority).
+ * Why `getSession()` said no, for the one caller that must explain it.
  *
- * Runs only when the Supabase path found nothing, so the existing behaviour is
- * untouched: a Supabase session never reaches this function. `middleware.ts`
- * lets an unverifiable token through on this one path precisely so that it can
- * be tried here (see CLERK_BEARER_ROUTES there) — which means this function is
- * the *only* thing authenticating such a request, and it must be strict.
- *
- * Returns the profile id to continue with, or a rejection to surface. It never
- * creates a profile: `ensureUserForClerkSession` creates at most a `users` row
- * (identity), and a Clerk account with no `profiles` row is a real, expected
- * state — someone who signed in with Google but has no Stayo account. That is
- * reported as NO_STAYO_ACCOUNT, the same code the Supabase path uses, so
- * `/auth/callback` shows the message it already has for it.
+ * - A Clerk session with no linked profile, a disabled account or a tenancy
+ *   not yet activated: the specific code, so the sign-in screen can say so.
+ * - A Supabase or legacy token for a profile that has moved onto Clerk
+ *   (ADR-204): `SIGN_IN_AGAIN`. That session was ended by a password reset
+ *   or change on the Clerk side, or superseded by a Clerk sign-in; the
+ *   browser should drop it and show the sign-in screen.
  */
-async function clerkResolution(req: NextRequest) {
-  const session = await verifyClerkSession(req);
-  if (!session.ok) return { ok: false as const, profileId: null, rejection: null };
-
-  const snapshot = await ensureUserForClerkSession(session.identity);
-
-  if (!snapshot.isActive) {
-    return {
-      ok: false as const,
-      profileId: null,
-      rejection: {
-        message: "This account has been disabled. Please contact your hostel owner.",
-        code: "ACCOUNT_DISABLED",
-      },
-    };
+async function explainRejection(req: NextRequest) {
+  const mode = req.headers.get("x-auth-mode");
+  if (mode === "clerk") {
+    const clerkUserId = req.headers.get("x-auth-user-id");
+    if (!clerkUserId) return null;
+    const result = await resolveClerkSession({ clerkUserId, sessionId: req.headers.get("x-auth-session-id") });
+    return result.ok ? null : apiError(result.message, result.code, 403);
   }
-
-  if (!snapshot.profileId) {
-    return {
-      ok: false as const,
-      profileId: null,
-      rejection: {
-        message: "No Stayo account exists for this email.",
-        code: "NO_STAYO_ACCOUNT",
-      },
-    };
+  if (mode === "supabase") {
+    const rejection = await supabaseRejection(req);
+    if (rejection) return apiError(rejection.message, rejection.code, 403);
+    return apiError("Please sign in again.", "SIGN_IN_AGAIN", 401);
   }
-
-  return { ok: true as const, profileId: snapshot.profileId, rejection: null };
+  if (mode === "legacy") return apiError("Please sign in again.", "SIGN_IN_AGAIN", 401);
+  return null;
 }
 
 /**
@@ -127,40 +105,22 @@ async function selectRepresentativeTenancy(profileId: string) {
 }
 
 export async function GET(req: NextRequest) {
-  // Supabase first, unchanged. Clerk is only consulted when it finds nothing,
-  // so an existing session behaves exactly as it did before Clerk existed.
   const session = await getSession(req);
-  let profileId = session?.sub ?? null;
-
   if (!session) {
-    const rejection = await supabaseRejection(req);
-    if (rejection) return apiError(rejection.message, rejection.code, 403);
-
-    /*
-     * Guarded, and loudly. This block sat outside the try/catch below, so
-     * anything it threw became an opaque 500 with no log line — which is
-     * exactly what happened on the first real Clerk sign-in, and left the
-     * cause un-diagnosable from the outside. A failure here is ours, not the
-     * caller's, so it says so and records why.
-     */
-    let clerk: Awaited<ReturnType<typeof clerkResolution>>;
     try {
-      clerk = await clerkResolution(req);
+      const explained = await explainRejection(req);
+      if (explained) return explained;
     } catch (error) {
-      logger.error("auth.me.clerk_resolution_failed", {
+      logger.error("auth.me.rejection_explain_failed", {
         error: error instanceof Error ? error.message : String(error),
-        name: error instanceof Error ? error.name : undefined,
-        // Prisma surfaces its own codes here (P2021 = table missing, P2022 =
-        // column missing); they name a migration gap far faster than a stack.
+        // Prisma codes (P2021 = table missing) name a migration gap fastest.
         code: (error as { code?: string })?.code,
       });
-      return apiError("Could not resolve your session.", "CLERK_RESOLUTION_FAILED", 500);
+      return apiError("Could not resolve your session.", "SESSION_RESOLUTION_FAILED", 500);
     }
-
-    if (clerk.rejection) return apiError(clerk.rejection.message, clerk.rejection.code, 403);
-    if (!clerk.ok) return apiError("Unauthorized", "UNAUTHORIZED", 401);
-    profileId = clerk.profileId;
+    return apiError("Unauthorized", "UNAUTHORIZED", 401);
   }
+  const profileId = session.sub;
 
   try {
     // Legacy-mode only (ADR-031): this validates against `refresh_tokens`,

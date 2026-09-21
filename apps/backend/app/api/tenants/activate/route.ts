@@ -3,7 +3,8 @@ export const runtime = "nodejs";
 
 import { NextRequest, NextResponse } from "next/server";
 import { activationSubjectFromRequest } from "@/src/services/tenants/activation-request-subject";
-import { ACCESS_TOKEN_MAX_AGE_SECONDS, getSessionCookieOptions, TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { TENANT_REFRESH_DAYS } from "@/lib/services/session-lifecycle-service";
+import { clientAcceptsClerkTicket, setLegacySessionCookies } from "@/lib/auth/session-capabilities";
 import { setCsrfCookie } from "@/lib/security/csrf";
 import { apiError, apiResponse } from "@/lib/auth";
 import { invitationService } from "@/src/services/tenants/invitation-service";
@@ -57,13 +58,7 @@ function createActivationResponse(result: any, startedAt: number) {
       session,
     }, { status: 200 });
 
-    response.cookies.set("hms_session", session.access_token, {
-      ...getSessionCookieOptions(ACCESS_TOKEN_MAX_AGE_SECONDS),
-    });
-
-    response.cookies.set("hms_refresh_token", session.refresh_token, {
-      ...getSessionCookieOptions(60 * 60 * 24 * TENANT_REFRESH_DAYS),
-    });
+    setLegacySessionCookies(response, session);
     setCsrfCookie(response, 60 * 60 * 24 * TENANT_REFRESH_DAYS);
 
     return withOnboardingMetrics(response, { startedAt, payload: restResult });
@@ -87,7 +82,7 @@ export async function POST(req: NextRequest) {
       return withOnboardingMetrics(apiError("Passwords do not match", "VALIDATION_ERROR", 400), { startedAt });
     }
 
-    const result = await invitationService.activateTenant(token, password);
+    const result = await invitationService.activateTenant(token, password, clientAcceptsClerkTicket(req));
     return createActivationResponse(result, startedAt);
   } catch (error: any) {
     const normalized = normalizeActivationError(error, "Failed to activate account");
@@ -129,6 +124,7 @@ export async function PATCH(req: NextRequest) {
     const result = await activationWorkflowService.mutate(subject, step, body?.data || {}, {
       ip: req.headers.get("x-forwarded-for") || req.ip || "unknown",
       userAgent: req.headers.get("user-agent") || "unknown",
+      acceptsClerkTicket: clientAcceptsClerkTicket(req),
     });
     return createActivationResponse(result, startedAt);
   } catch (error: any) {

@@ -79,7 +79,9 @@ async function main() {
       where: {
         access_mode: "OWNER_MANAGED",
         acceptance_status: "NOT_REQUIRED",
-        profiles: { auth_user_id: { not: null } },
+        // "Has a login": a Clerk one (ADR-204), or a pre-Clerk Supabase link
+        // until Phase 4 retires `auth_user_id`.
+        profiles: { OR: [{ login: { isNot: null } }, { auth_user_id: { not: null } }] },
       },
       select: { id: true, profile_id: true },
       take: 25,

@@ -291,16 +291,12 @@ export function ActivationPage() {
   const enterStayo = async () => {
     setEntering(true);
     const session = activationResult?.session;
-    if (session?.access_token && session?.refresh_token) {
+    if (session?.sign_in_ticket || (session?.access_token && session?.refresh_token)) {
       try {
-        const { supabase } = await import('@lib/supabaseClient');
+        const { establishSession } = await import('@lib/auth/establishSession');
         const { queryClient } = await import('@lib/queryClient');
         queryClient.clear();
-        const { error: sessionError } = await supabase.auth.setSession({
-          access_token: session.access_token,
-          refresh_token: session.refresh_token,
-        });
-        if (sessionError) throw sessionError;
+        await establishSession(session);
         navigate('/tenant/home', { replace: true });
         return;
       } catch {

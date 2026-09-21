@@ -39,6 +39,9 @@ vi.mock("@/lib/db", () => {
     subscription_payments: { findFirst: vi.fn(async () => null), findMany: vi.fn(async () => []), findUnique: vi.fn(), updateMany: vi.fn() },
     subscription_invoices: { findUnique: vi.fn(), findMany: vi.fn(async () => []) },
     profile: { findFirst: vi.fn() },
+    // getSession() asks whether a legacy-token profile has moved onto Clerk
+    // (ADR-204); none of these fixtures has.
+    users: { findUnique: vi.fn(async () => null) },
     tenants: { count: vi.fn(async () => 0) },
     $executeRaw: vi.fn(async () => 1),
     $queryRaw: vi.fn(async () => []),

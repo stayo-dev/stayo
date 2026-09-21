@@ -1155,7 +1155,9 @@ export function HostelMarketingPage({
         open={sheet.kind === 'photos'}
         hostelId={hostelId}
         photos={content.photos}
+        sections={content.photoSections}
         onChange={(photos) => patch({ photos })}
+        onSectionsChange={(photoSections) => patch({ photoSections })}
         onClose={closeSheet}
       />
 

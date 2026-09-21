@@ -5,6 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { getSession } from "@/lib/auth";
 import { supabase } from "@/lib/db";
 import { sessionLifecycleService } from "@/lib/services/session-lifecycle-service";
+import { credentialService } from "@/src/services/auth/credential-service";
 import { clearCsrfCookie } from "@/lib/security/csrf";
 
 function clearAuthCookies(response: NextResponse) {
@@ -28,6 +29,20 @@ export async function POST(req: NextRequest) {
     if (session) {
       await sessionLifecycleService.revokeSession(session.sid || undefined, session.sub);
     }
+
+    // Clerk (ADR-204): end this device's session at Clerk too, so it cannot
+    // mint another token. The Redis entry above covers the token already in
+    // the browser's hands until it expires.
+    const clerkSessionId = req.headers.get("x-auth-mode") === "clerk" ? req.headers.get("x-auth-session-id") : null;
+    if (clerkSessionId) {
+      try {
+        await credentialService.revokeSession(clerkSessionId);
+      } catch (e) {
+        console.warn("[auth.logout] Clerk session revoke failed", e);
+      }
+    }
+
+    // Transition only (removed in Phase 4): a pre-Clerk Supabase session.
 
     if (req.headers.get("x-auth-mode") === "supabase") {
       const authHeader = req.headers.get("authorization");

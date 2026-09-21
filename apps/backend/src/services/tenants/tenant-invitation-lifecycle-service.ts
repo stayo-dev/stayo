@@ -1,6 +1,6 @@
 import crypto from "crypto";
 import { prisma } from "../../../lib/db";
-import { hashPassword } from "../../../lib/auth";
+import { credentialService } from "@/src/services/auth/credential-service";
 import { normalizeIndianPhone } from "../../../lib/utils/phone-utils";
 import { frontendUrl } from "../../../lib/config/domains";
 import { EmailService } from "../../../lib/services/email-service";
@@ -1485,7 +1485,6 @@ export class TenantInvitationLifecycleService {
       throw new Error("VALIDATION_ERROR: An account with this email address already exists. Please use a different email address.");
     }
 
-    const passwordHash = password ? await hashPassword(password) : undefined;
     const now = new Date();
     const profile = await prisma.$transaction(async (tx: any) => {
       const existingProfile = resolved.profile;
@@ -1502,7 +1501,6 @@ export class TenantInvitationLifecycleService {
             owner_id: invitation.owner_id,
             mobile_verified: true,
             phone_verified: true,
-            ...(passwordHash ? { password_hash: passwordHash } : {}),
           },
         });
       } else {
@@ -1513,7 +1511,6 @@ export class TenantInvitationLifecycleService {
             phone: primaryPhone,
             mobile_verified: true,
             phone_verified: true,
-            ...(passwordHash ? { password_hash: passwordHash } : {}),
           },
         });
       }
@@ -1551,6 +1548,12 @@ export class TenantInvitationLifecycleService {
       });
       return profileRecord;
     }, { timeout: 30000 });
+
+    // The password is Clerk's (ADR-204), written once the profile it belongs
+    // to exists. If Clerk fails here the binding above is already committed,
+    // and that is safe: re-submitting the ACCOUNT step takes the bound-profile
+    // branch in activation-workflow-service, which sets the password again.
+    if (password) await credentialService.setPassword(profile, password);
 
     await eventLog.log("activation_started", invitation.owner_id, {
       tenant_id: tenant.id,
@@ -1637,6 +1640,12 @@ export class TenantInvitationLifecycleService {
   async completeActivation(invitation: any, tenant: any, profile: any, paymentFrequency?: string, password?: string) {
     const completedAt = new Date();
     let voidedInvitations: any[] = [];
+
+    // The password is Clerk's (ADR-204), set *before* the tenancy commits:
+    // if Clerk refuses or is unreachable, nothing has been activated and the
+    // tenant can simply retry. The other order could leave an ACTIVE tenancy
+    // whose owner has no way to sign in.
+    if (password) await credentialService.setPassword(profile, password);
 
     await prisma.$transaction(async (tx: any) => {
       // 1. Proactive row lock on the tenant row
@@ -1763,7 +1772,6 @@ export class TenantInvitationLifecycleService {
         where: { id: invitation.id },
         data: { status: "ACTIVATED", activated_at: completedAt, updated_at: completedAt },
       });
-      const passwordHash = password ? await hashPassword(password) : undefined;
       await tx.profile.update({
         where: { id: profile.id },
         data: {
@@ -1771,7 +1779,6 @@ export class TenantInvitationLifecycleService {
           is_profile_completed: true,
           invitation_token: null,
           invitation_expires_at: null,
-          ...(passwordHash ? { password_hash: passwordHash } : {}),
         },
       });
       // ADR-172 Phase 3: the owner's Stayo subscription must be active and have

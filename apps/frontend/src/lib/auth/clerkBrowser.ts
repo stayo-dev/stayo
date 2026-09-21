@@ -22,17 +22,20 @@ export type SessionSource = "supabase" | "clerk" | "none";
 /**
  * Which provider speaks for this browser.
  *
- * Supabase wins whenever it has a session. That ordering is the migration's
- * safety property: every existing signed-in user keeps the session they already
- * have, and Clerk only answers for browsers Supabase cannot. It also means a
- * half-finished Clerk sign-in can never displace a working Supabase one.
+ * **Clerk wins whenever it has a session** (ADR-204 — Clerk is the only
+ * authentication provider). A Supabase session answers only for a browser
+ * that has no Clerk session: someone signed in before the cutover whose
+ * account has not moved yet. The ordering used to be the reverse, to protect
+ * those sessions while Clerk was additive; now it would do the opposite harm —
+ * a stale Supabase session left in storage would shadow a fresh Clerk
+ * sign-in, and the backend refuses that stale token for a moved account.
  */
 export function pickSessionSource(input: {
   hasSupabaseSession: boolean;
   hasClerkSession: boolean;
 }): SessionSource {
-  if (input.hasSupabaseSession) return "supabase";
   if (input.hasClerkSession) return "clerk";
+  if (input.hasSupabaseSession) return "supabase";
   return "none";
 }
 
