@@ -1282,3 +1282,19 @@ A one-off amount an admin/manager records for an owner (`owner_payments` — ten
 **A generated collection page exists only with enough inventory behind it** — locality 3, city 2, college 3, intent 5 — and below that it **404s rather than `noindex`ing**. The same function gates the page and its sitemap entry, so the sitemap can never advertise a URL that 404s.
 
 Related: [[Decisions#ADR-226|ADR-226]], [[Decisions#ADR-073|ADR-073]], [[Decisions#ADR-086|ADR-086]], [[Features]]
+
+## Marketplace partner enquiries (2026-09-21)
+
+Rules for delivering tenant enquiries to a hostel owner who is not on Stayo. See [[Decisions#ADR-231|ADR-231]].
+
+- **No consent, no message.** A `marketplace_partners` row cannot exist without `consent_channel` + `consent_at` + `consent_by`, and `canMessagePartner()` re-checks on every send. A Stayo-authored listing's own `hostels.phone` is never used for outreach — that number belongs to the business, not to a person who agreed to hear from us.
+- **Opting out stops everything.** `opted_out_at` blocks every partner template, including the UTILITY enquiry notification they would most want. Someone who taps "Stop promotions" and keeps hearing from us reports us, and one report against the WABA costs more than one lead.
+- **Three free enquiries per listing**, not per partner: a partner's second hostel earns its own, because proof of demand has to be about that building.
+- **Only a confirmed delivery consumes quota.** Partner templates carry a 12-hour Meta validity period, so an undelivered message is dropped unseen. The gate therefore errs toward generosity — several enquiries arriving inside one delivery window may all go free. Over-delivering costs one lead; under-delivering paywalls someone who received nothing.
+- **A re-enquiry is not a new enquiry.** `visitor_lead_id` is unique on the delivery ledger, so a student enquiring twice updates their existing `visitor_leads` row and earns neither a second message nor a second charge against the quota.
+- **"This month" means this month.** `stayo_partner_enquiry_locked` says "That is N students this month", so N counts the calendar month. A lifetime total there would make the message untrue.
+- **A held enquiry must never strand the student.** If it is not released within the fallback window the student is contacted with alternatives — which are onboarded owners' hostels. Withholding an enquiry to pressure an owner damages the demand side to coerce the supply side. **`fallback_at` exists for this; the sweep that writes it is not built yet.**
+- **Claiming refuses a hostel a real owner runs.** `canClaimListing()` rejects anything that is not an unclaimed `PLATFORM_LISTED` row: moving a live hostel carries its tenants, obligations and payouts and must not share a code path with handing over an empty listing.
+- **No pricing claim in partner copy.** The commercial model is undecided and these messages go out at scale in writing.
+
+Related: [[Database]], [[APIs]], [[Features]]

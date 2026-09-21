@@ -20,6 +20,7 @@ import { admissionsService, ACTIVE_LEAD_STATUSES } from "@/src/services/admissio
 import { notificationService } from "@/lib/services/notification-service";
 import { marketingPageService } from "@/src/services/marketing/marketing-page-service";
 import { hostProfileService } from "@/src/services/host-profile/host-profile-service";
+import { partnerLeadDeliveryService } from "@/src/services/marketing/partner-lead-delivery-service";
 
 /**
  * Stayo Discover — the public marketplace surface.
@@ -803,6 +804,23 @@ export class DiscoveryService {
           });
         }
       })().catch(() => undefined);
+
+      /**
+       * And tell the real owner, if we have their consent on record.
+       *
+       * The sales lead above is evidence for us; this is the enquiry itself
+       * reaching the person who can actually answer it. Free up to the
+       * listing's quota, then held with a message saying so — see
+       * `partner-quota.ts`. Returns an outcome rather than throwing: the
+       * enquiry is committed and must survive a partner-side failure.
+       */
+      await partnerLeadDeliveryService.deliverEnquiry({
+        hostelId: hostel.id,
+        hostelName: hostel.name,
+        visitorLeadId: lead.id,
+        studentName: seeker.name,
+        moveIn: input.moveInDate ?? null,
+      });
     }
 
     // Tell the owner on WhatsApp. An enquiry they do not see for a day is an

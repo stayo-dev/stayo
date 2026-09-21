@@ -14,6 +14,19 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - `yourstayo.com/h/:slug` unfurls exactly as before, but the person who taps it lands on `/discover/h/:slug` — photo tour, bed chooser, map, host, Enquire — instead of `/hostels/:slug`, which is a read-only document with one easily-missed link onward. `ShareCard.listingUrl` is replaced by `canonicalUrl` (still `/hostels/:slug`, still what `rel=canonical` names) and `destinationUrl`, used by the meta refresh, the JS redirect and the fallback button alike.
   - **Indexing is untouched:** the canonical still points at the indexable page, `/discover` stays `noindex, follow`, and chat unfurlers read the meta tags without following the redirect at all.
   - **Verified:** 21 pure tests on `share-card`, including one asserting no human exit points at `/hostels/:slug`. **Not verified:** nobody has clicked a shared link end to end — worth pasting one into WhatsApp after deploy to confirm it still unfurls with a photo *and* opens the listing.
+- **2026-09-21**: **Marketplace partners — enquiries reach hostel owners who are not on Stayo** ([[Decisions#ADR-231|ADR-231]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).
+  - An enquiry on a Stayo-authored listing raised a sales lead and reached nobody. It now reaches the real owner on WhatsApp — free for the listing's first **3 confirmed deliveries**, then held with a message saying the enquiry exists and what unlocks it.
+  - Three tables (`marketplace_partners`, `partner_listings`, `partner_lead_deliveries`, **migration 091 — not applied**). Consent is a precondition of the partner row existing, so the rule in `platform-listing-leads.ts` stays intact rather than being quietly reversed.
+  - **Quota counts confirmed deliveries, not sends.** Partner templates carry a 12-hour Meta validity, so an undelivered message is dropped unseen; counting attempts would paywall an owner whose phone was off.
+  - Claiming wires up `canClaimListing()`/`buildClaimUpdate()`, written and tested since migration 068 with **no caller until now**. On claim, held enquiries are released.
+  - **Not built:** the 12-hour student fallback sweep (ADR-231 point 4 — a rule, not an option), any owner-facing page, and `stayo_partner_activated` is not submitted to Meta. **Nothing has been exercised against a database.**
+- **2026-09-21**: **Manager invitations go over WhatsApp** ([[Decisions#ADR-230|ADR-230]], [[Features]], [[APIs]]).
+  - `stayo_admin_invitation` and `stayo_admin_invitation_reminder`, both approved 2026-09-21. WhatsApp first, email only on failure.
+  - Resend now nudges before it re-issues — it used to mint a new token and silently invalidate the link already in the manager's chat.
+  - The approved templates point at `/admin/activate/:token`; the SPA serves `/admin/manager-invitation/:token`, so a redirect carries the difference. `templateLinkRoutes.test.ts` pins every path an approved template targets.
+- **2026-09-21**: **Three Prisma accessors that never worked** ([[Bugs]]).
+  - `prisma.leads` (admin Platform Listings), `prisma.Agreement` (owner Alerts renewals), and `tx.leadActivity`/`tx.visitorLead`/`tx.paymentAttemptStatusEvent` inside `$transaction` callbacks. The last group took the Discover enquiry flow down end to end.
+  - `prisma-transaction-accessors.test.ts` now fails on any unknown `prisma.<delegate>` or any `tx.<alias>`, reading both tables out of `schema.prisma` and `lib/db.ts`.
 
 - **2026-09-20**: **Owners can arrange their photo tour's sections** ([[Decisions#ADR-228|ADR-228]], [[Features]], [[APIs]], [[Business-Rules]]).
   - The listing's photo tour grouped photos in one fixed order — rooms, bathrooms, mess, common, study, outside, more — hardcoded in three places and changeable by nobody, owner or admin. The owner now arranges it, in a "Section order" strip in the Photos screen, above the grid.

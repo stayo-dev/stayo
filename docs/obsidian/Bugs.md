@@ -3071,3 +3071,22 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 **Lesson:** a bare `catch {}` around a call that can fail for more than one reason converts every failure into the single answer the author had in mind. On an indexable page the difference between 404 and 500 is the difference between "delete this from the index" and "try again".
 
 **See:** [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]].
+
+## `prisma` is exported as `any`, so a delegate that does not exist ships (2026-09-21)
+
+Three separate instances, all found in one sweep, all invisible for the same reason: `apps/backend/lib/db.ts` exports `prisma: any`, so a wrong accessor compiles, builds, deploys, and throws `Cannot read properties of undefined` the first time that line runs.
+
+| Broken | Correct | Blast radius |
+|---|---|---|
+| `prisma.leads` | `prisma.visitor_leads` | Admin Platform Listings 500'd — but only once a platform listing existed, because an `ids.length` guard skipped the call while there were none |
+| `prisma.Agreement` | `prisma.agreement` | Owner Alerts renewals query threw on every call. Prisma's client property is the model name with its first letter lowercased |
+| `tx.leadActivity`, `tx.visitorLead` | `tx.lead_activities`, `tx.visitor_leads` | **The whole Discover enquiry flow.** The `visitor_leads` row commits, then `recordActivity` throws, and the request 500s before the platform-lead evidence is raised or the owner notified |
+| `tx.paymentAttemptStatusEvent` (x3) | `tx.payment_attempt_status_events` | Payment status event writes |
+
+The transaction cases are the subtle ones. `lib/db.ts` patches ~52 camelCase aliases (`prisma.visitorLead` → `prisma.visitor_leads`) onto **its own `prisma` instance**. The interactive-transaction client Prisma hands to a `$transaction(async (tx) => ...)` callback is a different object and carries none of them — so the identical accessor works on one line and is `undefined` on the next.
+
+They also survived review three ways over: it compiles; the alias works immediately above; and a test that `vi.mock`s `@/lib/db` supplies whatever key the code asks for, so **the suite agreed with the bug**. Same shape as the phone-format lesson — fixtures sharing the code's wrong assumption.
+
+**Guard:** `tests/prisma-transaction-accessors.test.ts` fails on any unknown `prisma.<delegate>` and any `tx.<alias>` across `src`, `lib` and `app`, reading the model list from `schema.prisma` and the alias table from `lib/db.ts` so a new alias is covered the day it is added. Both checks skip comment lines, since the notes explaining these bugs quote the broken accessor by name.
+
+Earlier instance of the same class: `prisma.profiles` in the WhatsApp identity resolver, which took all inbound WhatsApp down. Related: [[Decisions#ADR-231|ADR-231]], [[Backend]], [[Changelog]]

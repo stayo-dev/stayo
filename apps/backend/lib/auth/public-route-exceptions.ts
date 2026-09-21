@@ -24,6 +24,17 @@ const AUTHENTICATED_UNDER_PUBLIC: { pattern: RegExp; methods: Set<string> }[] = 
     pattern: /^\/api\/discover\/hostels\/[^/]+\/reviews\/?$/,
     methods: new Set(["POST", "PATCH", "PUT", "DELETE"]),
   },
+  {
+    /**
+     * Claiming a marketplace listing hands hostels to a real owner account,
+     * so it needs that account's session — while everything else under
+     * `/api/partner` is deliberately token-only, because a partner has no
+     * account until this very moment. GET stays public: it renders what
+     * they are about to claim, before they have signed up.
+     */
+    pattern: /^\/api\/partner\/activate\/[^/]+\/?$/,
+    methods: new Set(["POST"]),
+  },
 ];
 
 export function requiresSessionDespitePublicPrefix(pathname: string, method: string): boolean {

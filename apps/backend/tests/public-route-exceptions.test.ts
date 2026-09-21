@@ -69,3 +69,35 @@ describe('allowsOptionalIdentity — public, but knows who is asking', () => {
     expect(allowsOptionalIdentity('', 'GET')).toBe(false);
   });
 });
+
+describe('claiming a marketplace listing', () => {
+  const claim = '/api/partner/activate/3f8a1c';
+
+  /**
+   * Everything under `/api/partner` is deliberately token-only — a
+   * marketplace partner has no account until the moment they claim. The
+   * claim itself is the exception: it hands hostels to a real owner, so it
+   * needs that owner's session.
+   */
+  it('needs a session for POST but not for GET', () => {
+    expect(requiresSessionDespitePublicPrefix(claim, 'POST')).toBe(true);
+    expect(requiresSessionDespitePublicPrefix(claim, 'GET')).toBe(false);
+  });
+
+  // The whole point of the portal is that it works without an account.
+  it('leaves the other partner surfaces public', () => {
+    expect(requiresSessionDespitePublicPrefix('/api/partner/3f8a1c', 'GET')).toBe(false);
+    expect(requiresSessionDespitePublicPrefix('/api/partner/enquiry/3f8a1c', 'GET')).toBe(false);
+  });
+
+  it('does not make the partner surfaces identity-aware', () => {
+    expect(allowsOptionalIdentity(claim, 'GET')).toBe(false);
+    expect(allowsOptionalIdentity('/api/partner/3f8a1c', 'GET')).toBe(false);
+  });
+
+  it('is case-insensitive about the verb and safe on junk input', () => {
+    expect(requiresSessionDespitePublicPrefix(claim, 'post')).toBe(true);
+    expect(requiresSessionDespitePublicPrefix('/api/partner/activate/', 'POST')).toBe(false);
+    expect(requiresSessionDespitePublicPrefix('', 'POST')).toBe(false);
+  });
+});

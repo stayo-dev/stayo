@@ -1710,3 +1710,32 @@ The geographic graph is real and published: **Hyderabad → Ghatkesar → Yamnam
 Also added: a canonical consistency audit and frozen SEO snapshots in the pure suite, and reusable related-hostel generators (same area, same campus, similar price, same room types) that deduplicate across strategies so one hostel never appears under two headings.
 
 Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
+
+## Marketplace partner listings (2026-09-21)
+
+**What:** A hostel owner with no Stayo account receives real enquiries on their Stayo-authored listing, free up to a quota, then held-but-visible until they claim it. The point is to manufacture attributable proof of demand and then withhold the next piece of it — an owner will not join for a promise, but will for three named students who already asked about their building.
+
+**Status:** Backend only. Migration 091 **not applied**; nothing exercised against a database; no owner-facing pages.
+
+**Flow:** enquiry on a `PLATFORM_LISTED` hostel → `partnerLeadDeliveryService.deliverEnquiry()` (hooked into `discovery-service`, after the existing sales-lead block) → under quota: `stayo_partner_new_enquiry` with a per-enquiry link; at quota: row held and `stayo_partner_enquiry_locked` sent → partner claims → hostels move to `OWNER_MANAGED`, held enquiries released.
+
+**Meta templates**, all approved 2026-09-21 except the last:
+
+| Key | Name | Category |
+|---|---|---|
+| `LISTING_LIVE` | `stayo_partner_listing_live` | MARKETING (submitted as UTILITY) |
+| `NEW_ENQUIRY` | `stayo_partner_new_enquiry` | UTILITY — the workhorse; never add promotional language, it would be recategorised and frequency-capped |
+| `ENQUIRY_LOCKED` | `stayo_partner_enquiry_locked` | MARKETING, with a `Stop promotions` quick reply |
+| `ACTIVATED` | `stayo_partner_activated` | **Not submitted.** Sends fail by design, logged by name |
+
+**Key files:** `src/services/marketing/{partner-quota,partner-consent,partner-delivery-state}.ts` (pure), `partner-lead-delivery-service.ts`, `partner-claim-service.ts`, `partner-portal-service.ts`, `partner-admin-service.ts`; `lib/services/notifications/providers/whatsapp/partner-template-contracts.ts`; `app/api/partner/**`, `app/api/platform-admin/partners/route.ts`, `app/api/platform-admin/platform-listings/[id]/partner/route.ts`; migration 091.
+
+**Verified:** 40 new pure tests; full `test:pure` suite green apart from 15 pre-existing failures on `dev` (`credential-service`, `subscription-admin`, `subscription-invoice-document`). **Not verified:** anything requiring a database or a real WhatsApp send.
+
+**Open:** the 12-hour student-fallback sweep ([[Business-Rules]] — a rule, not an option); a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); owner-facing portal/activation pages; `stayo_partner_activated` submission.
+
+## Manager invitations over WhatsApp (2026-09-21)
+
+`manager-invitation-service.sendInvitation()` now sends `stayo_admin_invitation` first and falls back to email only on failure; resend nudges a live token with `stayo_admin_invitation_reminder` instead of minting a new one. The approved templates point at `/admin/activate/:token`, which the SPA redirects to `/admin/manager-invitation/:token`. See [[Decisions#ADR-230|ADR-230]].
+
+**Not verified:** no invitation has been sent through the new path.

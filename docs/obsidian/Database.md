@@ -947,3 +947,21 @@ Shipped and applied *before* anything renamed, so the redirect existed before th
 ⚠️ **Renaming must go through `renameHostelSlugAndRevalidate`.** The swap and the history row are one transaction — a slug changed without its history row 404s every link already sent — and the rename must bust **both** slugs' caches. See [[Bugs]].
 
 Related: [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]], [[Features]]
+
+## Marketplace partners (migration 091 — **not applied**)
+
+Three tables plus one enum, for hostel owners who receive enquiries on a Stayo-authored listing without having a Stayo account. See [[Decisions#ADR-231|ADR-231]].
+
+**`PartnerConsentChannel`** — `PHONE_CALL | IN_PERSON | WHATSAPP_REPLY | WRITTEN`. An enum rather than a string, unlike most status columns here, because it is compliance evidence: Meta permits business-initiated messages on an offline opt-in and this column is what that opt-in looks like if disputed.
+
+**`marketplace_partners`** — one row per person, not per hostel. `phone` unique; `consent_channel`/`consent_at`/`consent_by`/`consent_note` are the audit record; `opted_out_at` is set when they tap "Stop promotions" and stops **every** partner template, not only the marketing ones; `portal_token` is a permanent bearer secret for `/partner/:token` (same trade-off as `platform_leads.tracking_token`); `converted_owner_id`/`converted_at` record the claim.
+
+**`partner_listings`** — partner ↔ hostel. `hostel_id` unique: a listing has one contact. `free_quota` defaults to 3 and is **per listing**, because the proof of demand has to be about a specific building.
+
+**`partner_lead_deliveries`** — the attribution ledger, one row per enquiry, and the only thing that makes "we sent you three students" provable. `visitor_lead_id` unique, so re-enquiring never earns a second message or burns a second free enquiry. `state` is a plain string: `PENDING | SENT | HELD | RELEASED | FAILED | EXPIRED`, with transitions owned by `src/services/marketing/partner-delivery-state.ts`. `delivery_token` is a per-enquiry bearer secret, so a forwarded link leaks one enquiry rather than the listing. Timestamps: `sent_at` (handed to Meta), `delivered_at` (**the only thing that consumes free quota**), `opened_at`, `responded_at`, `released_at`, `fallback_at`.
+
+**No Prisma relations to `hostels`, `visitor_leads` or `profile`**, though the foreign keys exist in the database. Deliberate, following `platform_lead_invitations.lead_id`: it keeps this change from touching existing models at all. Adding a scalar to a model changes every query that does not `select` it — the 2026-08-22 outage.
+
+Indexes: `(partner_listing_id, state)` for the quota check on every enquiry; `(partner_listing_id, created_at DESC)` for the "N students this month" count in the locked template; a partial index on `created_at WHERE state = 'HELD' AND fallback_at IS NULL` for the student-fallback sweep; and a partial index on `wa_message_id` for matching delivery webhooks back.
+
+Related: [[Business-Rules]], [[APIs]], [[Features]]
