@@ -1,59 +1,59 @@
+import type { MoneyExportId, PeriodPresetId } from './exportRequest';
+
 /**
  * What the export sheet offers, and how it says it.
  *
- * The sheet asks **who this is for**, not what format you want. Every export an
- * owner makes is handed to somebody else — an accountant, a bank officer, a
- * partner, a manager — and he has no opinion about CSV versus XLSX. He knows
- * it is for his accountant. Format is a consequence of that answer, decided
- * here, not a decision he has to carry.
+ * The sheet no longer asks what the file is for. Each export lives on the Money
+ * sub-tab that shows its data, so **where he tapped is the answer** — and a
+ * question with only one possible answer should not be asked (ADR-197,
+ * partially superseding ADR-093).
+ *
+ * Format is not asked either, and is not a property here: all three exports are
+ * spreadsheets. An owner has no opinion about xlsx versus csv, and the person
+ * he sends it to wants to sort and total it.
  *
  * Pure module, no React. Tested directly.
  */
 
-export type ExportDocumentId = 'accountant' | 'proof_of_income' | 'reconciliation' | 'who_owes_me';
-export type ExportFormat = 'xlsx' | 'pdf';
-
-export type ExportDocument = {
-  id: ExportDocumentId;
-  label: string;
+export type MoneyExport = {
+  id: MoneyExportId;
+  /** The sheet's heading. Names the data, because the tab answered "what for". */
+  heading: string;
+  /** One line under it. */
   sub: string;
-  format: ExportFormat;
-  /** What the format means to someone who does not know what xlsx is. */
-  formatLabel: string;
+  /**
+   * True where the screen already implies a period, so the sheet must not ask
+   * again. Only the Expenses tab has its own date-range chips.
+   */
+  periodFromScreen: boolean;
 };
 
-export const EXPORT_DOCUMENTS: ExportDocument[] = [
-  {
-    id: 'accountant',
-    label: 'For my accountant',
-    sub: 'Rent received and expenses, month by month',
-    format: 'xlsx',
-    formatLabel: 'Excel',
+export const MONEY_EXPORTS: Record<MoneyExportId, MoneyExport> = {
+  expenses: {
+    id: 'expenses',
+    heading: 'Expenses',
+    sub: 'The rows on this screen',
+    periodFromScreen: true,
   },
-  {
-    id: 'proof_of_income',
-    label: 'Proof of income',
-    sub: 'For a bank, landlord or partner',
-    format: 'pdf',
-    formatLabel: 'PDF',
+  collections: {
+    id: 'collections',
+    heading: 'Collections',
+    sub: 'What you received, and who still owes you',
+    periodFromScreen: false,
   },
-  {
-    id: 'reconciliation',
-    label: 'Bank reconciliation',
-    sub: 'Payouts with references, and who paid each one',
-    format: 'xlsx',
-    formatLabel: 'Excel',
+  finance: {
+    id: 'finance',
+    heading: 'Finance summary',
+    sub: "Rent received, expenses and what's left — month by month",
+    periodFromScreen: false,
   },
-  {
-    id: 'who_owes_me',
-    label: 'Who owes me',
-    sub: 'Printable list to chase or hand over',
-    format: 'pdf',
-    formatLabel: 'PDF',
-  },
-];
+};
 
-export type PeriodPresetId = 'this_month' | 'last_month' | 'this_fy' | 'last_fy' | 'custom';
+export function exportById(id: MoneyExportId): MoneyExport {
+  const found = MONEY_EXPORTS[id];
+  if (!found) throw new Error(`Unknown export: ${id}`);
+  return found;
+}
 
 const FY_START_MONTH = 3; // April
 
@@ -87,29 +87,45 @@ export function periodOptions(now: Date = new Date()): PeriodOption[] {
     { id: 'last_month', label: 'Last month', sub: monthName(-1) },
     { id: 'this_fy', label: 'This financial year', sub: `${financialYearLabel(fy)} · Apr–Mar` },
     { id: 'last_fy', label: 'Last financial year', sub: `${financialYearLabel(fy - 1)} · Apr–Mar` },
+    { id: 'all_time', label: 'All time', sub: 'Everything on record' },
     { id: 'custom', label: 'Custom dates', sub: 'Pick a start and end' },
   ];
 }
 
-export function documentById(id: ExportDocumentId): ExportDocument {
-  const found = EXPORT_DOCUMENTS.find((d) => d.id === id);
-  if (!found) throw new Error(`Unknown export document: ${id}`);
-  return found;
+export type ExportPreviewData = {
+  count: number;
+  total: number;
+  noun: string;
+  secondary?: { count: number; total: number; noun: string };
+};
+
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
+
+function half(count: number, total: number, noun: string): string {
+  const word = count === 1 ? noun.replace(/s\b/, '') : noun;
+  return `${count.toLocaleString('en-IN')} ${word} · ${rupees(total)}`;
 }
 
 /**
  * The line that says what is in the file before it is generated.
  *
- * An owner sending a year's rent register to his accountant should be able to
+ * An owner sending a year's collections to his accountant should be able to
  * tell it is the right thing without opening it. Zero rows is said plainly
  * rather than shown as "0 payments · ₹0", which reads like a fault.
+ *
+ * Two-sheet exports say both halves: a collections file that mentioned only
+ * what came in would hide the sheet the owner most wants to check.
  */
-export function previewLine(preview: { count: number; total: number; noun: string } | null): string | null {
+export function previewLine(preview: ExportPreviewData | null): string | null {
   if (!preview) return null;
-  if (preview.count === 0) return 'Nothing in this period yet';
-  const amount = `₹${Math.round(preview.total).toLocaleString('en-IN')}`;
-  const noun = preview.count === 1 ? preview.noun.replace(/s$/, '') : preview.noun;
-  return `${preview.count.toLocaleString('en-IN')} ${noun} · ${amount}`;
+  if (preview.count === 0 && !preview.secondary?.count) return 'Nothing in this period yet';
+
+  const first = preview.count === 0
+    ? 'Nothing received in this period'
+    : half(preview.count, preview.total, preview.noun);
+
+  if (!preview.secondary || preview.secondary.count === 0) return first;
+  return `${first} · ${half(preview.secondary.count, preview.secondary.total, preview.secondary.noun)}`;
 }
 
 /**
@@ -119,7 +135,7 @@ export function previewLine(preview: { count: number; total: number; noun: strin
  * told by the control he just used instead of by a failed download.
  */
 export function customRangeError(from: string, to: string): string | null {
-  if (!from || !to) return 'Pick both a start and an end date';
-  if (from > to) return 'The start date is after the end date';
+  if (!from && !to) return 'Pick a start or an end date';
+  if (from && to && from > to) return 'The start date is after the end date';
   return null;
 }

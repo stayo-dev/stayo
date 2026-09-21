@@ -1,3 +1,5 @@
+import { ExportPill } from '../../export/ExportPill';
+
 export type CollectionsSort = 'Most overdue' | 'Highest amount' | 'Name';
 
 const SORT_OPTIONS: CollectionsSort[] = ['Most overdue', 'Highest amount', 'Name'];
@@ -15,10 +17,12 @@ interface CollectionsFiltersProps {
    * mobile control is unchanged.
    */
   hideHostelFilter?: boolean;
+  /** Exports this tab's data — what came in, and who still owes. */
+  onOpenExport: () => void;
 }
 
 /** Hostel filter chips + sort chips for the Collections list, per Stayo App.dc.html. */
-export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange, sort, onSortChange, hideHostelFilter }: CollectionsFiltersProps) {
+export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange, sort, onSortChange, hideHostelFilter, onOpenExport }: CollectionsFiltersProps) {
   return (
     <div className="flex flex-col gap-2">
       {!hideHostelFilter && (
@@ -40,7 +44,7 @@ export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange
           })}
         </div>
       )}
-      <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+      <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5">
         {SORT_OPTIONS.map((s) => {
           const active = sort === s;
           return (
@@ -56,6 +60,9 @@ export function CollectionsFilters({ hostels, hostelFilter, onHostelFilterChange
             </button>
           );
         })}
+        <span className="ml-auto flex-none pl-1.5">
+          <ExportPill onClick={onOpenExport} />
+        </span>
       </div>
     </div>
   );

@@ -2,6 +2,7 @@ import { useState } from 'react';
 import type { MockExpense } from '@shared/mocks/expenses';
 import type { QuickCollectTenant } from '@features/owner-tenants/types';
 import type { AddExpenseData, MoneyModal, MoneyTab } from '../types';
+import type { MoneyExportId } from '../export/exportRequest';
 
 interface AddExpenseDraft {
   seed?: Partial<AddExpenseData>;
@@ -15,6 +16,9 @@ export function useMoneyPage() {
   const [expenseDetail, setExpenseDetail] = useState<MockExpense | null>(null);
   const [collectTenant, setCollectTenant] = useState<QuickCollectTenant | null>(null);
   const [addExpenseDraft, setAddExpenseDraft] = useState<AddExpenseDraft>({});
+  // Which export the sheet is showing. Set by where the owner tapped, so the
+  // sheet never has to ask what the file is for (ADR-197).
+  const [exportTarget, setExportTarget] = useState<MoneyExportId>('expenses');
 
   return {
     tab,
@@ -32,6 +36,11 @@ export function useMoneyPage() {
     openAddExpense: (draft: AddExpenseDraft = {}) => {
       setAddExpenseDraft(draft);
       setModal('add-expense');
+    },
+    exportTarget,
+    openExport: (target: MoneyExportId) => {
+      setExportTarget(target);
+      setModal('export');
     },
     expenseDetail,
     openExpenseDetail: (e: MockExpense) => setExpenseDetail(e),

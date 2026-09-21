@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useLocation } from 'react-router-dom';
-import { ChevronDown, Download } from 'lucide-react';
+import { ChevronDown } from 'lucide-react';
 import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
@@ -25,6 +25,9 @@ import { ExpenseRow } from '../components/expenses/ExpenseRow';
 import { AddExpenseModal } from '../add-expense/AddExpenseModal';
 import { ExpenseFiltersModal, activeFilterCount } from '../filters/ExpenseFiltersModal';
 import { ExportSheet } from '../export/ExportSheet';
+import { FinanceSummaryRow } from '../components/pulse/FinanceSummaryRow';
+import { buildExportQuery, type PeriodPresetId } from '../export/exportRequest';
+import { MONEY_EXPORTS, periodOptions } from '../export/exportDocuments';
 import { ExpenseDetailModal } from '../expense-detail/ExpenseDetailModal';
 
 function toQuickCollectTenant(t: MockTenant): QuickCollectTenant {
@@ -107,6 +110,11 @@ export function MoneyPage() {
   const [expenseFilters, setExpenseFilters] = useState(EMPTY_EXPENSE_FILTERS);
   const [hostelFilter, setHostelFilter] = useState('all');
   const [collectionsSort, setCollectionsSort] = useState<CollectionsSort>('Most overdue');
+  // The period the Collections and Finance exports use. The Expenses export
+  // has no such state — it takes the date chips already on screen.
+  const [exportPreset, setExportPreset] = useState<PeriodPresetId>('this_fy');
+  const [exportFrom, setExportFrom] = useState('');
+  const [exportTo, setExportTo] = useState('');
 
   /**
    * The hostel scope.
@@ -242,6 +250,41 @@ export function MoneyPage() {
     [filteredExpenses],
   );
 
+  /**
+   * The export request, built from the screen rather than from a second set of
+   * controls inside the sheet. Every rule lives in `exportRequest.ts`, which is
+   * pure and tested — this is only the wiring.
+   */
+  const exportQuery = useMemo(
+    () => buildExportQuery(
+      money.exportTarget,
+      { hostelFilter: effectiveHostelFilter, dateRange, search: expenseSearch, filters: expenseFilters },
+      { preset: exportPreset, from: exportFrom, to: exportTo },
+    ),
+    [money.exportTarget, effectiveHostelFilter, dateRange, expenseSearch, expenseFilters, exportPreset, exportFrom, exportTo],
+  );
+
+  /** What the file is narrowed to, said in the sheet so he can check it there. */
+  const exportScopeLine = useMemo(() => {
+    const parts: string[] = [
+      effectiveHostelFilter === 'all'
+        ? 'All hostels'
+        : effectiveHostelFilter === 'business'
+          ? 'Business (HQ)'
+          : real.hostelOptions.find((h: { id: string; name: string }) => h.id === effectiveHostelFilter)?.name ?? 'One hostel',
+    ];
+    if (money.exportTarget === 'expenses') {
+      const chip = { today: 'Today', week: 'This week', month: 'This month', all: 'All time', custom: 'Custom dates' }[dateRange];
+      parts.push(chip);
+      if (expenseSearch.trim()) parts.push(`Search: ${expenseSearch.trim()}`);
+      const active = activeFilterCount(expenseFilters);
+      if (active > 0) parts.push(`${active} filter${active === 1 ? '' : 's'}`);
+    } else {
+      parts.push(periodOptions().find((p) => p.id === exportPreset)?.label ?? '');
+    }
+    return parts.filter(Boolean).join(' · ');
+  }, [effectiveHostelFilter, real.hostelOptions, money.exportTarget, dateRange, expenseSearch, expenseFilters, exportPreset]);
+
   const handleOpenAddExpense = () => {
     if (effectiveHostelFilter === 'business') {
       money.openAddExpense({ seed: { expenseScope: 'BUSINESS', hostelId: '' } });
@@ -301,19 +344,9 @@ export function MoneyPage() {
           </div>
         </div>
         <div className="flex flex-none items-center gap-2">
-          {/* One export for the whole tab, not one per tab: the owner chooses a
-              document by who it is for, and the right rows follow. A download
-              arrow, because the owner is taking a report away — the old upload
-              arrow read as "add a file". */}
-          <button
-            type="button"
-            onClick={() => money.openModal('export')}
-            aria-label="Export a report"
-            title="Export a report"
-            className="flex h-11 w-11 items-center justify-center rounded-xl border border-border bg-card text-foreground"
-          >
-            <Download className="h-[18px] w-[18px]" strokeWidth={2} />
-          </button>
+          {/* No export button here any more. Each tab exports its own data from
+              its own row, so "which export?" is answered by where he tapped and
+              never asked (ADR-197). */}
           <button
             type="button"
             onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
@@ -375,6 +408,11 @@ export function MoneyPage() {
           >
             {real.overview.overdueCount > 0 ? `${real.overview.overdueCount} tenant${real.overview.overdueCount === 1 ? '' : 's'} overdue` : 'No tenants overdue right now'}
           </div>
+          {/* Overview is the combined picture, so the combined export belongs
+              here — after the cards, because it is what he does having read them. */}
+          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
+            <FinanceSummaryRow onClick={() => money.openExport('finance')} />
+          </div>
         </div>
       )}
 
@@ -390,7 +428,7 @@ export function MoneyPage() {
               would match no line in his passbook. Per-hostel attribution lives
               inside a payout's own breakdown instead. */}
           <PayoutStrip />
-          <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} />
+          <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} onOpenExport={() => money.openExport('collections')} />
           <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
             {overdueTenants.length === 0 ? (
               <p className="py-8 text-center text-sm text-muted-foreground">Nothing overdue here — nice work.</p>
@@ -416,7 +454,7 @@ export function MoneyPage() {
             search={expenseSearch}
             onSearchChange={setExpenseSearch}
             onOpenFilters={() => money.openModal('filters')}
-            onOpenExport={() => money.openModal('export')}
+            onOpenExport={() => money.openExport('expenses')}
             activeFilterCount={activeFilterCount(expenseFilters)}
           />
           <div className="flex gap-1.5 overflow-x-auto pb-0.5">
@@ -557,10 +595,22 @@ export function MoneyPage() {
       <ExportSheet
         open={money.modal === 'export'}
         onClose={money.closeModal}
-        hostels={real.hostelOptions}
-        // 'all' and 'business' are view sentinels, not hostel ids — the export
-        // takes a real id or nothing, so a sentinel can never reach a WHERE clause.
-        hostelId={effectiveHostelFilter === 'all' || effectiveHostelFilter === 'business' ? null : effectiveHostelFilter}
+        target={money.exportTarget}
+        query={exportQuery}
+        scopeLine={exportScopeLine}
+        // Only the two screens that do not already imply a period ask for one.
+        period={
+          MONEY_EXPORTS[money.exportTarget].periodFromScreen
+            ? undefined
+            : {
+                preset: exportPreset,
+                onPresetChange: setExportPreset,
+                from: exportFrom,
+                to: exportTo,
+                onFromChange: setExportFrom,
+                onToChange: setExportTo,
+              }
+        }
       />
       <ExpenseDetailModal
         open={money.expenseDetail != null}

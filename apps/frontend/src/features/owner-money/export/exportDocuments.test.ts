@@ -1,85 +1,134 @@
 import { describe, it, expect } from 'vitest';
 import {
-  EXPORT_DOCUMENTS, documentById, periodOptions, financialYearOf,
-  financialYearLabel, previewLine, customRangeError,
+  MONEY_EXPORTS, exportById, periodOptions, previewLine, customRangeError,
+  financialYearOf, financialYearLabel,
 } from './exportDocuments';
 
-describe('documents', () => {
-  it('offers four documents named by who they are for, not by format', () => {
-    // The owner has no opinion about CSV vs XLSX; he knows it is for his CA.
-    expect(EXPORT_DOCUMENTS.map((d) => d.id)).toEqual([
-      'accountant', 'proof_of_income', 'reconciliation', 'who_owes_me',
-    ]);
-    for (const d of EXPORT_DOCUMENTS) {
-      expect(d.label).not.toMatch(/xlsx|csv|pdf/i);
+describe('the three exports', () => {
+  it('are named by the data they contain', () => {
+    expect(Object.keys(MONEY_EXPORTS)).toEqual(['expenses', 'collections', 'finance']);
+  });
+
+  it('never mention a file format', () => {
+    // The owner has no opinion about xlsx versus csv, and saying so in the UI
+    // would put the question back that ADR-197 removed.
+    for (const doc of Object.values(MONEY_EXPORTS)) {
+      expect(`${doc.heading} ${doc.sub}`.toLowerCase()).not.toMatch(/xlsx|csv|pdf|excel|spreadsheet/);
     }
   });
 
-  it('still tells him what he will get, in words he knows', () => {
-    expect(documentById('accountant').formatLabel).toBe('Excel');
-    expect(documentById('proof_of_income').formatLabel).toBe('PDF');
+  it('carry no format field at all', () => {
+    // A regression guard: format is not a per-document decision any more.
+    for (const doc of Object.values(MONEY_EXPORTS)) {
+      expect('format' in doc).toBe(false);
+      expect('formatLabel' in doc).toBe(false);
+    }
   });
 
-  it('sends a bank statement as PDF and an accountant sheet as Excel', () => {
-    expect(documentById('proof_of_income').format).toBe('pdf');
-    expect(documentById('accountant').format).toBe('xlsx');
-    expect(documentById('reconciliation').format).toBe('xlsx');
-    expect(documentById('who_owes_me').format).toBe('pdf');
+  it('takes its period from the screen only where the screen has one', () => {
+    // The Expenses tab has date-range chips; Collections and Overview do not.
+    expect(MONEY_EXPORTS.expenses.periodFromScreen).toBe(true);
+    expect(MONEY_EXPORTS.collections.periodFromScreen).toBe(false);
+    expect(MONEY_EXPORTS.finance.periodFromScreen).toBe(false);
+  });
+
+  it('never says "profit", and never says "settlement"', () => {
+    const copy = Object.values(MONEY_EXPORTS).map((d) => `${d.heading} ${d.sub}`).join(' ').toLowerCase();
+    expect(copy).not.toContain('profit');
+    expect(copy).not.toContain('settlement');
+  });
+
+  it('refuses an id it does not have', () => {
+    expect(() => exportById('accountant' as any)).toThrow(/Unknown export/);
   });
 });
 
 describe('financial year', () => {
-  it('starts in April', () => {
-    expect(financialYearOf(new Date(2026, 3, 1))).toBe(2026);
-    expect(financialYearOf(new Date(2026, 2, 31))).toBe(2025);
+  it('starts in April, not January', () => {
+    expect(financialYearOf(new Date('2026-04-01'))).toBe(2026);
+    expect(financialYearOf(new Date('2026-03-31'))).toBe(2025);
   });
 
-  it('names the current FY the way the owner will recognise it', () => {
-    const opts = periodOptions(new Date(2026, 7, 23));
-    expect(opts.find((o) => o.id === 'this_fy')?.sub).toBe('2026-27 · Apr–Mar');
-    expect(opts.find((o) => o.id === 'last_fy')?.sub).toBe('2025-26 · Apr–Mar');
+  it('puts January in the FY that began the previous calendar year', () => {
+    expect(financialYearOf(new Date('2027-01-15'))).toBe(2026);
   });
 
-  it('gets the FY right in January, when it began last calendar year', () => {
-    const opts = periodOptions(new Date(2027, 0, 15));
-    expect(opts.find((o) => o.id === 'this_fy')?.sub).toBe('2026-27 · Apr–Mar');
-  });
-
-  it('formats the label like an accountant writes it', () => {
+  it('labels the year the way an accountant writes it', () => {
     expect(financialYearLabel(2026)).toBe('2026-27');
   });
 });
 
-describe('previewLine', () => {
-  it('says what is in the file', () => {
-    expect(previewLine({ count: 1247, total: 1480000, noun: 'payments' })).toBe('1,247 payments · ₹14,80,000');
+describe('periodOptions', () => {
+  it('offers every period the sheet can ask for', () => {
+    expect(periodOptions(new Date('2026-09-21')).map((p) => p.id)).toEqual([
+      'this_month', 'last_month', 'this_fy', 'last_fy', 'all_time', 'custom',
+    ]);
   });
 
-  it('says nothing is there in words, not as a zero', () => {
-    // "0 payments · ₹0" reads like something is broken.
+  it('names the financial years so the owner can recognise them', () => {
+    const opts = periodOptions(new Date('2026-09-21'));
+    expect(opts.find((p) => p.id === 'this_fy')?.sub).toBe('2026-27 · Apr–Mar');
+    expect(opts.find((p) => p.id === 'last_fy')?.sub).toBe('2025-26 · Apr–Mar');
+  });
+});
+
+describe('previewLine', () => {
+  it('says what is in the file, with thousands grouped the Indian way', () => {
+    expect(previewLine({ count: 1247, total: 1480000, noun: 'payments' }))
+      .toBe('1,247 payments · ₹14,80,000');
+  });
+
+  it('says nothing is there plainly, rather than showing "0 payments · ₹0"', () => {
     expect(previewLine({ count: 0, total: 0, noun: 'payments' })).toBe('Nothing in this period yet');
   });
 
-  it('does not say "1 payments"', () => {
+  it('singularises a count of one', () => {
     expect(previewLine({ count: 1, total: 8500, noun: 'payments' })).toBe('1 payment · ₹8,500');
   });
 
-  it('shows nothing at all while unknown', () => {
+  it('says both halves of a two-sheet export', () => {
+    // A collections line mentioning only what came in would hide the sheet the
+    // owner most wants to check.
+    expect(previewLine({
+      count: 142, total: 482000, noun: 'payments',
+      secondary: { count: 9, total: 112000, noun: 'tenants still owe' },
+    })).toBe('142 payments · ₹4,82,000 · 9 tenants still owe · ₹1,12,000');
+  });
+
+  it('still reports the second half when the first is empty', () => {
+    expect(previewLine({
+      count: 0, total: 0, noun: 'payments',
+      secondary: { count: 9, total: 112000, noun: 'tenants still owe' },
+    })).toBe('Nothing received in this period · 9 tenants still owe · ₹1,12,000');
+  });
+
+  it('drops the second half when it is empty', () => {
+    expect(previewLine({
+      count: 142, total: 482000, noun: 'payments',
+      secondary: { count: 0, total: 0, noun: 'tenants still owe' },
+    })).toBe('142 payments · ₹4,82,000');
+  });
+
+  it('has nothing to say before the answer arrives', () => {
     expect(previewLine(null)).toBeNull();
   });
 });
 
 describe('customRangeError', () => {
-  it('refuses a reversed range at the control, not after a failed download', () => {
-    expect(customRangeError('2026-08-31', '2026-08-01')).toMatch(/after/);
+  it('refuses a reversed range', () => {
+    expect(customRangeError('2026-09-30', '2026-09-01')).toBe('The start date is after the end date');
   });
 
-  it('asks for both dates', () => {
-    expect(customRangeError('2026-08-01', '')).toMatch(/both/);
+  it('refuses a range with neither end', () => {
+    expect(customRangeError('', '')).toBe('Pick a start or an end date');
   });
 
-  it('accepts a valid range, including a single day', () => {
-    expect(customRangeError('2026-08-01', '2026-08-31')).toBeNull();
-    expect(customRangeError('2026-08-01', '2026-08-01')).toBeNull();
+  it('accepts a one-sided range', () => {
+    expect(customRangeError('', '2026-09-12')).toBeNull();
+    expect(customRangeError('2026-03-01', '')).toBeNull();
+  });
+
+  it('accepts a valid single-day range', () => {
+    expect(customRangeError('2026-09-12', '2026-09-12')).toBeNull();
   });
 });
