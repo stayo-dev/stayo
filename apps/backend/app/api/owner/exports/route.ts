@@ -10,18 +10,23 @@ import { generateExport } from "@/src/services/exports/owner-money-export-servic
 import { parseExportRequest } from "@/src/services/exports/export-request";
 
 /**
- * GET /api/owner/exports?document=&preset=|from=&to=&hostelId=
+ * GET /api/owner/exports?document=&preset=|from=&to=&hostelId=&scope=[&expense filters]
  *
- * Returns a finished file. Owner-scoped; a hostel filter is ownership-checked
- * rather than trusted, since a hostel id is the one caller-supplied value here
- * that could otherwise reach another owner's data.
+ * Returns a finished spreadsheet. `document` is one of `expenses`,
+ * `collections` or `finance` — named by the data it contains, since the Money
+ * sub-tab the owner tapped from already answered what it is for (ADR-197).
+ *
+ * Owner-scoped; a hostel filter is ownership-checked rather than trusted, since
+ * a hostel id is the one caller-supplied value here that could otherwise reach
+ * another owner's data.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
   try {
     const scope = resolveOwnerScope(session);
 
-    // Generating a year of PDF is real work; the same limit the expenses export uses.
+    // Building a year of spreadsheet is real work — up to EXPENSE_ROW_CAP rows
+    // and two aggregate queries per call.
     const limit = await checkFixedWindowLimit({
       scope: "owner:exports",
       identifier: scope.owner_id,

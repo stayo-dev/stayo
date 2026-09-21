@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   financialYearOf, financialYearLabel, financialYearPeriod,
   monthPeriod, resolvePreset, customPeriod, periodPresets,
+  dayPeriod, rollingWeekPeriod, allTimePeriod, isAllTime, periodSlug,
 } from '@/src/services/exports/financial-year';
 
 /**
@@ -81,6 +82,109 @@ describe('customPeriod', () => {
 
   it('labels a single day and a span differently', () => {
     expect(customPeriod('2026-08-01', '2026-08-01').label).toBe('1 Aug 2026');
-    expect(customPeriod('2026-04-01', '2026-09-30').label).toBe('Apr 2026 – Sep 2026');
+    // Day-precise on both ends. A month-only label printed "Apr 2026 – Sep 2026"
+    // for 15 Apr – 12 Sep too, which describes a period the owner did not pick.
+    expect(customPeriod('2026-04-01', '2026-09-30').label).toBe('1 Apr 2026 – 30 Sep 2026');
+    expect(customPeriod('2026-04-15', '2026-09-12').label).toBe('15 Apr 2026 – 12 Sep 2026');
+  });
+
+  it('allows a one-sided range, because the Expenses custom chip does', () => {
+    const upTo = customPeriod(null, '2026-09-12');
+    expect(upTo.from).toBeNull();
+    expect(upTo.label).toBe('Up to 12 Sep 2026');
+
+    // An open upper bound means "up to now", never "forever".
+    const since = customPeriod('2026-03-01', null, new Date('2026-09-21T06:00:00Z'));
+    expect(since.to).toBe('2026-09-21');
+    expect(since.label).toBe('1 Mar 2026 – 21 Sep 2026');
+  });
+
+  it('refuses a range with neither end — that is not a range', () => {
+    expect(() => customPeriod(null, null)).toThrow(/Give a preset/);
+  });
+});
+
+describe('dayPeriod', () => {
+  it('is one IST day at both ends', () => {
+    const p = dayPeriod(new Date('2026-09-21T06:00:00Z'));
+    expect(p).toEqual({ from: '2026-09-21', to: '2026-09-21', label: '21 Sep 2026' });
+  });
+
+  it('uses the IST day, so a late-evening export is not a day early', () => {
+    // 20:00Z is already the next day in IST — the owner's "today", not UTC's.
+    expect(dayPeriod(new Date('2026-03-31T20:00:00Z')).from).toBe('2026-04-01');
+  });
+});
+
+describe('rollingWeekPeriod', () => {
+  /**
+   * Seven days ending today, NOT the calendar week. `expense-service`'s own
+   * `week` branch starts on Sunday and ends seven days later, so on a Tuesday
+   * it covers four days that have not happened yet. The export and the list
+   * above it must not disagree about what "this week" contains.
+   */
+  it('spans exactly seven days, inclusive, ending today', () => {
+    const p = rollingWeekPeriod(new Date('2026-09-21T06:00:00Z'));
+    expect(p.from).toBe('2026-09-15');
+    expect(p.to).toBe('2026-09-21');
+  });
+
+  it('never runs into the future', () => {
+    const now = new Date('2026-09-21T06:00:00Z');
+    expect(rollingWeekPeriod(now).to).toBe(dayPeriod(now).to);
+  });
+
+  it('crosses a month boundary', () => {
+    expect(rollingWeekPeriod(new Date('2026-10-03T06:00:00Z')).from).toBe('2026-09-27');
+  });
+
+  it('crosses a year boundary', () => {
+    expect(rollingWeekPeriod(new Date('2027-01-03T06:00:00Z')).from).toBe('2026-12-28');
+  });
+});
+
+describe('allTimePeriod', () => {
+  /**
+   * `from: null` rather than an early sentinel. A made-up 1970 start would
+   * print in the label, in the filename and on the report sheet as a range the
+   * owner never asked for.
+   */
+  it('has no lower bound at all', () => {
+    const p = allTimePeriod(new Date('2026-09-21T06:00:00Z'));
+    expect(p.from).toBeNull();
+    expect(isAllTime(p)).toBe(true);
+  });
+
+  it('stops at today, because a report cannot contain the future', () => {
+    expect(allTimePeriod(new Date('2026-09-21T06:00:00Z')).to).toBe('2026-09-21');
+  });
+
+  it('says so in the label, with the date it actually stops at', () => {
+    expect(allTimePeriod(new Date('2026-09-21T06:00:00Z')).label).toBe('All time (up to 21 Sep 2026)');
+  });
+
+  it('is the only preset that is all-time', () => {
+    const now = new Date('2026-09-21T06:00:00Z');
+    const bounded = ['today', 'this_week', 'this_month', 'last_month', 'this_fy', 'last_fy'] as const;
+    for (const id of bounded) expect(isAllTime(resolvePreset(id, now))).toBe(false);
+    expect(isAllTime(resolvePreset('all_time', now))).toBe(true);
+  });
+});
+
+describe('periodSlug', () => {
+  it('names a bounded period by both ends', () => {
+    expect(periodSlug(monthPeriod(2026, 8))).toBe('2026-09-01-to-2026-09-30');
+  });
+
+  it('never invents a start date for an unbounded one', () => {
+    expect(periodSlug(allTimePeriod(new Date('2026-09-21T06:00:00Z')))).toBe('all-time-to-2026-09-21');
+  });
+});
+
+describe('the preset picker', () => {
+  it('offers every preset the screens can ask for', () => {
+    expect(periodPresets(new Date('2026-09-21T06:00:00Z')).map((p) => p.id)).toEqual([
+      'today', 'this_week', 'this_month', 'last_month', 'this_fy', 'last_fy', 'all_time',
+    ]);
   });
 });

@@ -1,11 +1,28 @@
 import { Prisma } from "@prisma/client";
-import type { RentReceivedRow, PayoutWithTenants } from "@/src/services/exports/export-documents";
+import type { RentReceivedRow } from "@/src/services/exports/export-documents";
 import { prisma } from "@/lib/db";
 import { logger } from "@/lib/logger";
 import { collectionQueueService } from "@/lib/services/collection-queue/collection-queue-service";
 import { assembleMonth, type MonthBlock } from "./owner-payout-month";
 
-export type { RentReceivedRow, PayoutWithTenants };
+/**
+ * A payout with the tenant payments that make it up.
+ *
+ * Defined here rather than in the export renderer that used to own it: a read
+ * model importing a type from its own consumer is backwards, and that consumer
+ * (the bank-reconciliation workbook) was retired by ADR-197.
+ */
+export type PayoutWithTenants = {
+  id: string;
+  amount: number;
+  status: string;
+  method: string | null;
+  reference: string | null;
+  paidAt: string | null;
+  tenants: { name: string; hostelName: string; amount: number; date: string }[];
+};
+
+export type { RentReceivedRow };
 import { scorePromises, istDateOf, type PromiseRecord } from "./payout-promise";
 
 /**
@@ -525,11 +542,15 @@ export class OwnerPayoutReadModel {
    */
   async rentReceived(
     ownerId: string,
-    period: { from: string; to: string },
+    period: { from: string | null; to: string },
     hostelId: string | null,
   ): Promise<RentReceivedRow[]> {
     const hostelClause = hostelId ? Prisma.sql`AND p.hostel_id = ${hostelId}::uuid` : Prisma.empty;
     const gwHostelClause = hostelId ? Prisma.sql`AND g.hostel_id = ${hostelId}::uuid` : Prisma.empty;
+    // `period.from === null` means "all time" — no lower bound at all, rather
+    // than an invented early date. The upper bound always applies.
+    const fromClause = period.from ? Prisma.sql`AND p.payment_date >= ${period.from}::date` : Prisma.empty;
+    const gwFromClause = period.from ? Prisma.sql`AND g.captured_at >= ${period.from}::date` : Prisma.empty;
 
     const [direct, gateway] = await Promise.all([
       sql`
@@ -543,7 +564,7 @@ export class OwnerPayoutReadModel {
         LEFT JOIN hostels h   ON h.id = p.hostel_id
         WHERE p.owner_id = ${ownerId}::uuid
           AND p.payment_attempt_id IS NULL
-          AND p.payment_date >= ${period.from}::date
+          ${fromClause}
           AND p.payment_date <= ${period.to}::date
           ${hostelClause}
         ORDER BY p.payment_date ASC`,
@@ -559,7 +580,7 @@ export class OwnerPayoutReadModel {
         WHERE g.owner_id = ${ownerId}::uuid
           AND g.purpose = 'TENANT_RENT'
           AND g.status = 'CAPTURED'
-          AND g.captured_at >= ${period.from}::date
+          ${gwFromClause}
           AND g.captured_at < (${period.to}::date + INTERVAL '1 day')
           ${gwHostelClause}
         ORDER BY g.captured_at ASC`,
@@ -586,6 +607,11 @@ export class OwnerPayoutReadModel {
    *
    * Shaped for reconciliation against a passbook: one parent row per bank
    * credit, children explaining it. One query rather than N+1 breakdown calls.
+   *
+   * **Currently unreferenced.** Its only caller was the bank-reconciliation
+   * workbook, retired by ADR-197. Kept because the deferred CA / working-capital
+   * statement export is exactly this query, and rebuilding it from the raw
+   * settlement tables is the expensive part.
    */
   async payoutsForPeriod(
     ownerId: string,

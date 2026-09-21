@@ -3,41 +3,41 @@ import { prisma } from "../db";
 import { buildMemoryEntry, sortMemory, priceChangeNote, type MemoryFacts, type MemoryEntry } from "./expenses/expense-memory";
 import { detectSpendAnomaly, type SpendAnomaly } from "./expenses/expense-anomaly";
 import { eventSystem } from "../events";
+import {
+  EXPENSE_CATEGORIES,
+  CATEGORY_TO_OPERATIONAL_TYPE,
+  deriveOperationalType,
+  normalizeCategory,
+  suggestedCategory,
+  buildSearchWhere,
+  getRange,
+  buildExpenseLedgerWhere,
+  resolveExpenseSort,
+  normalizeExpenseStatus,
+  type ExpenseFilters,
+} from "./expenses/expense-ledger-query";
 
-const EXPENSE_CATEGORIES = [
-  "Food & Groceries",
-  "Staff Salary",
-  "Electricity",
-  "Water",
-  "Gas Cylinders",
-  "Internet",
-  "Cleaning Supplies",
-  "Maintenance & Repairs",
-  "Security",
-  "Laundry",
-  "Transportation",
-  "Furniture & Equipment",
-  "Licenses & Government",
-  "Marketing",
-  "Medical & Emergency",
-  "Miscellaneous",
-];
-
-export type ExpenseFilters = {
-  range?: string;
-  startDate?: string;
-  endDate?: string;
-  hostelId?: string | undefined;
-  categories?: string[];
-  status?: string;
-  sort?: string;
-  search?: string;
-  recurring?: boolean;
-  amountMin?: number;
-  amountMax?: number;
-  limit?: number;
-  offset?: number;
+/**
+ * The query-building half of this service lives in `expenses/expense-ledger-query.ts`.
+ *
+ * It is pure — no `prisma` import — so the rules that decide which expenses an
+ * export contains can be tested without a database, which this environment does
+ * not have. Re-exported here so every existing importer of this module is
+ * unchanged (ADR-009: one query builder, never two).
+ */
+export {
+  EXPENSE_CATEGORIES,
+  CATEGORY_TO_OPERATIONAL_TYPE,
+  deriveOperationalType,
+  normalizeCategory,
+  suggestedCategory,
+  buildExpenseLedgerWhere,
+  resolveExpenseSort,
+  normalizeExpenseStatus,
 };
+export type { ExpenseFilters };
+
+
 
 const startOfMonth = (date: Date) => new Date(date.getFullYear(), date.getMonth(), 1);
 const addMonths = (date: Date, months: number) => new Date(date.getFullYear(), date.getMonth() + months, 1);
@@ -54,27 +54,6 @@ function asDate(value: unknown, fallback: Date) {
   return Number.isNaN(parsed.getTime()) ? fallback : parsed;
 }
 
-function getRange(filters: ExpenseFilters) {
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  if (filters.startDate || filters.endDate) {
-    const start = asDate(filters.startDate, startOfMonth(now));
-    const endBase = asDate(filters.endDate, now);
-    const end = new Date(endBase.getFullYear(), endBase.getMonth(), endBase.getDate() + 1);
-    return { start, end };
-  }
-
-  if (filters.range === "today") return { start: today, end: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1) };
-  if (filters.range === "week") {
-    const start = new Date(today);
-    start.setDate(today.getDate() - today.getDay());
-    const end = new Date(start);
-    end.setDate(start.getDate() + 7);
-    return { start, end };
-  }
-
-  return { start: startOfMonth(now), end: endExclusiveMonth(now) };
-}
 
 function pctChange(current: number, previous: number) {
   if (previous <= 0 && current <= 0) return 0;
@@ -82,82 +61,8 @@ function pctChange(current: number, previous: number) {
   return round(((current - previous) / previous) * 100);
 }
 
-function normalizeCategory(category: string) {
-  if (!category) return "Miscellaneous";
-  const lower = category.toLowerCase().trim();
-  const aliases: Record<string, string> = {
-    food: "Food & Groceries",
-    grocery: "Food & Groceries",
-    groceries: "Food & Groceries",
-    kitchen: "Food & Groceries",
-    salary: "Staff Salary",
-    staff: "Staff Salary",
-    gas: "Gas Cylinders",
-    "gas cylinder": "Gas Cylinders",
-    cylinder: "Gas Cylinders",
-    cleaning: "Cleaning Supplies",
-    repairs: "Maintenance & Repairs",
-    repair: "Maintenance & Repairs",
-    maintenance: "Maintenance & Repairs",
-    asset: "Furniture & Equipment",
-    assets: "Furniture & Equipment",
-    "asset purchase": "Furniture & Equipment",
-    furniture: "Furniture & Equipment",
-  };
-  if (aliases[lower]) return aliases[lower];
-  const found = EXPENSE_CATEGORIES.find((c) => c.toLowerCase() === lower);
-  return found || category;
-}
 
-function suggestedCategory(title: string) {
-  const text = title.toLowerCase();
-  if (/(electric|power|eb|current|bescom|bill)/.test(text)) return "Electricity";
-  if (/(food|rice|milk|grocery|vegetable|kitchen|meal|dal|oil)/.test(text)) return "Food & Groceries";
-  if (/(gas|cylinder|lpg)/.test(text)) return "Gas Cylinders";
-  if (/(wifi|internet|broadband|router|airtel|jio)/.test(text)) return "Internet";
-  if (/(repair|plumb|paint|fix|carpenter|maintenance)/.test(text)) return "Maintenance & Repairs";
-  if (/(clean|housekeep|sanit|soap|phenyl)/.test(text)) return "Cleaning Supplies";
-  if (/(salary|staff|warden|watchman)/.test(text)) return "Staff Salary";
-  if (/(security|guard|cctv)/.test(text)) return "Security";
-  if (/(laundry|washing|washer)/.test(text)) return "Laundry";
-  if (/(transport|auto|fuel|petrol|diesel)/.test(text)) return "Transportation";
-  if (/(bed|mattress|furniture|fridge|geyser|fan|machine|equipment)/.test(text)) return "Furniture & Equipment";
-  if (/(license|licence|government|tax|permit)/.test(text)) return "Licenses & Government";
-  if (/(marketing|banner|ad|advertis|poster)/.test(text)) return "Marketing";
-  if (/(medical|emergency|first aid|doctor)/.test(text)) return "Medical & Emergency";
-  if (/(water|tanker)/.test(text)) return "Water";
-  return "Miscellaneous";
-}
 
-// Canonical category → operational-type mapping — the single source of truth for
-// deriving `operational_type`. This is an internal classification for
-// analytics/dashboards/reports/advanced filters only; owners never pick it directly.
-// Keyed on the normalized (canonical) category, so it stays correct even as new
-// categories are added — unmapped/custom categories fall back to "Operational".
-export const CATEGORY_TO_OPERATIONAL_TYPE: Record<string, string> = {
-  "Food & Groceries": "Operational",
-  "Staff Salary": "Staff",
-  Electricity: "Utility",
-  Water: "Utility",
-  "Gas Cylinders": "Utility",
-  Internet: "Utility",
-  "Cleaning Supplies": "Operational",
-  "Maintenance & Repairs": "Maintenance",
-  Security: "Staff",
-  Laundry: "Operational",
-  Transportation: "Operational",
-  "Furniture & Equipment": "Operational",
-  "Licenses & Government": "Operational",
-  Marketing: "Operational",
-  "Medical & Emergency": "Emergency",
-  Miscellaneous: "Operational",
-};
-
-/** Derives `operational_type` from `category` alone — the only place this mapping lives. */
-export function deriveOperationalType(category: string): string {
-  const normalized = normalizeCategory(category);
-  return CATEGORY_TO_OPERATIONAL_TYPE[normalized] || "Operational";
-}
 
 function businessPaymentWhere(ownerId: string, start: Date, end: Date, hostelId?: string) {
   return {
@@ -168,11 +73,15 @@ function businessPaymentWhere(ownerId: string, start: Date, end: Date, hostelId?
 }
 
 // ── Shared financial calculations ──────────────────────────────────────────
-// Single source of truth for revenue-vs-expense math, used by BOTH the dashboard
-// (getAllExpenses, below — fixed "this month" window) and expense-export-service.ts
-// (the export's own filtered period). Same query shape, same formulas — only the
-// date window and expense total passed in differ per caller. Do not reimplement
-// this arithmetic anywhere else (see docs/obsidian/Decisions.md ADR-001 for why).
+// Single source of truth for revenue-vs-expense math. Do not reimplement this
+// arithmetic anywhere else (see docs/obsidian/Decisions.md ADR-001 for why).
+//
+// ADR-010 introduced these so the expenses dashboard and the expense export
+// could not drift apart. As of ADR-197 the export no longer asserts a net-profit
+// figure at all — the finance workbook shows rent received, expenses and the
+// month-by-month subtraction, arithmetic a reader can check — so `getAllExpenses`
+// below is currently the only caller. They stay because the rule ("one place for
+// this math") is what matters, not the number of callers it happens to have.
 
 /** Revenue collected in [start, end) for an owner (optionally scoped to one hostel). */
 export async function getBusinessRevenue(ownerId: string, start: Date, end: Date, hostelId?: string): Promise<number> {
@@ -200,69 +109,7 @@ export function withCategoryPercentages<T extends { amount: number }>(rows: T[],
   return rows.map((r) => ({ ...r, percentage: total > 0 ? round((r.amount / total) * 100) : 0 }));
 }
 
-function buildSearchWhere(search: string) {
-  const terms = search.trim().split(/\s+/).filter(Boolean);
-  if (terms.length === 0) return {};
 
-  // Each term must match at least one field (AND across terms)
-  const termConditions = terms.map((term) => {
-    const fieldMatches: any[] = [
-      { title: { contains: term, mode: "insensitive" } },
-      { notes: { contains: term, mode: "insensitive" } },
-      { vendor_name: { contains: term, mode: "insensitive" } },
-      { payment_method: { contains: term, mode: "insensitive" } },
-      { category: { contains: term, mode: "insensitive" } },
-    ];
-    // If the term looks numeric, also match amount
-    const numericValue = Number(term);
-    if (Number.isFinite(numericValue) && numericValue > 0) {
-      fieldMatches.push({ amount: { equals: numericValue } });
-    }
-    return { OR: fieldMatches };
-  });
-
-  return { AND: termConditions };
-}
-
-// Single source of truth for the expenses list WHERE clause — reused by getAllExpenses
-// (paginated UI query) AND expense-export-service.ts (CSV/XLSX/PDF export), so exported
-// data is guaranteed to match whatever the UI shows for the same filters. Do not
-// reimplement this filtering logic anywhere else.
-export function buildExpenseLedgerWhere(ownerId: string, filters: ExpenseFilters = {}) {
-  const { start, end } = getRange(filters);
-  return {
-    where: {
-      owner_id: ownerId,
-      date: { gte: start, lt: end },
-      ...(filters.hostelId ? { hostel_id: filters.hostelId } : {}),
-      ...(filters.status && filters.status !== "all" ? { status: filters.status } : {}),
-      ...(filters.categories?.length ? { category: { in: filters.categories.map(normalizeCategory) } } : {}),
-      ...(filters.search ? buildSearchWhere(filters.search) : {}),
-      ...(typeof filters.recurring === "boolean" ? { is_recurring: filters.recurring } : {}),
-      ...(filters.amountMin !== undefined || filters.amountMax !== undefined
-        ? {
-            amount: {
-              ...(filters.amountMin !== undefined ? { gte: filters.amountMin } : {}),
-              ...(filters.amountMax !== undefined ? { lte: filters.amountMax } : {}),
-            },
-          }
-        : {}),
-    } as any,
-    range: { start, end },
-  };
-}
-
-export function resolveExpenseSort(sort?: string) {
-  const orderBy: any =
-    sort === "highest"
-      ? { amount: "desc" }
-      : sort === "oldest"
-        ? { date: "asc" }
-        : sort === "category"
-          ? { category: "asc" }
-          : { date: "desc" };
-  return orderBy;
-}
 
 export class ExpenseService {
   /**

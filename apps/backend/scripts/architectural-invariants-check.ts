@@ -54,6 +54,13 @@ const checks: Array<{
       /lib\/services\/notifications\/whatsapp-selection-state\.ts$/,
       /lib\/services\/notifications\/whatsapp-template-delivery\.ts$/,
       /lib\/services\/expense-service\.ts$/,
+      // `ExpenseFilters.hostelId` is a LIST FILTER, not a service contract:
+      // absent means "every hostel I own", which is the portfolio view the
+      // Money screen actually shows — not an ambiguous default that could
+      // silently pick one hostel. The exemption moved here with the
+      // declaration when the query builder was split out of expense-service.ts
+      // so it could be tested without a database (ADR-197).
+      /lib\/services\/expenses\/expense-ledger-query\.ts$/,
     ],
   },
   {

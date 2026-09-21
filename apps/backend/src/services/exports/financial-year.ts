@@ -20,15 +20,30 @@ const IST_OFFSET_MS = 5.5 * 60 * 60 * 1000;
 const FY_START_MONTH = 3;
 
 export type Period = {
-  /** Inclusive, YYYY-MM-DD in IST. */
-  from: string;
-  /** Inclusive, YYYY-MM-DD in IST. */
+  /**
+   * Inclusive lower bound, YYYY-MM-DD in IST — or `null`, which means **no
+   * lower bound**, not "the beginning of time".
+   *
+   * An invented start date (1970-01-01, or the epoch) would print in the
+   * label, in the filename and on the report sheet as a range the owner never
+   * asked for. `null` is the honest representation of "all time", and
+   * `isAllTime` is the one predicate that reads it.
+   */
+  from: string | null;
+  /** Inclusive upper bound, YYYY-MM-DD in IST. Never null — a report cannot contain the future. */
   to: string;
   /** What the document prints, e.g. "Apr 2026 – Mar 2027" or "August 2026". */
   label: string;
 };
 
-export type PeriodPresetId = 'this_month' | 'last_month' | 'this_fy' | 'last_fy';
+export type PeriodPresetId =
+  | 'today'
+  | 'this_week'
+  | 'this_month'
+  | 'last_month'
+  | 'this_fy'
+  | 'last_fy'
+  | 'all_time';
 
 function istParts(now: Date): { y: number; m: number; d: number } {
   const ist = new Date(now.getTime() + IST_OFFSET_MS);
@@ -49,6 +64,12 @@ const MONTH_LONG = [
   'January', 'February', 'March', 'April', 'May', 'June',
   'July', 'August', 'September', 'October', 'November', 'December',
 ];
+
+/** "2026-09-21" -> "21 Sep 2026". How a date is written to a person, not a database. */
+export function prettyDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split('-').map(Number);
+  return `${d} ${MONTH[m - 1]} ${y}`;
+}
 
 /**
  * The financial year a date falls in, named by its starting calendar year.
@@ -87,9 +108,61 @@ export function monthPeriod(year: number, month: number): Period {
   };
 }
 
+/** Today in IST, both ends — the shortest honest period. */
+export function dayPeriod(now: Date = new Date()): Period {
+  const { y, m, d } = istParts(now);
+  const day = iso(y, m, d);
+  return { from: day, to: day, label: prettyDate(day) };
+}
+
+/**
+ * The rolling seven days ending today, inclusive.
+ *
+ * This is what the "This week" chip on the Expenses screen means, and it is
+ * deliberately NOT the calendar week. `expense-service`'s own `week` branch
+ * computes a Sunday start and an end seven days later — which on a Tuesday
+ * covers four days that have not happened yet. An export and the list above it
+ * disagreeing about what "this week" contains is exactly the drift this module
+ * exists to prevent.
+ */
+export function rollingWeekPeriod(now: Date = new Date()): Period {
+  const { y, m, d } = istParts(now);
+  const to = iso(y, m, d);
+  const from = iso(y, m, d - 6); // Date.UTC normalises a negative day across months and years.
+  return { from, to, label: `${prettyDate(from)} – ${prettyDate(to)}` };
+}
+
+/**
+ * Everything, up to today.
+ *
+ * `from` is null rather than an early sentinel date: "all time" is the absence
+ * of a lower bound, and inventing one would put a date the owner never chose
+ * into the label, the filename and the provenance sheet. `to` is today because
+ * a report cannot contain the future.
+ */
+export function allTimePeriod(now: Date = new Date()): Period {
+  const { y, m, d } = istParts(now);
+  const to = iso(y, m, d);
+  return { from: null, to, label: `All time (up to ${prettyDate(to)})` };
+}
+
+/** Where a period is honestly unbounded below. One predicate, named once. */
+export function isAllTime(period: Period): boolean {
+  return period.from === null;
+}
+
+/** The filename fragment: "2026-09-01-to-2026-09-30", or "all-time-to-2026-09-21". */
+export function periodSlug(period: Period): string {
+  return period.from === null ? `all-time-to-${period.to}` : `${period.from}-to-${period.to}`;
+}
+
 export function resolvePreset(id: PeriodPresetId, now: Date = new Date()): Period {
   const { y, m } = istParts(now);
   switch (id) {
+    case 'today':
+      return dayPeriod(now);
+    case 'this_week':
+      return rollingWeekPeriod(now);
     case 'this_month':
       return monthPeriod(y, m);
     case 'last_month':
@@ -98,6 +171,8 @@ export function resolvePreset(id: PeriodPresetId, now: Date = new Date()): Perio
       return financialYearPeriod(financialYearOf(now));
     case 'last_fy':
       return financialYearPeriod(financialYearOf(now) - 1);
+    case 'all_time':
+      return allTimePeriod(now);
   }
 }
 
@@ -105,10 +180,13 @@ export function resolvePreset(id: PeriodPresetId, now: Date = new Date()): Perio
 export function periodPresets(now: Date = new Date()): { id: PeriodPresetId; label: string; sub: string }[] {
   const fy = financialYearOf(now);
   return [
+    { id: 'today', label: 'Today', sub: resolvePreset('today', now).label },
+    { id: 'this_week', label: 'This week', sub: resolvePreset('this_week', now).label },
     { id: 'this_month', label: 'This month', sub: resolvePreset('this_month', now).label },
     { id: 'last_month', label: 'Last month', sub: resolvePreset('last_month', now).label },
     { id: 'this_fy', label: `This financial year`, sub: `${financialYearLabel(fy)} · Apr ${fy} – Mar ${fy + 1}` },
     { id: 'last_fy', label: `Last financial year`, sub: `${financialYearLabel(fy - 1)} · Apr ${fy - 1} – Mar ${fy}` },
+    { id: 'all_time', label: 'All time', sub: 'Everything on record' },
   ];
 }
 
@@ -118,17 +196,28 @@ export function periodPresets(now: Date = new Date()): { id: PeriodPresetId; lab
  * An export is handed to an accountant or a bank. Quietly swapping reversed
  * dates, or clamping a typo'd year, produces a document that looks right and
  * covers the wrong period — worse than an error the owner can see and fix.
+ *
+ * Either end may be omitted, because the Expenses screen's custom range
+ * genuinely allows one-sided ranges ("everything up to March"). Omitting BOTH
+ * is not a range at all and is refused.
  */
-export function customPeriod(from: string, to: string): Period {
+export function customPeriod(
+  from: string | null,
+  to: string | null,
+  now: Date = new Date(),
+): Period {
   const valid = /^\d{4}-\d{2}-\d{2}$/;
-  if (!valid.test(from) || !valid.test(to)) throw new Error('VALIDATION: Dates must be YYYY-MM-DD');
-  if (from > to) throw new Error('VALIDATION: The start date is after the end date');
+  if (!from && !to) throw new Error('VALIDATION: Give a preset, or a from and to date');
+  if (from && !valid.test(from)) throw new Error('VALIDATION: Dates must be YYYY-MM-DD');
+  if (to && !valid.test(to)) throw new Error('VALIDATION: Dates must be YYYY-MM-DD');
+  if (from && to && from > to) throw new Error('VALIDATION: The start date is after the end date');
 
-  const [fy, fm] = from.split('-').map(Number);
-  const [ty, tm] = to.split('-').map(Number);
-  const label =
-    from === to
-      ? `${Number(from.slice(8))} ${MONTH[fm - 1]} ${fy}`
-      : `${MONTH[fm - 1]} ${fy} – ${MONTH[tm - 1]} ${ty}`;
-  return { from, to, label };
+  // An open upper bound means "up to now", never "forever" — a report cannot
+  // contain the future.
+  const { y, m, d } = istParts(now);
+  const end = to ?? iso(y, m, d);
+
+  if (!from) return { from: null, to: end, label: `Up to ${prettyDate(end)}` };
+  const label = from === end ? prettyDate(from) : `${prettyDate(from)} – ${prettyDate(end)}`;
+  return { from, to: end, label };
 }
