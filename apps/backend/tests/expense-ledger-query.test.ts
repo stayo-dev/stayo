@@ -46,6 +46,28 @@ describe('the date window', () => {
     expect(cleared).toEqual(none);
   });
 
+  it('gives the all_time range preset no lower bound either', () => {
+    // The list asks for a period the same way the export does, so the two
+    // cannot mean different things by "All time".
+    expect(getRange({ range: 'all_time' }).start).toBeNull();
+  });
+
+  it('never lets all_time reach into the future', () => {
+    const end = getRange({ range: 'all_time' }).end;
+    expect(end.getTime()).toBeGreaterThan(Date.now());
+    expect(end.getTime() - Date.now()).toBeLessThan(48 * 60 * 60 * 1000);
+  });
+
+  it('reads "this week" as the rolling seven days ending today', () => {
+    // It was a Sunday-start window ending seven days later, so on a Tuesday it
+    // covered four days that had not happened yet — and disagreed with the file
+    // the owner exported from the same screen.
+    const { start, end } = getRange({ range: 'week' });
+    const days = Math.round((end.getTime() - start!.getTime()) / 86_400_000);
+    expect(days).toBe(7); // 7 inclusive days = a 7-day half-open interval
+    expect(end.getTime()).toBeGreaterThan(Date.now());
+  });
+
   it('distinguishes an omitted start from a null one', () => {
     expect(getRange({}).start).not.toBeNull();
     expect(getRange({ startDate: null, endDate: '2026-09-21' }).start).toBeNull();

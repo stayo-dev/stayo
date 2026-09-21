@@ -100,13 +100,20 @@ export function getRange(filters: ExpenseFilters): { start: Date | null; end: Da
     return { start, end };
   }
 
-  if (filters.range === "today") return { start: today, end: new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1) };
+  const tomorrow = new Date(today.getFullYear(), today.getMonth(), today.getDate() + 1);
+
+  // No lower bound at all. Still ends at tomorrow-exclusive: "all time" means
+  // everything up to today, not a window that reaches into the future.
+  if (filters.range === "all_time") return { start: null, end: tomorrow };
+  if (filters.range === "today") return { start: today, end: tomorrow };
   if (filters.range === "week") {
+    // The rolling seven days ending today, matching the Expenses chip and the
+    // export's `this_week`. This was a Sunday-start window ending seven days
+    // later, so on a Tuesday it covered four days that had not happened yet —
+    // and it disagreed with the file the owner exported from the same screen.
     const start = new Date(today);
-    start.setDate(today.getDate() - today.getDay());
-    const end = new Date(start);
-    end.setDate(start.getDate() + 7);
-    return { start, end };
+    start.setDate(today.getDate() - 6);
+    return { start, end: tomorrow };
   }
 
   return { start: startOfMonth(now), end: endExclusiveMonth(now) };

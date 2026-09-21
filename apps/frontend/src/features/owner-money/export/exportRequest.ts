@@ -192,3 +192,50 @@ export function buildExportQuery(
   if (target === 'collections') return collectionsExportQuery(screen.hostelFilter, period);
   return financeExportQuery(screen.hostelFilter, period);
 }
+
+const CHIP_TO_RANGE: Record<Exclude<DateRangeChip, 'custom'>, string> = {
+  today: 'today',
+  week: 'week',
+  month: 'month',
+  all: 'all_time',
+};
+
+/**
+ * The same screen state, as parameters for the expenses LIST endpoint.
+ *
+ * The list and the export must resolve through one set of rules, or the file
+ * an owner downloads describes different rows than the screen he downloaded it
+ * from. They share every mapping helper above and differ only where the two
+ * endpoints genuinely differ: the list takes `range`, the export takes
+ * `preset`, and the list is paginated.
+ *
+ * Returns `null` only when the screen's own range is unusable, which the export
+ * sheet reports; the list simply keeps showing its previous page.
+ */
+export function expenseListParams(s: ExpenseScreenState, limit: number): Record<string, string> | null {
+  const period: Record<string, string> = {};
+  if (s.dateRange === 'custom') {
+    const from = asDate(s.filters.startDate);
+    const to = asDate(s.filters.endDate);
+    if (!from && !to) return null;
+    if (from && to && from > to) return null;
+    if (from) period.startDate = from;
+    if (to) period.endDate = to;
+  } else {
+    period.range = CHIP_TO_RANGE[s.dateRange];
+  }
+
+  return compact({
+    ...period,
+    ...hostelScopeParams(s.hostelFilter),
+    search: s.search.trim() || undefined,
+    status: statusParam(s.filters.status),
+    vendor: s.filters.vendor ?? undefined,
+    paymentMethod: s.filters.paymentMethod ?? undefined,
+    amountMin: amountParam(s.filters.amountMin),
+    amountMax: amountParam(s.filters.amountMax),
+    recurring: s.filters.recurring === 'all' ? undefined : String(s.filters.recurring === 'recurring'),
+    sort: sortParam(s.filters.sort),
+    limit: String(limit),
+  });
+}

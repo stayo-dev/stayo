@@ -4,6 +4,7 @@ import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { expenseService } from "@/lib/services/expense-service";
+import { normalizeExpenseStatus } from "@/lib/services/expenses/expense-ledger-query";
 import { imagekit } from "@/lib/imagekit";
 import { safePagination, assertBodySize } from "@/lib/security/api-guard";
 
@@ -99,6 +100,16 @@ export async function GET(req: NextRequest) {
 
     const hostelId = req.nextUrl.searchParams.get("hostelId") || undefined;
     if (hostelId) await requireHostelBelongsToOwner(scope.owner_id, hostelId);
+    // `business` is a scope, not a hostel id — it narrows to portfolio-level
+    // (HQ) expenses via `expense_scope` and can never reach `hostel_id`.
+    const scopeParam = req.nextUrl.searchParams.get("scope");
+    if (scopeParam && scopeParam !== "business") {
+      return apiError("Unknown scope", "VALIDATION_ERROR", 400);
+    }
+    if (scopeParam && hostelId) {
+      return apiError("Pick a hostel or the business, not both", "VALIDATION_ERROR", 400);
+    }
+    const expenseScope = scopeParam === "business" ? ("business" as const) : undefined;
     const categories = req.nextUrl.searchParams.get("categories");
     const { limit, offset } = safePagination(req.nextUrl.searchParams.get("limit"), req.nextUrl.searchParams.get("offset"));
 
@@ -122,9 +133,15 @@ export async function GET(req: NextRequest) {
       endDate: req.nextUrl.searchParams.get("endDate") || undefined,
       hostelId,
       categories: categories ? categories.split(",").filter(Boolean) : undefined,
-      status: req.nextUrl.searchParams.get("status") || undefined,
+      // Normalised, not passed through: the screen says 'Paid' and the column
+      // holds 'paid', and an exact match on the screen's casing returns zero
+      // rows with no error.
+      status: normalizeExpenseStatus(req.nextUrl.searchParams.get("status")),
       sort: req.nextUrl.searchParams.get("sort") || undefined,
       search: req.nextUrl.searchParams.get("search") || undefined,
+      vendor: req.nextUrl.searchParams.get("vendor") || undefined,
+      paymentMethod: req.nextUrl.searchParams.get("paymentMethod") || undefined,
+      scope: expenseScope,
       recurring,
       amountMin,
       amountMax,

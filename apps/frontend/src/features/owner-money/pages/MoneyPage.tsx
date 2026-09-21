@@ -9,6 +9,7 @@ import type { MockExpense } from '@shared/mocks/expenses';
 import type { MockTenant } from '@shared/mocks/tenants';
 import { useMoneyPage } from '../hooks/useMoneyPage';
 import { useRealMoney } from '../hooks/useRealMoney';
+import { useExpenseLedger, LEDGER_PAGE_SIZE } from '../hooks/useExpenseLedger';
 import { EMPTY_EXPENSE_FILTERS, type AddExpenseData } from '../types';
 import { StatusBanner } from '../components/pulse/StatusBanner';
 import { MoneyStatTiles } from '../components/pulse/MoneyStatTiles';
@@ -26,7 +27,7 @@ import { AddExpenseModal } from '../add-expense/AddExpenseModal';
 import { ExpenseFiltersModal, activeFilterCount } from '../filters/ExpenseFiltersModal';
 import { ExportSheet } from '../export/ExportSheet';
 import { FinanceSummaryRow } from '../components/pulse/FinanceSummaryRow';
-import { buildExportQuery, type PeriodPresetId } from '../export/exportRequest';
+import { buildExportQuery, expenseListParams, type PeriodPresetId } from '../export/exportRequest';
 import { MONEY_EXPORTS, periodOptions } from '../export/exportDocuments';
 import { ExpenseDetailModal } from '../expense-detail/ExpenseDetailModal';
 
@@ -193,47 +194,27 @@ export function MoneyPage() {
     return { from: new Date(now.getFullYear(), now.getMonth(), 1), to: end };
   }, [dateRange, expenseFilters.startDate, expenseFilters.endDate]);
 
-  const filteredExpenses = useMemo(() => {
-    let list: MockExpense[] = real.expenses;
-    if (effectiveHostelFilter === 'business') {
-      list = list.filter((e) => !e.hostelId || (e as { expenseScope?: string }).expenseScope === 'BUSINESS');
-    } else if (effectiveHostelFilter !== 'all') {
-      list = list.filter((e) => e.hostelId === effectiveHostelFilter);
-    }
-    if (rangeBounds) {
-      list = list.filter((e) => {
-        const d = new Date(e.date);
-        if (Number.isNaN(d.getTime())) return false;
-        if (rangeBounds.from && d < rangeBounds.from) return false;
-        if (rangeBounds.to && d > rangeBounds.to) return false;
-        return true;
-      });
-    }
-    if (expenseFilters.status !== 'All Status') list = list.filter((e) => e.status === expenseFilters.status);
-    if (expenseFilters.paymentMethod) list = list.filter((e) => e.paymentMethod === expenseFilters.paymentMethod);
-    if (expenseFilters.vendor) list = list.filter((e) => e.vendor === expenseFilters.vendor);
-    if (expenseFilters.recurring === 'recurring') list = list.filter((e) => e.recurring);
-    if (expenseFilters.recurring === 'one-time') list = list.filter((e) => !e.recurring);
-    const min = Number(expenseFilters.amountMin) || 0;
-    const max = Number(expenseFilters.amountMax) || Infinity;
-    list = list.filter((e) => e.amount >= min && e.amount <= max);
-    const q = expenseSearch.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (e) =>
-          e.title.toLowerCase().includes(q) ||
-          e.vendor.toLowerCase().includes(q) ||
-          e.category.toLowerCase().includes(q) ||
-          String(e.amount).includes(q),
-      );
-    }
-    const sorted = [...list];
-    if (expenseFilters.sort === 'Recent') sorted.sort((a, b) => b.date.localeCompare(a.date));
-    if (expenseFilters.sort === 'Oldest') sorted.sort((a, b) => a.date.localeCompare(b.date));
-    if (expenseFilters.sort === 'Amount: High to low') sorted.sort((a, b) => b.amount - a.amount);
-    if (expenseFilters.sort === 'Amount: Low to high') sorted.sort((a, b) => a.amount - b.amount);
-    return sorted;
-  }, [real.expenses, effectiveHostelFilter, expenseSearch, expenseFilters, rangeBounds]);
+  /**
+   * The Expenses screen state, named once. The list and the export both resolve
+   * from it through the same pure rules, so the file cannot describe different
+   * rows than the screen it came from.
+   */
+  const expenseScreen = useMemo(
+    () => ({ hostelFilter: effectiveHostelFilter, dateRange, search: expenseSearch, filters: expenseFilters }),
+    [effectiveHostelFilter, dateRange, expenseSearch, expenseFilters],
+  );
+
+  /**
+   * The rows on screen — narrowed by the SERVER, not by the browser.
+   *
+   * This was a client-side filter over `real.expenses`, which fetches 100 rows
+   * of the current month with no filters at all. "All time" therefore showed one
+   * month, and the search box only searched what happened to be loaded. The
+   * export resolves the same filters server-side, so leaving this as it was
+   * would mean the file and the screen it came from described different rows.
+   */
+  const ledger = useExpenseLedger(expenseListParams(expenseScreen, LEDGER_PAGE_SIZE), money.tab === 'expenses');
+  const filteredExpenses = ledger.rows;
 
   /**
    * The owner's actual vendors, highest spend first. The filter sheet used to
@@ -251,17 +232,16 @@ export function MoneyPage() {
   );
 
   /**
-   * The export request, built from the screen rather than from a second set of
-   * controls inside the sheet. Every rule lives in `exportRequest.ts`, which is
-   * pure and tested — this is only the wiring.
+   * The export request. Every rule lives in `exportRequest.ts`, which is pure
+   * and tested — this is only the wiring.
    */
   const exportQuery = useMemo(
     () => buildExportQuery(
       money.exportTarget,
-      { hostelFilter: effectiveHostelFilter, dateRange, search: expenseSearch, filters: expenseFilters },
+      expenseScreen,
       { preset: exportPreset, from: exportFrom, to: exportTo },
     ),
-    [money.exportTarget, effectiveHostelFilter, dateRange, expenseSearch, expenseFilters, exportPreset, exportFrom, exportTo],
+    [money.exportTarget, expenseScreen, exportPreset, exportFrom, exportTo],
   );
 
   /** What the file is narrowed to, said in the sheet so he can check it there. */
@@ -598,6 +578,8 @@ export function MoneyPage() {
         target={money.exportTarget}
         query={exportQuery}
         scopeLine={exportScopeLine}
+        // Only the Expenses list is paginated, so only it can disagree.
+        onScreenCount={money.exportTarget === 'expenses' && ledger.hasMore ? filteredExpenses.length : null}
         // Only the two screens that do not already imply a period ask for one.
         period={
           MONEY_EXPORTS[money.exportTarget].periodFromScreen

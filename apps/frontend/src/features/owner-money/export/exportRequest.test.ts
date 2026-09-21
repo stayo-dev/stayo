@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 import {
   hostelScopeParams, periodParams, statusParam, sortParam,
   expensesExportQuery, collectionsExportQuery, financeExportQuery, buildExportQuery,
+  expenseListParams,
   type ExpenseScreenState,
 } from './exportRequest';
 import { EMPTY_EXPENSE_FILTERS, type ExpenseFilterState } from '../types';
@@ -234,5 +235,67 @@ describe('buildExportQuery', () => {
     expect(unwrap(buildExportQuery('expenses', s, p)).document).toBe('expenses');
     expect(unwrap(buildExportQuery('collections', s, p)).document).toBe('collections');
     expect(unwrap(buildExportQuery('finance', s, p)).document).toBe('finance');
+  });
+});
+
+describe('the list asks for the same rows the export does', () => {
+  /**
+   * The list and the export resolving through different rules is how a file
+   * ends up describing different rows than the screen it came from. They share
+   * every mapping helper and differ only where the endpoints genuinely do.
+   */
+  it('carries the same filters, under the list endpoint\'s names', () => {
+    const state = screen({
+      hostelFilter: 'hostel-7',
+      dateRange: 'week',
+      search: 'diesel',
+      filters: filters({ status: 'Paid', vendor: 'Sri Balaji', recurring: 'one-time', sort: 'Oldest' }),
+    });
+
+    expect(expenseListParams(state, 500)).toEqual({
+      range: 'week',
+      hostelId: 'hostel-7',
+      search: 'diesel',
+      status: 'paid',
+      vendor: 'Sri Balaji',
+      recurring: 'false',
+      sort: 'oldest',
+      limit: '500',
+    });
+  });
+
+  it('asks the list for all time when the chip says all time', () => {
+    // Previously "All time" narrowed 100 already-fetched rows of the current
+    // month, so it showed one month.
+    expect(expenseListParams(screen({ dateRange: 'all' }), 500).range).toBe('all_time');
+  });
+
+  it('agrees with the export about the hostel scope', () => {
+    const state = screen({ hostelFilter: 'business' });
+    const list = expenseListParams(state, 500);
+    const exported = expensesExportQuery(state).query!;
+    expect(list.scope).toBe('business');
+    expect(exported.scope).toBe('business');
+    expect('hostelId' in list).toBe(false);
+  });
+
+  it('agrees with the export about every shared filter', () => {
+    const state = screen({
+      hostelFilter: 'hostel-7',
+      search: 'diesel',
+      filters: filters({ status: 'Partially Paid', vendor: 'V', paymentMethod: 'UPI', amountMin: '100', sort: 'Amount: Low to high' }),
+    });
+    const list = expenseListParams(state, 500);
+    const exported = expensesExportQuery(state).query!;
+    for (const k of ['hostelId', 'search', 'status', 'vendor', 'paymentMethod', 'amountMin', 'sort']) {
+      expect([k, list[k]]).toEqual([k, exported[k]]);
+    }
+  });
+
+  it('declines an unusable custom range rather than asking for the wrong rows', () => {
+    expect(expenseListParams(screen({
+      dateRange: 'custom',
+      filters: filters({ startDate: '2026-09-30', endDate: '2026-09-01' }),
+    }), 500)).toBeNull();
   });
 });

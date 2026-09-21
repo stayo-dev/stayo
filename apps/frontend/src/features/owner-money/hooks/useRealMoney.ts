@@ -81,7 +81,7 @@ export interface RealExpense extends MockExpense {
   addedBy: string | null;
 }
 
-function toMockExpense(e: ExpensesResponse['expenses'][number]): RealExpense {
+export function toMockExpense(e: ExpensesResponse['expenses'][number]): RealExpense {
   return {
     id: e.id,
     title: e.title,

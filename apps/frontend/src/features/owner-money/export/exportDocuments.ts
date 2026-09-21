@@ -139,3 +139,15 @@ export function customRangeError(from: string, to: string): string | null {
   if (from && to && from > to) return 'The start date is after the end date';
   return null;
 }
+
+/**
+ * When the file is bigger than the screen, say so.
+ *
+ * The list is paginated and the export is not, so the two counts can legitimately
+ * differ. An owner comparing "23 expenses" on screen against a file with 387 rows
+ * has no way to tell which is wrong unless the sheet tells him.
+ */
+export function divergenceNote(previewCount: number, onScreenCount: number | null): string | null {
+  if (onScreenCount === null || previewCount <= onScreenCount) return null;
+  return `more than the ${onScreenCount.toLocaleString('en-IN')} shown on screen`;
+}

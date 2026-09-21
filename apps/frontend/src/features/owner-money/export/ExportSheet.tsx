@@ -4,7 +4,7 @@ import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { downloadBlob, shareOrDownload, canShareFiles } from '@shared/lib/downloadBlob';
 import { ownerExportService, type ExportPreview } from '@features/owner-payouts/api/exports';
-import { exportById, periodOptions, previewLine } from './exportDocuments';
+import { exportById, periodOptions, previewLine, divergenceNote } from './exportDocuments';
 import type { ExportQuery, MoneyExportId, PeriodPresetId } from './exportRequest';
 
 /**
@@ -28,6 +28,14 @@ interface ExportSheetProps {
   query: ExportQuery;
   /** "All hostels", "Sunrise Residency", "Business (HQ)" — plus any filters. */
   scopeLine: string;
+  /**
+   * How many rows the screen behind is showing, when that is knowable.
+   *
+   * The list is paginated and the export is not, so the counts can legitimately
+   * differ. Saying so is the difference between an owner trusting the file and
+   * wondering which number is wrong.
+   */
+  onScreenCount?: number | null;
   /** Period controls. Absent where the screen already implies a period. */
   period?: {
     preset: PeriodPresetId;
@@ -39,7 +47,7 @@ interface ExportSheetProps {
   };
 }
 
-export function ExportSheet({ open, onClose, target, query, scopeLine, period }: ExportSheetProps) {
+export function ExportSheet({ open, onClose, target, query, scopeLine, period, onScreenCount = null }: ExportSheetProps) {
   const [preview, setPreview] = useState<ExportPreview | null>(null);
   const [busy, setBusy] = useState<null | 'download' | 'share'>(null);
   const doc = exportById(target);
@@ -99,6 +107,7 @@ export function ExportSheet({ open, onClose, target, query, scopeLine, period }:
   };
 
   const line = previewLine(preview);
+  const divergence = preview ? divergenceNote(preview.count, onScreenCount) : null;
   const blocked = !query.query || busy !== null;
 
   return (
@@ -191,9 +200,12 @@ export function ExportSheet({ open, onClose, target, query, scopeLine, period }:
         <p className="text-[11px] leading-relaxed text-muted-foreground">{scopeLine}</p>
 
         <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-center">
-          <span className="text-[12.5px] font-semibold text-foreground">
+          <span className="block text-[12.5px] font-semibold text-foreground">
             {query.error ?? line ?? 'Checking…'}
           </span>
+          {divergence && (
+            <span className="mt-0.5 block text-[11px] text-muted-foreground">{divergence}</span>
+          )}
         </div>
       </div>
     </AdaptiveSurface>

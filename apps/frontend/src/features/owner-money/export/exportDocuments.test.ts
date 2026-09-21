@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MONEY_EXPORTS, exportById, periodOptions, previewLine, customRangeError,
-  financialYearOf, financialYearLabel,
+  financialYearOf, financialYearLabel, divergenceNote,
 } from './exportDocuments';
 
 describe('the three exports', () => {
@@ -130,5 +130,21 @@ describe('customRangeError', () => {
 
   it('accepts a valid single-day range', () => {
     expect(customRangeError('2026-09-12', '2026-09-12')).toBeNull();
+  });
+});
+
+describe('divergenceNote', () => {
+  it('says so when the file holds more than the screen shows', () => {
+    expect(divergenceNote(387, 500)).toBeNull();
+    expect(divergenceNote(742, 500)).toBe('more than the 500 shown on screen');
+  });
+
+  it('stays quiet when the screen shows everything', () => {
+    expect(divergenceNote(23, 23)).toBeNull();
+    expect(divergenceNote(10, 23)).toBeNull();
+  });
+
+  it('stays quiet when there is nothing to compare against', () => {
+    expect(divergenceNote(742, null)).toBeNull();
   });
 });
