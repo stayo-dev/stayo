@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { advertisedStartingPrice } from "@/src/services/discovery/listing-projection";
+import { advertisedStartingPrice, advertisesOpenBeds } from "@/src/services/discovery/listing-projection";
 
 /** The real approved revision for Sunrise Residency, which is what exposed this. */
 const SUNRISE_RESIDENCY = {
@@ -65,5 +65,19 @@ describe("advertisedStartingPrice", () => {
 
   it("is case-insensitive about availability", () => {
     expect(advertisedStartingPrice({ beds: [{ price: 5000, availability: "available" }] })).toBe(5000);
+  });
+});
+
+describe("advertisesOpenBeds", () => {
+  it("is true when any tier is marked AVAILABLE", () => {
+    expect(advertisesOpenBeds(SUNRISE_RESIDENCY)).toBe(true);
+    expect(advertisesOpenBeds({ beds: [{ sharing: 4, price: 1, availability: "FULL" }, { sharing: 2, price: 1, availability: "available" }] })).toBe(true);
+  });
+
+  it("is false for FULL, BEDS_LEFT, no tiers, or no content", () => {
+    expect(advertisesOpenBeds({ beds: [{ sharing: 4, price: 1, availability: "FULL" }] })).toBe(false);
+    expect(advertisesOpenBeds({ beds: [{ sharing: 4, price: 1, availability: "BEDS_LEFT" }] })).toBe(false);
+    expect(advertisesOpenBeds({ beds: [] })).toBe(false);
+    expect(advertisesOpenBeds(null)).toBe(false);
   });
 });

@@ -292,3 +292,16 @@ export function advertisedStartingPrice(marketing: any | null): number | null {
   const available = beds.filter((bed: any) => String(bed?.availability ?? '').toUpperCase() === 'AVAILABLE');
   return pick(available) ?? pick(beds);
 }
+
+/**
+ * Whether an approved listing says beds are open, with no live count behind it.
+ *
+ * Only meaningful for a hostel with no real rooms (a platform listing), where
+ * the owner's `AVAILABLE` is the only vacancy signal there is. A card can then
+ * say "Beds available" instead of "Fully booked" — a claim with no number,
+ * because inventing one is exactly what a platform listing must not do.
+ */
+export function advertisesOpenBeds(marketing: any | null): boolean {
+  const beds = Array.isArray(marketing?.beds) ? marketing.beds : [];
+  return beds.some((bed: any) => String(bed?.availability ?? '').toUpperCase() === 'AVAILABLE');
+}

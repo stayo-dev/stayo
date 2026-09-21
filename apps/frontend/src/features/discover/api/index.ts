@@ -37,6 +37,8 @@ export interface DiscoverCard {
   starting_price: number | null;
   /** Room capacities offered, ascending: [2, 4, 6]. */
   sharing: number[];
+  /** No real rooms, but the approved listing marks beds open — no count to quote. */
+  beds_open_unconfirmed?: boolean;
   saved_at?: string;
 }
 

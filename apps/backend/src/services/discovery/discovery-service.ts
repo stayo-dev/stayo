@@ -1,7 +1,7 @@
 import { createHash } from "crypto";
 
 import { prisma } from "@/lib/db";
-import { advertisedStartingPrice, listingPhotos, projectListing } from "./listing-projection";
+import { advertisedStartingPrice, advertisesOpenBeds, listingPhotos, projectListing } from "./listing-projection";
 import { readNavigationSafely } from "./hostel-navigation";
 import { whatsAppTemplateDeliveryService } from "@/lib/services/notifications/whatsapp-template-delivery";
 import {
@@ -172,6 +172,13 @@ export interface DiscoverCard {
   vacant_beds: number;
   starting_price: number | null;
   sharing: number[];
+  /**
+   * True only for a hostel with no real rooms whose approved listing marks a
+   * bed tier AVAILABLE. `vacant_beds` stays 0 (no count is invented); this lets
+   * a card say beds are open instead of "Fully booked". Filled in after
+   * pagination by `fillCoverPhotos`.
+   */
+  beds_open_unconfirmed?: boolean;
 }
 
 function toCard(hostel: any): DiscoverCard {
@@ -286,7 +293,14 @@ function toEnquiry(lead: any) {
  * gallery of 24 URLs per result is payload nobody renders.
  */
 async function fillCoverPhotos(
-  holders: { id: string; photos: string[]; starting_price?: number | null }[],
+  holders: {
+    id: string;
+    photos: string[];
+    starting_price?: number | null;
+    vacant_beds?: number;
+    sharing?: number[];
+    beds_open_unconfirmed?: boolean;
+  }[],
 ): Promise<void> {
   const ids = Array.from(new Set(holders.map((holder) => holder.id)));
   if (ids.length === 0) return;
@@ -306,6 +320,11 @@ async function fillCoverPhotos(
     // `advertisedStartingPrice`. Falls back rather than blanking the card.
     const advertised = advertisedStartingPrice(content);
     if (advertised !== null) (holder as any).starting_price = advertised;
+    // No rooms at all means no live vacancy to read — the owner's AVAILABLE is
+    // all there is, and "Fully booked" would contradict the approved listing.
+    if (holder.vacant_beds === 0 && (holder.sharing?.length ?? 0) === 0 && advertisesOpenBeds(content)) {
+      holder.beds_open_unconfirmed = true;
+    }
   }
 }
 

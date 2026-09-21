@@ -36,6 +36,17 @@ describe('availabilityFact', () => {
     expect(availabilityFact(0)).toEqual({ label: 'Fully booked', tone: 'full' });
   });
 
+  it('says beds are open, without a count, when a hostel with no rooms advertises them', () => {
+    expect(availabilityFact(0, true)).toEqual({ label: 'Beds available', tone: 'open' });
+    expect(hostelCardFacts(card({ vacant_beds: 0, sharing: [], beds_open_unconfirmed: true })).availability.label)
+      .toBe('Beds available');
+  });
+
+  it('still says fully booked for a hostel that really is', () => {
+    expect(availabilityFact(0, false).tone).toBe('full');
+    expect(hostelCardFacts(card({ vacant_beds: 0 })).availability.tone).toBe('full');
+  });
+
   it('treats junk vacancy as full rather than rendering NaN', () => {
     expect(availabilityFact(Number.NaN).tone).toBe('full');
     expect(availabilityFact(-3).tone).toBe('full');

@@ -57,8 +57,10 @@ export interface HostelCardFacts {
  * question is whether there is room at all. Under that, the exact count is the
  * whole point, because it is the reason to enquire today.
  */
-export function availabilityFact(vacantBeds: number): AvailabilityFact {
+export function availabilityFact(vacantBeds: number, openUnconfirmed = false): AvailabilityFact {
   const beds = Number.isFinite(vacantBeds) ? Math.max(0, Math.trunc(vacantBeds)) : 0;
+  // A hostel with no real rooms has no count, not a count of zero.
+  if (beds === 0 && openUnconfirmed) return { label: 'Beds available', tone: 'open' };
   if (beds === 0) return { label: 'Fully booked', tone: 'full' };
   if (beds < SCARCITY_THRESHOLD) {
     return { label: `${beds} ${beds === 1 ? 'bed' : 'beds'} left`, tone: 'scarce' };
@@ -100,7 +102,7 @@ export function hostelCardFacts(hostel: DiscoverCard): HostelCardFacts {
     sharing: labels.slice(0, MAX_SHARING_CHIPS),
     sharingSummary: sharingSummary(labels),
     meals: Boolean(hostel.food_included),
-    availability: availabilityFact(hostel.vacant_beds),
+    availability: availabilityFact(hostel.vacant_beds, hostel.beds_open_unconfirmed),
     photo: hostel.photos?.[0] ?? null,
     location: locationLabel(hostel.address, hostel.city),
   };
