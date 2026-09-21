@@ -10,6 +10,9 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-21**: **Fixed: password login failed with "server configuration problem" when the browser already held a Clerk session** ([[Bugs]], [[Decisions#ADR-204|ADR-204]]).
+  - Clerk refuses a ticket sign-in on top of an existing session (`400 session_exists`), and a returning visitor reaches the login modal with one: the public shell decides "signed out" without loading Clerk (Phase 2.6), while Clerk's session lives in cookies. `redeemSignInTicket` now checks first. Same person (Clerk `externalId` = the response's `user_id`) → the session is kept and the ticket left unspent; a different or unidentifiable person → that session is ended, then the ticket is redeemed; no session → unchanged. No sign-out before every login.
+  - Files: `lib/auth/existingClerkSession.ts` (new, pure decision), `lib/auth/clerkTicket.ts`, `lib/auth/establishSession.ts`. 12 new node-only tests; 3 of the 5 in `clerkTicket.test.ts` fail against the old code. **Not verified in a real browser or against Clerk's servers.**
 - **2026-09-21**: **RLS enabled on five tables that were open to the public anon key** (migration 092, [[Bugs]], [[Database]]).
   - `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments`, `coverage_requests`, `homepage_features`. The anon key ships in the browser bundle and no migration `REVOKE`s, so RLS was the only gate — and `manager_permission_grants` is a writable table the admin console gates permissions on.
   - No policies added: the backend connects as the owning role and bypasses RLS, so this is a clean lockout of the anon key rather than a change to application access.

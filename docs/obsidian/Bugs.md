@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
+
+**Symptom:** `POST /api/auth/login` returned 200, then Clerk's `sign_ins` returned `400 session_exists` ("You're already signed in"), and the modal blamed the server. Every retry failed the same way, so that browser could not sign in until its Clerk session was cleared.
+
+**Cause:** not the password, Google, Supabase or the ticket. [[Decisions#ADR-176|ADR-176]] Phase 2.6 keeps the Clerk SDK off the public page, so `AuthContext` there decides "signed out" without seeing Clerk's cookie session. The login modal opens, `redeemSignInTicket` loads Clerk — which revives the old session — and calls `signIn.create({ strategy: 'ticket' })` on top of it. The ticket flow ([[Decisions#ADR-204|ADR-204]]) had no branch for a session already existing.
+
+**Fix:** `redeemSignInTicket` now asks `decideExistingSession` first: no session → redeem; the session already belongs to the profile that just signed in → reuse it; anyone else's, or not provably the same person → end that session, then redeem. Adopting an unverified session was rejected: the UI would show the account just typed while API calls carried the other account's token. Related: [[Changelog]], [[Frontend]].
+
 ## A shared hostel link opened a read-only page (2026-09-21)
 
 Share a hostel from the app and the recipient got `/hostels/:slug` — the server-rendered SEO document: photos, facts, a mess menu, a footer, and one easily-missed "See live availability" link. Not the marketplace listing with the photo tour, bed chooser, map, host and Enquire button.

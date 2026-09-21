@@ -18,10 +18,15 @@
  * the entry chunk.
  */
 import { readClerkConfig } from './clerkConfig';
+import { decideExistingSession } from './existingClerkSession';
 
 interface ClerkForTicket {
   loaded?: boolean;
   load: (options?: Record<string, unknown>) => Promise<void>;
+  /** The active session, or null/undefined when this browser holds none. */
+  session?: unknown;
+  user?: { externalId?: string | null } | null;
+  signOut: (callback?: () => void | Promise<unknown>) => Promise<void>;
   client?: {
     signIn: {
       create: (params: { strategy: 'ticket'; ticket: string }) => Promise<{
@@ -56,9 +61,27 @@ async function loadClerk(): Promise<ClerkForTicket> {
   return clerk;
 }
 
-export async function redeemSignInTicket(ticket: string): Promise<void> {
+/**
+ * `expectedProfileId` is the profile the sign-in response is for. Clerk refuses
+ * a ticket sign-in on top of an existing session (`session_exists`), and a
+ * returning visitor can reach here with one — see `existingClerkSession.ts`.
+ * When that session is already this person's it is kept and the ticket is left
+ * unspent (it expires on its own); when it is anyone else's, or cannot be shown
+ * to be, it is ended first. With no session nothing changes.
+ */
+export async function redeemSignInTicket(ticket: string, expectedProfileId?: string): Promise<void> {
   const clerk = await loadClerk();
   if (!clerk.client) throw new Error('Could not start a secure session. Please try again.');
+
+  const existing = decideExistingSession({
+    hasActiveSession: Boolean(clerk.session),
+    sessionExternalId: clerk.user?.externalId,
+    expectedProfileId,
+  });
+  if (existing === 'reuse') return;
+  // A callback replaces Clerk's default post-sign-out navigation, which would
+  // otherwise reload the page in the middle of this sign-in.
+  if (existing === 'replace') await clerk.signOut(() => undefined);
 
   const attempt = await clerk.client.signIn.create({ strategy: 'ticket', ticket });
   if (attempt.status !== 'complete' || !attempt.createdSessionId) {
