@@ -42,6 +42,61 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
+function readModelDelegates(): Set<string> {
+  const schema = readFileSync(join(BACKEND, "prisma/schema.prisma"), "utf8");
+  const models = [...schema.matchAll(/^model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/gm)].map((m) => m[1]);
+  // Prisma's client property is the model name with its first letter lowercased.
+  return new Set(models.map((m) => m[0].toLowerCase() + m.slice(1)));
+}
+
+function isComment(line: string): boolean {
+  const code = line.trim();
+  return code.startsWith("*") || code.startsWith("//") || code.startsWith("/*");
+}
+
+describe("every prisma.<delegate> names something that exists", () => {
+  const delegates = readModelDelegates();
+  const aliases = readAliases();
+
+  it("reads both tables, so this cannot silently pass on nothing", () => {
+    expect(delegates.size).toBeGreaterThan(100);
+    expect(delegates.has("agreement")).toBe(true);
+  });
+
+  /**
+   * `prisma` is exported as `any`, so a delegate that does not exist
+   * compiles, builds, deploys, and throws `Cannot read properties of
+   * undefined` the first time that line runs. Three have shipped this way:
+   * `prisma.profiles` took all inbound WhatsApp down, `prisma.leads` 500'd
+   * the admin Platform Listings page, and `prisma.Agreement` broke the owner
+   * Alerts renewals query.
+   *
+   * A name is legitimate if it is a model delegate OR one of the camelCase
+   * aliases lib/db.ts patches on.
+   */
+  it("no unknown prisma.<delegate> anywhere in the backend", () => {
+    const offenders: string[] = [];
+
+    for (const root of ROOTS) {
+      for (const file of walk(join(BACKEND, root))) {
+        readFileSync(file, "utf8")
+          .split("\n")
+          .forEach((line, i) => {
+            if (isComment(line)) return;
+            for (const match of line.matchAll(/(?<![A-Za-z0-9_])prisma\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+              const name = match[1];
+              if (!delegates.has(name) && !aliases.has(name)) {
+                offenders.push(`${relative(BACKEND, file)}:${i + 1}: prisma.${name}`);
+              }
+            }
+          });
+      }
+    }
+
+    expect(offenders).toEqual([]);
+  });
+});
+
 describe("transaction clients never use a lib/db.ts delegate alias", () => {
   const aliases = readAliases();
 
@@ -59,8 +114,7 @@ describe("transaction clients never use a lib/db.ts delegate alias", () => {
         lines.forEach((line, i) => {
           // Prose describing the bug is not the bug. Without this, the
           // comment explaining the fix at each call site trips the check.
-          const code = line.trim();
-          if (code.startsWith("*") || code.startsWith("//") || code.startsWith("/*")) return;
+          if (isComment(line)) return;
 
           const match = line.match(/(?<![A-Za-z0-9_])tx\.([A-Za-z_][A-Za-z0-9_]*)/);
           if (match && aliases.has(match[1])) {
