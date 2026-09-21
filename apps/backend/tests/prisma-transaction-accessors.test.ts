@@ -28,8 +28,14 @@ const ROOTS = ["src", "lib", "app"];
 
 function readAliases(): Set<string> {
   const db = readFileSync(join(BACKEND, "lib/db.ts"), "utf8");
-  const names = [...db.matchAll(/^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*"[a-z_]+",/gm)].map((m) => m[1]);
-  return new Set(names);
+  // `exec` in a loop rather than spreading `matchAll`: this repo's tsconfig
+  // target predates downlevelIteration, so spreading the iterator is a
+  // compile error even though vitest runs it happily.
+  const names = new Set<string>();
+  const pattern = /^ {2}([A-Za-z_][A-Za-z0-9_]*):\s*"[a-z_]+",/gm;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(db)) !== null) names.add(match[1]);
+  return names;
 }
 
 function walk(dir: string, out: string[] = []): string[] {
@@ -44,9 +50,15 @@ function walk(dir: string, out: string[] = []): string[] {
 
 function readModelDelegates(): Set<string> {
   const schema = readFileSync(join(BACKEND, "prisma/schema.prisma"), "utf8");
-  const models = [...schema.matchAll(/^model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/gm)].map((m) => m[1]);
   // Prisma's client property is the model name with its first letter lowercased.
-  return new Set(models.map((m) => m[0].toLowerCase() + m.slice(1)));
+  const delegates = new Set<string>();
+  const pattern = /^model\s+([A-Za-z_][A-Za-z0-9_]*)\s*\{/gm;
+  let match: RegExpExecArray | null;
+  while ((match = pattern.exec(schema)) !== null) {
+    const name = match[1];
+    delegates.add(name[0].toLowerCase() + name.slice(1));
+  }
+  return delegates;
 }
 
 function isComment(line: string): boolean {
@@ -83,7 +95,9 @@ describe("every prisma.<delegate> names something that exists", () => {
           .split("\n")
           .forEach((line, i) => {
             if (isComment(line)) return;
-            for (const match of line.matchAll(/(?<![A-Za-z0-9_])prisma\.([A-Za-z_][A-Za-z0-9_]*)/g)) {
+            const pattern = /(?<![A-Za-z0-9_])prisma\.([A-Za-z_][A-Za-z0-9_]*)/g;
+            let match: RegExpExecArray | null;
+            while ((match = pattern.exec(line)) !== null) {
               const name = match[1];
               if (!delegates.has(name) && !aliases.has(name)) {
                 offenders.push(`${relative(BACKEND, file)}:${i + 1}: prisma.${name}`);

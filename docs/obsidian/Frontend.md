@@ -578,3 +578,23 @@ Listings are read through the existing Discover browse endpoint; the write goes 
 
 On the public side `planFeatured(cards, curated)` leaves a curated order alone; only the default sort is second-guessed for a lead photograph.
 
+
+## Marketplace partner pages (2026-09-21)
+
+Three public, token-only pages under `/partner`, reached solely from the `stayo_partner_*` WhatsApp templates. A partner is a hostel owner with no Stayo account, so none of these has a session — see [[Decisions#ADR-231|ADR-231]].
+
+| Route | Page | Reached from |
+|---|---|---|
+| `/partner/:token` | `PartnerPortalPage` — listings, the free-enquiry counter, and every enquiry | `stayo_partner_listing_live` |
+| `/partner/enquiry/:token` | `PartnerEnquiryPage` — one student, their number, a `wa.me` reply button | `stayo_partner_new_enquiry` |
+| `/partner/activate/:token` | `PartnerActivatePage` — the claim, framed as an upgrade | `stayo_partner_enquiry_locked` |
+
+**Route order matters.** The literal `enquiry` and `activate` segments are registered before the catch-all `/partner/:token`, or a partner opening an enquiry link would land on the portal with `"enquiry"` read as their token.
+
+**A locked enquiry is shown, not hidden.** `toEnquiryView()` renders it as a real person with the contact withheld: hiding it would read as a malfunction, showing the number would make the gate pointless. `orderEnquiries()` puts locked rows first — they are the only ones the partner cannot act on, so burying them under the ones they can would hide what the page exists to show.
+
+Every judgement lives in `features/partner/model/partnerPortal.ts` (13 tests). The pages are thin renderers, because this app's test suite is node-only and never renders a component.
+
+`templateLinkRoutes.test.ts` pins all three paths plus the two admin-invitation ones: a Meta template's button URL is fixed at approval, so deleting one of these routes 404s a link already delivered.
+
+Related: [[Features]], [[APIs]], [[Architecture]]

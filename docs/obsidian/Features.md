@@ -1715,7 +1715,7 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 
 **What:** A hostel owner with no Stayo account receives real enquiries on their Stayo-authored listing, free up to a quota, then held-but-visible until they claim it. The point is to manufacture attributable proof of demand and then withhold the next piece of it — an owner will not join for a promise, but will for three named students who already asked about their building.
 
-**Status:** Backend only. Migration 091 **not applied**; nothing exercised against a database; no owner-facing pages.
+**Status:** Backend and owner-facing pages built. Migration 091 **not applied**; nothing exercised against a database.
 
 **Flow:** enquiry on a `PLATFORM_LISTED` hostel → `partnerLeadDeliveryService.deliverEnquiry()` (hooked into `discovery-service`, after the existing sales-lead block) → under quota: `stayo_partner_new_enquiry` with a per-enquiry link; at quota: row held and `stayo_partner_enquiry_locked` sent → partner claims → hostels move to `OWNER_MANAGED`, held enquiries released.
 
@@ -1732,7 +1732,11 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 
 **Verified:** 40 new pure tests; full `test:pure` suite green apart from 15 pre-existing failures on `dev` (`credential-service`, `subscription-admin`, `subscription-invoice-document`). **Not verified:** anything requiring a database or a real WhatsApp send.
 
-**Open:** the 12-hour student-fallback sweep ([[Business-Rules]] — a rule, not an option); a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); owner-facing portal/activation pages; `stayo_partner_activated` submission.
+**Pages:** `/partner/:token` (portal — listings, quota counter, enquiries with locked rows shown as real), `/partner/enquiry/:token` (one enquiry, the student's number, a `wa.me` reply button), `/partner/activate/:token` (the claim, framed as an upgrade). All public, all reached only from the templates. Decision logic sits in `features/partner/model/partnerPortal.ts` with 13 node tests, since the frontend suite never renders a component.
+
+**The held-enquiry fallback is built:** `partner-fallback-policy.ts` (pure) + `partner-fallback-service.ts` + `GET /api/cron/partner-lead-fallback`, daily at `0 4 * * *`. Reaches the student in-app and by email — there is no approved WhatsApp template for it.
+
+**Open:** a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); `stayo_partner_activated` submission to Meta; migration 091 application.
 
 ## Manager invitations over WhatsApp (2026-09-21)
 

@@ -74,9 +74,12 @@ export class PartnerPortalService {
           select: { id: true, student_name: true, student_phone: true, created_at: true },
         })
       : [];
-    const leadById = new Map(leads.map((l: any) => [l.id, l]));
-    const listingById = new Map(partner.listings.map((l: any) => [l.id, l]));
-    const hostelById = new Map(hostels.map((h: any) => [h.id, h]));
+    // Explicitly typed: `new Map(rows.map(...))` infers the value as `{}`
+    // when the source array is `any[]`, so every property read off the
+    // lookup below becomes a type error.
+    const leadById = new Map<string, any>(leads.map((l: any) => [l.id, l]));
+    const listingById = new Map<string, any>(partner.listings.map((l: any) => [l.id, l]));
+    const hostelById = new Map<string, any>(hostels.map((h: any) => [h.id, h]));
 
     return {
       partner_name: partner.name,

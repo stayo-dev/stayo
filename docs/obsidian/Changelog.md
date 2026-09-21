@@ -19,7 +19,9 @@ All notable changes to this project are documented in this file, in [Keep a Chan
   - Three tables (`marketplace_partners`, `partner_listings`, `partner_lead_deliveries`, **migration 091 — not applied**). Consent is a precondition of the partner row existing, so the rule in `platform-listing-leads.ts` stays intact rather than being quietly reversed.
   - **Quota counts confirmed deliveries, not sends.** Partner templates carry a 12-hour Meta validity, so an undelivered message is dropped unseen; counting attempts would paywall an owner whose phone was off.
   - Claiming wires up `canClaimListing()`/`buildClaimUpdate()`, written and tested since migration 068 with **no caller until now**. On claim, held enquiries are released.
-  - **Not built:** the 12-hour student fallback sweep (ADR-231 point 4 — a rule, not an option), any owner-facing page, and `stayo_partner_activated` is not submitted to Meta. **Nothing has been exercised against a database.**
+  - **The held-enquiry fallback ships with it** (ADR-231 point 4): `GET /api/cron/partner-lead-fallback`, daily, contacts a student whose enquiry has been withheld past the threshold with hostels that *are* on Stayo. Alternatives exclude their first choice and anything with no public page; the copy never explains the delay as the owner's fault, and a test asserts it does not leak that. In-app + email — no approved WhatsApp template exists for this.
+  - Three public pages: the partner portal, one enquiry with the student's number, and the claim page.
+  - **Still open:** `stayo_partner_activated` is not submitted to Meta, migration 091 is unapplied, and **nothing has been exercised against a database.**
 - **2026-09-21**: **Manager invitations go over WhatsApp** ([[Decisions#ADR-230|ADR-230]], [[Features]], [[APIs]]).
   - `stayo_admin_invitation` and `stayo_admin_invitation_reminder`, both approved 2026-09-21. WhatsApp first, email only on failure.
   - Resend now nudges before it re-issues — it used to mint a new token and silently invalidate the link already in the manager's chat.

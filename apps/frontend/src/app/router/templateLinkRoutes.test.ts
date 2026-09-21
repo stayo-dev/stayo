@@ -21,6 +21,12 @@ const TEMPLATE_LINK_PATHS = [
   '/owner-invite/:token',
   // stayo_owner_lead_received — the public enquiry status page.
   '/enquiry/:token',
+  // stayo_partner_listing_live -> the partner's own view of their listing.
+  '/partner/:token',
+  // stayo_partner_new_enquiry -> one enquiry, with the student's number.
+  '/partner/enquiry/:token',
+  // stayo_partner_enquiry_locked -> the claim page.
+  '/partner/activate/:token',
 ];
 
 describe('routes referenced by approved WhatsApp templates', () => {
