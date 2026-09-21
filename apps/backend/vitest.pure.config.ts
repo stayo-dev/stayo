@@ -293,6 +293,7 @@ export default defineConfig({
       'tests/partner-lead-gate.test.ts',
       'tests/prisma-transaction-accessors.test.ts',
       'tests/partner-fallback.test.ts',
+      'tests/migration-rls.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

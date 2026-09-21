@@ -3090,3 +3090,17 @@ They also survived review three ways over: it compiles; the alias works immediat
 **Guard:** `tests/prisma-transaction-accessors.test.ts` fails on any unknown `prisma.<delegate>` and any `tx.<alias>` across `src`, `lib` and `app`, reading the model list from `schema.prisma` and the alias table from `lib/db.ts` so a new alias is covered the day it is added. Both checks skip comment lines, since the notes explaining these bugs quote the broken accessor by name.
 
 Earlier instance of the same class: `prisma.profiles` in the WhatsApp identity resolver, which took all inbound WhatsApp down. Related: [[Decisions#ADR-231|ADR-231]], [[Backend]], [[Changelog]]
+
+## Five tables were readable and writable with the public anon key (2026-09-21)
+
+Found while verifying migration 091 against production. `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments`, `coverage_requests` and `homepage_features` all had **Row Level Security disabled**.
+
+That is exploitable rather than theoretical, for two compounding reasons: `apps/frontend/src/lib/supabaseClient.ts` reads `VITE_SUPABASE_ANON_KEY`, a Vite variable, so the anon key is **compiled into the browser bundle**; and **no migration in this repo contains a `REVOKE`**, so PostgREST's default grants to `anon`/`authenticated` still apply. RLS was the only gate.
+
+The worst is `manager_permission_grants` — a **writable permissions table**. `requireManagerPermission` (`manager-authorization.ts`) gates admin-console access on rows in it, so inserting a grant against an existing `manager_profile_id` is privilege escalation. `homepage_features` is writable homepage defacement; `coverage_requests` holds visitor PII.
+
+Every other table in the schema already had RLS on — these five were the exception, from migrations 085/086/088, which simply omitted the `ENABLE ROW LEVEL SECURITY` that 083, 089 and 090 include.
+
+**Fixed by** migration 092, and prevented by `tests/migration-rls.test.ts`, which fails the build if a migration from 083 onward creates a table nothing enables RLS on.
+
+Related: [[Database]], [[Decisions#ADR-231|ADR-231]], [[Changelog]]

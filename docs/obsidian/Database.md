@@ -965,3 +965,15 @@ Three tables plus one enum, for hostel owners who receive enquiries on a Stayo-a
 Indexes: `(partner_listing_id, state)` for the quota check on every enquiry; `(partner_listing_id, created_at DESC)` for the "N students this month" count in the locked template; a partial index on `created_at WHERE state = 'HELD' AND fallback_at IS NULL` for the student-fallback sweep; and a partial index on `wa_message_id` for matching delivery webhooks back.
 
 Related: [[Business-Rules]], [[APIs]], [[Features]]
+
+## Row Level Security (migration 092)
+
+Five tables shipped with **RLS disabled**: `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments` (085), `coverage_requests` (086), `homepage_features` (088). Migration 091's three tables were enabled on the live database but not *by* the migration, so a fresh environment would have come up exposed; 092 states all eight.
+
+**Why it mattered:** `VITE_SUPABASE_ANON_KEY` is a Vite variable, so the Supabase anon key is compiled into the browser bundle and is public by construction. No migration in this repo contains a `REVOKE`, so PostgREST's default grants to `anon` and `authenticated` stand. RLS was the only gate, and on those tables it was open.
+
+**No policies are added, deliberately.** Every legitimate read and write goes through the backend, which connects via Prisma as the owning `postgres` role and bypasses RLS. Enabling it with no policy is a clean lockout of the anon key, not a change to how the application reads its own data.
+
+`apps/backend/tests/migration-rls.test.ts` fails if a migration numbered 083 or higher creates a table and no migration enables RLS on it. Verified non-vacuous: removing 092 makes it name all eight.
+
+Related: [[Bugs]], [[Business-Rules]]

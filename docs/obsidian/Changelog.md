@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-21**: **RLS enabled on five tables that were open to the public anon key** (migration 092, [[Bugs]], [[Database]]).
+  - `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments`, `coverage_requests`, `homepage_features`. The anon key ships in the browser bundle and no migration `REVOKE`s, so RLS was the only gate — and `manager_permission_grants` is a writable table the admin console gates permissions on.
+  - No policies added: the backend connects as the owning role and bypasses RLS, so this is a clean lockout of the anon key rather than a change to application access.
+  - `tests/migration-rls.test.ts` now fails if a migration from 083 onward creates a table and leaves RLS off. **Migration 092 still needs applying.**
+
 - **2026-09-21**: **A shared hostel link now opens the marketplace listing, not the SEO document** ([[Decisions#ADR-232|ADR-232]], [[APIs]], [[Bugs]]).
   - `yourstayo.com/h/:slug` unfurls exactly as before, but the person who taps it lands on `/discover/h/:slug` — photo tour, bed chooser, map, host, Enquire — instead of `/hostels/:slug`, which is a read-only document with one easily-missed link onward. `ShareCard.listingUrl` is replaced by `canonicalUrl` (still `/hostels/:slug`, still what `rel=canonical` names) and `destinationUrl`, used by the meta refresh, the JS redirect and the fallback button alike.
   - **Indexing is untouched:** the canonical still points at the indexable page, `/discover` stays `noindex, follow`, and chat unfurlers read the meta tags without following the redirect at all.
