@@ -31,8 +31,15 @@ export interface ShareCard {
   title: string;
   description: string;
   imageUrl: string;
-  /** Where a human ends up: the real listing page. */
-  listingUrl: string;
+  /**
+   * The indexable document this page canonicalises to.
+   *
+   * Separate from `destinationUrl` because a crawler and a person want
+   * different things from the same link (ADR-226, amended by ADR-232).
+   */
+  canonicalUrl: string;
+  /** Where a PERSON is sent — the interactive listing they can enquire from. */
+  destinationUrl: string;
   /** The link that gets shared, and the page's own `og:url`. */
   shareUrl: string;
   name: string;
@@ -106,21 +113,27 @@ export function buildShareCard(input: ShareCardInput): ShareCard {
     description: shareDescription(input),
     imageUrl: ogImageUrl(input.photos[0], `${site}/og-cover.png`),
     /**
-     * Where a person ends up, and what this page canonicalises to.
-     *
-     * Moved from `/discover/h/:slug` (the SPA listing) to `/hostels/:slug`
-     * when the server-rendered page became canonical — ADR-226. Two reasons,
-     * both load-bearing:
-     *
-     *   - A crawler that reads this preview must be sent to the page Stayo
-     *     wants indexed, not to a client-rendered route it cannot read.
-     *   - A person following a shared link lands on a page that has already
-     *     rendered, rather than on an empty shell waiting for a bundle.
-     *
-     * `shareUrl` below is unchanged: it stays `/h/:slug` and remains this
-     * page's own `og:url`, because that is the URL actually in the message.
+     * What this page canonicalises to: the server-rendered, indexable hostel
+     * page. ADR-226's reason for pointing here is untouched — a crawler that
+     * reads this preview must be told which document Stayo wants indexed, not
+     * a client-rendered route it cannot read.
      */
-    listingUrl: `${site}/hostels/${input.slug}`,
+    canonicalUrl: `${site}/hostels/${input.slug}`,
+    /**
+     * Where a PERSON goes: the marketplace listing.
+     *
+     * ADR-226 sent people to the canonical page too, on the reasoning that a
+     * shared link should land on something already rendered rather than an
+     * empty shell. That optimised the wrong thing. The SEO page is a document
+     * — photos, facts, a footer — and someone who was just sent a hostel by a
+     * friend wants the product: the photo tour, the bed chooser, the map, and
+     * a way to enquire. They were landing on a dead end and had to find the
+     * one "See live availability" link to reach it. ADR-232.
+     *
+     * Chat unfurlers (WhatsApp, Slack, Signal) read the meta tags above and
+     * never follow this redirect, so previews are unaffected.
+     */
+    destinationUrl: `${site}/discover/h/${input.slug}`,
     shareUrl: `${site}/h/${input.slug}`,
     name: input.name,
     city: input.city,
@@ -154,7 +167,8 @@ export function escapeHtml(value: string): string {
 export function renderSharePage(card: ShareCard): string {
   const title = escapeHtml(card.title);
   const description = escapeHtml(card.description);
-  const listingUrl = escapeHtml(card.listingUrl);
+  const canonicalUrl = escapeHtml(card.canonicalUrl);
+  const destinationUrl = escapeHtml(card.destinationUrl);
   const shareUrl = escapeHtml(card.shareUrl);
   const image = escapeHtml(card.imageUrl);
   const name = escapeHtml(card.name);
@@ -168,7 +182,7 @@ export function renderSharePage(card: ShareCard): string {
 <meta name="viewport" content="width=device-width,initial-scale=1" />
 <title>${title}</title>
 <meta name="description" content="${description}" />
-<link rel="canonical" href="${listingUrl}" />
+<link rel="canonical" href="${canonicalUrl}" />
 <meta property="og:type" content="website" />
 <meta property="og:site_name" content="Stayo" />
 <meta property="og:title" content="${title}" />
@@ -183,7 +197,7 @@ export function renderSharePage(card: ShareCard): string {
 <meta name="twitter:title" content="${title}" />
 <meta name="twitter:description" content="${description}" />
 <meta name="twitter:image" content="${image}" />
-<meta http-equiv="refresh" content="0;url=${listingUrl}" />
+<meta http-equiv="refresh" content="0;url=${destinationUrl}" />
 <style>
 :root{color-scheme:light}
 body{margin:0;font-family:'Inter',system-ui,sans-serif;background:#F7F3EF;color:#221E1A;
@@ -206,10 +220,10 @@ text-align:center;text-decoration:none;font-weight:700}
 <h1>${name}</h1>
 ${location ? `<p>${location}</p>` : ""}
 ${price ? `<div class="price">${price}<span style="font-size:13px;font-weight:500;color:#8A7F75">/month</span></div>` : ""}
-<a class="cta" href="${listingUrl}">View on Stayo</a>
+<a class="cta" href="${destinationUrl}">View on Stayo</a>
 </div>
 </div>
-<script>location.replace(${JSON.stringify(card.listingUrl)});</script>
+<script>location.replace(${JSON.stringify(card.destinationUrl)});</script>
 </body>
 </html>`;
 }

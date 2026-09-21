@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## A shared hostel link opened a read-only page (2026-09-21)
+
+Share a hostel from the app and the recipient got `/hostels/:slug` — the server-rendered SEO document: photos, facts, a mess menu, a footer, and one easily-missed "See live availability" link. Not the marketplace listing with the photo tour, bed chooser, map, host and Enquire button.
+
+Not a coding error — [[Decisions#ADR-226|ADR-226]] pointed the redirect there deliberately, reasoning that a shared link should land on already-rendered HTML rather than an empty SPA shell. That reasoning held for crawlers and failed for people: the share flow exists to hand a stranger something they can act on, and it was handing them a brochure.
+
+**Fix:** the share page's targets are split — `canonicalUrl` (`/hostels/:slug`, for `rel=canonical`) and `destinationUrl` (`/discover/h/:slug`, for every human exit). One field serving a crawler and a person at once is what let this be wrong quietly. See [[Decisions#ADR-232|ADR-232]].
+
+**Lesson.** When one value has two audiences, name it for neither and it will end up correct for whichever was considered last. Two fields with audience names cost nothing and make the next change obvious.
+
+Related: [[APIs]] · [[Changelog]] · [[Features]]
+
 ## The Expenses list, and four filters that did not filter (2026-09-21)
 
 Found while making the owner export carry the screen's filters ([[Decisions#ADR-229|ADR-229]]). Five separate faults, all of the same kind: a control that looked applied and was not.

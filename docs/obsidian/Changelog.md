@@ -10,6 +10,11 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-21**: **A shared hostel link now opens the marketplace listing, not the SEO document** ([[Decisions#ADR-232|ADR-232]], [[APIs]], [[Bugs]]).
+  - `yourstayo.com/h/:slug` unfurls exactly as before, but the person who taps it lands on `/discover/h/:slug` — photo tour, bed chooser, map, host, Enquire — instead of `/hostels/:slug`, which is a read-only document with one easily-missed link onward. `ShareCard.listingUrl` is replaced by `canonicalUrl` (still `/hostels/:slug`, still what `rel=canonical` names) and `destinationUrl`, used by the meta refresh, the JS redirect and the fallback button alike.
+  - **Indexing is untouched:** the canonical still points at the indexable page, `/discover` stays `noindex, follow`, and chat unfurlers read the meta tags without following the redirect at all.
+  - **Verified:** 21 pure tests on `share-card`, including one asserting no human exit points at `/hostels/:slug`. **Not verified:** nobody has clicked a shared link end to end — worth pasting one into WhatsApp after deploy to confirm it still unfurls with a photo *and* opens the listing.
+
 - **2026-09-20**: **Owners can arrange their photo tour's sections** ([[Decisions#ADR-228|ADR-228]], [[Features]], [[APIs]], [[Business-Rules]]).
   - The listing's photo tour grouped photos in one fixed order — rooms, bathrooms, mess, common, study, outside, more — hardcoded in three places and changeable by nobody, owner or admin. The owner now arranges it, in a "Section order" strip in the Photos screen, above the grid.
   - The strip shows **only sections that have photos**, and the up/down buttons step over the empty ones — an empty section never appears on the listing, so a control that moved it would be a button that does nothing. It keeps its stored slot for when a photo arrives.

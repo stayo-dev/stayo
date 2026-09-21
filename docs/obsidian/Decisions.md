@@ -3419,6 +3419,24 @@ See [[Features]], [[Changelog]], [[Business-Rules]].
 - **Not verified:** nothing has been deployed, so no rewrite has been exercised on the real domain — the `/_next` rewrite, the `X-Robots-Tag` headers and the static-file deletions are all reasoned from Vercel's documented ordering, not observed. No page has been submitted to Search Console or the Rich Results Test. Phases 2–5 (slug history, the `areas`/`colleges` tables, collection pages, intent pages) are **not built**.
 - **Related:** [[Decisions#ADR-084|ADR-084]] (the server-rendered precedent this scales), [[Decisions#ADR-073|ADR-073]] (no invented listing data; `DISCOVERABLE`), [[Decisions#ADR-076|ADR-076]] (advertised price vs operational rent), [[Decisions#ADR-086|ADR-086]] (reviewer identity), [[Decisions#ADR-089|ADR-089]] (unpublish does not remove the hostel), [[Decisions#ADR-223|ADR-223]] (named prerendering the top follow-up), [[Features]], [[APIs]], [[Architecture]], [[Bugs]], [[Changelog]]
 
+### ADR-232 — A shared hostel link opens the marketplace listing, not the SEO document (2026-09-21)
+
+**Status:** Accepted. **Amends [[Decisions#ADR-226|ADR-226]]** (the canonical target is unchanged; only the human redirect moves).
+
+**Context.** Sharing a hostel from the app puts `yourstayo.com/h/:slug` in the message. That URL is a rewrite onto `GET /api/discover/share/:slug`, which returns an HTML card carrying the Open Graph tags a chat app unfurls, then moves the reader on. ADR-226 pointed that onward redirect at `/hostels/:slug` — the server-rendered, indexable page — for two stated reasons: a crawler should be sent to the document Stayo wants indexed, and a person should land on HTML that has already rendered rather than an empty shell.
+
+The first reason is right. The second optimised the wrong thing. `/hostels/:slug` is a *document*: photos, facts, a mess menu, a footer. Someone who has just been sent a hostel by a friend wants the *product* — the photo tour, the bed chooser, the map, the host, and a way to enquire. They were landing on a read-only page whose only route onward was a single "See live availability" link most people would not look for. The share flow's whole purpose is to hand a stranger something they can act on, and it was handing them a brochure.
+
+**Decision.** The share page's targets are split. `canonicalUrl` stays `/hostels/:slug` and remains what `<link rel="canonical">` points at. A new `destinationUrl` is `/discover/h/:slug`, and it is what the meta refresh, the JS `location.replace` and the visible fallback button all use. A person lands on the marketplace listing; a crawler is still told which document to index.
+
+**Consequences.**
+
+- **Chat previews are unaffected.** WhatsApp, Slack, Signal and Twitter read the meta tags and never follow the redirect to unfurl. `og:url` still points at `/h/:slug`, which is the URL actually in the message.
+- **ADR-226's indexing intent survives.** The canonical still names the indexable page, `/discover` remains `noindex, follow` (see `NOINDEX_FOLLOW_PREFIXES` in `seo-links.ts`), and the SEO page keeps its place in the sitemap and its inbound links from the hub and collection pages. What changed is where a *human* is sent, which no ranking signal reads.
+- **The page is still never a dead end.** All three exits — meta refresh, `location.replace`, and the anchor for a client running neither — agree, and a test asserts none of them points at `/hostels/:slug`.
+- **`ShareCard.listingUrl` is gone**, replaced by the two named fields. One field serving a crawler and a person at once is what let this be wrong quietly; the names now say who each is for.
+- **Not verified in a browser.** The redirect was changed and pinned by pure tests; nobody has clicked a shared link end to end. The one thing worth checking after deploy is that a link pasted into WhatsApp still unfurls with a photo *and* opens the marketplace listing when tapped.
+
 ### ADR-229 — An export is named by the data it contains, and lives where that data is shown (2026-09-21)
 
 **Status:** Accepted. **Partially supersedes [[Decisions#ADR-093|ADR-093]]; supersedes [[Decisions#ADR-094|ADR-094]].**

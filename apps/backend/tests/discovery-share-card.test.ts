@@ -71,10 +71,18 @@ describe("buildShareCard", () => {
     // The URL actually in the message stays /h/:slug — it is this page's own
     // og:url, and a link crawler does not follow redirects to unfurl.
     expect(card.shareUrl).toBe("https://yourstayo.com/h/starlink-79ba709b");
-    // Retargeted from the SPA listing to the server-rendered page (ADR-226):
-    // a crawler reading this preview must be sent to the page Stayo wants
-    // indexed, and a person must land on HTML that has already rendered.
-    expect(card.listingUrl).toBe("https://yourstayo.com/hostels/starlink-79ba709b");
+    // A crawler is told which document to index (ADR-226) …
+    expect(card.canonicalUrl).toBe("https://yourstayo.com/hostels/starlink-79ba709b");
+    // … and a person is sent to the product they can actually enquire from,
+    // not to the read-only SEO document (ADR-232).
+    expect(card.destinationUrl).toBe("https://yourstayo.com/discover/h/starlink-79ba709b");
+  });
+
+  it("sends a person and a crawler to different places, on purpose", () => {
+    const card = buildShareCard(base);
+    expect(card.destinationUrl).not.toBe(card.canonicalUrl);
+    expect(card.destinationUrl).toContain("/discover/h/");
+    expect(card.canonicalUrl).toContain("/hostels/");
   });
 
   it("names the city in the title", () => {
@@ -108,11 +116,22 @@ describe("renderSharePage", () => {
     expect(html).not.toContain("noindex");
   });
 
-  it("moves a human on without leaving itself in history", () => {
-    expect(html).toContain('location.replace("https://yourstayo.com/hostels/starlink-79ba709b")');
+  it("moves a human on to the marketplace listing, not to the SEO document", () => {
+    // Somebody sent a hostel by a friend wants the photo tour, the bed
+    // chooser and the enquire button — not a read-only page they then have to
+    // find one link out of. ADR-232.
+    expect(html).toContain('location.replace("https://yourstayo.com/discover/h/starlink-79ba709b")');
     // JS-less clients still get out — the page is never a dead end.
     expect(html).toContain('http-equiv="refresh"');
-    expect(html).toContain('href="https://yourstayo.com/hostels/starlink-79ba709b"');
+    expect(html).toContain('content="0;url=https://yourstayo.com/discover/h/starlink-79ba709b"');
+    // The visible fallback button agrees with both redirects.
+    expect(html).toContain('href="https://yourstayo.com/discover/h/starlink-79ba709b"');
+  });
+
+  it("never sends a human to the SEO page", () => {
+    // The whole point of ADR-232: no redirect path may land on /hostels/:slug.
+    expect(html).not.toContain('location.replace("https://yourstayo.com/hostels/');
+    expect(html).not.toContain('content="0;url=https://yourstayo.com/hostels/');
   });
 
   it("escapes a hostel name, which is owner-authored input", () => {
