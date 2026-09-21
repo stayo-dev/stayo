@@ -896,14 +896,20 @@ The strip's voice priority is **failed › paid today › pending › settled �
 
 ## Money exports
 
-**Files:** `src/services/exports/financial-year.ts` (pure), `export-documents.ts` (pure — rendering, no I/O), `owner-money-export-service.ts` (gathering), `export-request.ts` (parsing). See [[Decisions#ADR-093|ADR-093]]–[[Decisions#ADR-095|ADR-095]].
+**Files:** `src/services/exports/financial-year.ts` (pure — periods), `export-params.ts` (pure — request rules), `export-documents.ts` (pure — rendering, no I/O), `owner-money-export-service.ts` (gathering), `export-request.ts` (the one check that needs a database), and `lib/services/expenses/expense-ledger-query.ts` (pure — the shared expense WHERE builder). See [[Decisions#ADR-229|ADR-229]], and [[Decisions#ADR-093|ADR-093]]–[[Decisions#ADR-095|ADR-095]] for what it supersedes.
 
+- **An export is named by its data, and lives on the tab that shows it.** Three: `expenses`, `collections`, `finance`. Where the owner tapped answers "what is this for", so the sheet does not ask ([[Decisions#ADR-229|ADR-229]]).
 - **The financial year is April–March.** Presets resolve on the server; a January export's "this FY" began in the *previous* calendar year, which a naive `year - 1` gets wrong and which has its own test.
-- **A custom range is refused, not repaired.** Silently swapping reversed dates produces a document that looks right and covers the wrong period.
-- **Exports compose the read models the screens use** — `ownerPayoutReadModel.rentReceived` / `.payoutsForPeriod` and `collectionQueueService.getQueue`. Rent received uses the *same* definitions as the Money screen's month block (`payment_attempt_id IS NULL` for direct, captured `TENANT_RENT` for gateway), so an exported total and an on-screen total cannot disagree.
-- **Verified and owner-recorded money never merge into one figure** in proof of income — enforced by the pure `proofOfIncomeSections()`, which always returns both sections even when one is empty.
-- **The chase list is dated "as at generation", not to the export period.** An owner chasing rent wants who owes *today*; dating it to a past range would mislead him.
-- **Rendering is separated from gathering** so the risky half — pdf-lib throws outright on any glyph its font cannot encode — is testable with no database.
+- **A custom range is refused, not repaired.** Silently swapping reversed dates produces a document that looks right and covers the wrong period. One-sided ranges are allowed; a range with neither end is refused.
+- **"All time" has no lower bound** (`from: null`), rather than an invented early date that would print in the label, the filename and the report sheet. It still stops at today — a report cannot contain the future — and the *Covers* row states what the file actually holds when that differs from the period label.
+- **The expenses export is the screen's filter state**, resolved through the one shared query builder that the list also uses ([[Decisions#ADR-009|ADR-009]]). An export that could disagree with the list above it is the failure this surface exists to prevent — and it *did* disagree, because the list filtered 100 already-fetched rows in the browser. See [[Bugs]].
+- **Exports compose the read models the screens use** — `ownerPayoutReadModel.rentReceived` and `collectionQueueService.getQueue`. Rent received uses the *same* definitions as the Money screen's month block (`payment_attempt_id IS NULL` for direct, captured `TENANT_RENT` for gateway), so an exported total and an on-screen total cannot disagree.
+- **Every rent row states how the money reached the owner** — *Through Stayo (verified)* or *Paid to you directly*. This carries [[Decisions#ADR-094|ADR-094]]'s rule now that the proof-of-income PDF is gone: the wall between verified and self-reported money is a column rather than two sections, which reaches every row but loses the separate subtotals. The ADR says so plainly rather than claiming equivalence.
+- **The chase list is dated "as at generation", not to the export period**, and the *Still owed* sheet says so in its first row. An owner chasing rent wants who owes *today*.
+- **`business` is a scope, never a hostel id.** It narrows on `expense_scope` and can never reach a `hostel_id` WHERE clause ([[Decisions#ADR-003|ADR-003]]).
+- **Truncation announces itself.** A row cap prints `Rows shown 20,000 of 61,204` on the Report sheet; a capped file that looked complete is the one failure an owner cannot detect by reading it.
+- **Amounts are numbers, dates are dates.** Money cells carry an Indian lakh *number format* and never a pre-formatted string, because a string cannot be summed — which is the reason to send a spreadsheet rather than a PDF. Dates are written at local noon, since ExcelJS serialises through the host's offset and midnight lands on the wrong day either side of UTC.
+- **Rendering is separated from gathering** so it can be verified with no database — which, in an environment that has none, is the difference between real coverage and a single smoke test.
 
 ## Saving a floor's rooms, and removing a hostel (2026-08-24)
 

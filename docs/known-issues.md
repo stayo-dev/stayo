@@ -60,7 +60,7 @@ Backend services exist in both `apps/backend/lib/services` and `apps/backend/src
 
 ## Some v2 services reference unconfirmed endpoints
 
-Examples include selected document nested routes, payment export, payment waive, and bulk generation.
+Examples include selected document nested routes, payment export, payment waive, and bulk generation. (The *expense* export route referenced here was deleted outright on 2026-09-21 — see ADR-229; owner exports are now `GET /api/owner/exports`.)
 
 **How this works:**
 1. Service wrappers can outpace backend route implementation.

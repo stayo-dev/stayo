@@ -85,9 +85,9 @@ Ranked by owner value.
 |---|---|---|
 | `getExpenseTitleSummary` — total, count, average monthly, highest, lowest, months tracked, transactions | **Built** | **No** |
 | `getExpenseMemory` — per-title *and* per-vendor: occurrences, total, average, highest, last amount/date, category, payment method, notes, recurrence, receipt count, hostel count | Built (Phase 1) | Partially — entry form only |
-| Export: CSV streaming | Built | Yes |
-| Export: XLSX with summary, category %, vendor breakdown | Built (`ExcelJS` streaming) | Yes |
-| Export: PDF with header, executive summary, category breakdown, vendor summary, transaction register, footer | Built (`pdf-lib`) | Yes |
+| Export: CSV streaming | **Retired 2026-09-21 (ADR-229)** | — |
+| Export: XLSX with summary, category %, vendor breakdown | **Retired 2026-09-21 (ADR-229)** — replaced by the Money tab's `expenses` workbook (a plain table with real date cells, lakh number formats, frozen header, autofilter and a live `SUM()` total) | — |
+| Export: PDF with header, executive summary, category breakdown, vendor summary, transaction register, footer | **Retired 2026-09-21 (ADR-229)** — the export module renders no PDF at all now | — |
 | Hostel filter on exports (`"All Hostels (Portfolio)"`) | Built | Not reachable — no expense has a hostel |
 | `hostels.logo_url` for report branding | Exists | Not used in exports |
 | `expenses.receipt_url` / `receipt_uploaded_at` | Exists | Write-only |
@@ -161,7 +161,7 @@ Ordered by value-to-effort.
 
 **G. Recurring-expense completeness prompt (medium, medium — blocked).** "3 usual expenses not yet recorded this month" would use `is_recurring` plus Phase 1's day-of-month pattern. **Blocked on data:** live check shows `is_recurring` is set on **0 of 11** expenses. The wizard has a recurring toggle, so either owners never use it or it is not reaching the payload — worth confirming before building anything on top. Until then this prompt would render empty for every owner.
 
-**H. Report upgrade (medium, medium).** The PDF already has an executive summary, category breakdown, vendor summary and transaction register. The gaps against a CA-ready report are specific and small:
+**H. Report upgrade (medium, medium).** ~~**Withdrawn 2026-09-21 (ADR-229)** — the PDF this proposed upgrading no longer exists; the export module renders only spreadsheets. The CA-ready need is met by the `finance` workbook's month-by-month sheet.~~ The PDF already had an executive summary, category breakdown, vendor summary and transaction register. The gaps against a CA-ready report are specific and small:
 - No cover page (currently a header line)
 - No hostel logo (`hostels.logo_url` exists) or Stayo mark
 - Transaction register lacks **payment method, notes and receipt reference** — it shows Date / Title / Category / Status / Amount only

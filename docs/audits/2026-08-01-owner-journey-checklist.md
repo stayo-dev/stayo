@@ -158,7 +158,7 @@ A linear, manual verification script for the complete owner product. Run it afte
 | 5.13 | **Reverse a wrong payment** | possible | 🚫 | |
 | 5.14 | **Transfer a payment to the right tenant** | possible | 🚫 | |
 | 5.15 | **Payment history for a tenant** | full ledger | 🚫 | |
-| 5.16 | **Export payments** | CSV/XLSX | 🚫 | |
+| 5.16 | **Export payments** | CSV/XLSX | ✅ | Met 2026-09-21 by `GET /api/owner/exports?document=collections` (ADR-229) — *Received* + *Still owed* sheets |
 | 5.17 | **Manually generate this month's rent** | preview → generate | 🚫 cron-only | |
 | 5.18 | Wait for `cron-generate-rent` | obligations appear | ✅ | |
 | 5.19 | Overdue tenant appears in Collections + Home | ✅ | ✅ | |
@@ -166,7 +166,7 @@ A linear, manual verification script for the complete owner product. Run it afte
 | 5.21 | Late fee applied per policy | via `cron-rent-reminders` | ✅ | |
 | 5.22 | **Verify a submitted UPI reference** | approval queue | 🚫 | |
 | 5.23 | Expenses: add / edit / delete | persists | ✅ | |
-| 5.24 | Expenses: export | file downloads | ✅ | |
+| 5.24 | Expenses: export | file downloads | ✅ | Moved 2026-09-21 to `GET /api/owner/exports?document=expenses` (ADR-229); `/api/expenses/export` deleted |
 | 5.25 | Expense insights (category / vendor / trend) | real | ✅ | |
 
 ---

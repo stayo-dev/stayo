@@ -168,7 +168,7 @@ Which backend endpoints a live owner screen actually consumes, and which are str
 | `GET /api/expenses` | ✅ | Money → Expenses | Complete |
 | `POST /api/expenses` | ✅ | Add Expense wizard | Complete |
 | `PATCH/DELETE /api/expenses/:id` | ✅ | Expense detail | Complete |
-| `GET /api/expenses/export` | ✅ | Export modal | Complete |
+| ~~`GET /api/expenses/export`~~ | — | — | **Deleted 2026-09-21 (ADR-229)** — replaced by `GET /api/owner/exports?document=expenses` |
 
 ### Dashboard & analytics
 

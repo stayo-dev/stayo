@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Expenses list, and four filters that did not filter (2026-09-21)
+
+Found while making the owner export carry the screen's filters ([[Decisions#ADR-229|ADR-229]]). Five separate faults, all of the same kind: a control that looked applied and was not.
+
+- **The Expenses list filtered 100 rows in the browser.** `useRealMoney` fetched `expenseService.getAll(undefined, { limit: 100 })` — no hostel, no range, no filters — so the server returned *this month, first 100 rows*, and every chip, the search box and the filter sheet narrowed only those. "All time" showed one month; a search found only what happened to be loaded. Fixed by giving the list its own server-side query (`useExpenseLedger`) sharing the export's params. The portfolio query that feeds the Overview tile and the category/vendor/trend breakdowns is deliberately left alone — those must not move when the owner types in the search box.
+- **`business` meant "all hostels".** The Money screen's `business` scope option was stripped to `null` on its way to the API, which reads as *every* hostel — the exact opposite of what the owner picked. It now travels as `scope=business` and lands on `expense_scope` ([[Decisions#ADR-003|ADR-003]]).
+- **A status filter matched nothing, silently.** The screen's `'Paid'` was sent into an exact match against a column holding `'paid'`. Zero rows, no error — an empty file that reads as "you have no expenses". Normalised once in `normalizeExpenseStatus`, shared by the list route and the export.
+- **Vendor and payment method never filtered.** The retired expense export accepted both and printed them on the report's cover page as a "filter snapshot" while the rows ignored them — a file that stated it was filtered and was not. `buildExpenseLedgerWhere` now supports both.
+- **"This week" ran into the future.** `getRange`'s `week` branch started on Sunday and ended seven days later, so on a Tuesday it covered four days that had not happened yet — and disagreed with the export from the same screen, which read the chip as a rolling seven days. Both are now the rolling seven days ending today.
+
+Related: [[Business-Rules]] · [[Features]] · [[Changelog]]
+
 ## 2026-09-18 — Every owner-added tenant ate two beds, so rooms filled at half capacity (fixed)
 
 **Symptom.** Reported by the owner from the Rooms tab. Room 505 of Sri Adithya Boys Hostel — capacity 4, two residents — read **"4/4 beds taken · 2 held for invites"**, offered **0 beds free**, and refused a third tenant with `CAPACITY_EXCEEDED: Room is already at full capacity`. The two held beds showed as nameless dashed placeholders, so there was no invite on screen to cancel and no way out of it from the UI.
