@@ -4736,6 +4736,27 @@ model stay_leaves {
   @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
 }
 
+/// ADR-233. Whether the tenant agreed to have their guardian told when they
+/// leave the hostel and when they return. A `granted = false` row is the
+/// memory of having asked — without it the consent sheet reappears on every
+/// trip, for exactly the tenants who said no.
+model stay_guardian_consent {
+  tenant_id      String    @id @db.Uuid
+  hostel_id      String    @db.Uuid
+  granted        Boolean
+  /// The number consented to, snapshotted. If `tenants.guardian_phone` later
+  /// differs, consent is about somebody else and lapses.
+  guardian_phone String
+  decided_at     DateTime  @default(now()) @db.Timestamptz(6)
+  /// The tenant switched it off.
+  revoked_at     DateTime? @db.Timestamptz(6)
+  /// The guardian replied STOP. Outranks a later re-grant.
+  stopped_at     DateTime? @db.Timestamptz(6)
+  /// APP | QR
+  source         String
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
 /// Demand for supply Stayo does not have yet. See migration 086 / ADR-223.
 model coverage_requests {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
