@@ -15,11 +15,23 @@ export function useMyStay(enabled = true) {
       queryClient.setQueryData<MyStay>(queryKeys.stay.mine(), (prev) => (prev ? { ...prev, stay } : prev));
     },
   });
+  const consent = useMutation({
+    mutationFn: ({ granted, source }: { granted: boolean; source: 'QR' | 'APP' }) =>
+      stayApi.setGuardianConsent(granted, source),
+    // Same pattern as `record`: the server answers with the new state, so
+    // write it into the cache rather than refetching.
+    onSuccess: (guardian) => {
+      queryClient.setQueryData<MyStay>(queryKeys.stay.mine(), (prev) => (prev ? { ...prev, guardian } : prev));
+    },
+  });
+
   return {
     mine: query.data,
     isLoading: query.isLoading,
     isError: query.isError,
     record: mutation.mutateAsync,
     isRecording: mutation.isPending,
+    setGuardianConsent: consent.mutateAsync,
+    isSettingConsent: consent.isPending,
   };
 }

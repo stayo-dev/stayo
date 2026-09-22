@@ -1,4 +1,4 @@
-import type { MyStay, StayBoard, StaySummary, SuggestedReturn, TenantStay } from './types';
+import type { GuardianConsent, MyStay, StayBoard, StaySummary, SuggestedReturn, TenantStay } from './types';
 
 /**
  * Stay Status screen models — pure, so the two-second rule and the
@@ -203,5 +203,41 @@ export function tonightCards(summary: StaySummary | undefined): TonightCards | n
     },
     backToday: { value: t.backToday, caption: t.late > 0 ? `${t.late} late` : 'Expected back', tone: t.late > 0 ? 'danger' : 'default' },
     roomsToCheck: { value: t.roomsToCheck, caption: 'Empty or returning' },
+  };
+}
+
+/**
+ * Ask once, on the first leave — never again (ADR-233).
+ *
+ * `DECLINED` is as final as `GRANTED`. A stored no is what stops the sheet
+ * reappearing on every trip, for exactly the tenants who least want it; that
+ * is the whole reason the backend keeps a `granted = false` row rather than
+ * deleting it.
+ */
+export function shouldAskGuardianConsent(guardian: GuardianConsent | null | undefined): boolean {
+  if (!guardian || !guardian.eligible) return false;
+  return guardian.consent === 'UNASKED';
+}
+
+/**
+ * The sheet names the guardian, because the tenant is consenting to a person
+ * rather than to a setting.
+ *
+ * "never where you are" is a true statement about what the two templates
+ * contain, and it is the sentence that separates this feature from a tracker.
+ * If a future event type makes it false, this copy changes in the same commit.
+ */
+export function guardianConsentCopy(name: string | null): {
+  title: string;
+  body: string;
+  accept: string;
+  decline: string;
+} {
+  const who = (name || '').trim() || 'your guardian';
+  return {
+    title: `Keep ${who} in the loop?`,
+    body: `We'll tell ${who} when you leave and when you're back. That's all — never where you are, and never anything else.`,
+    accept: `Yes, tell ${who}`,
+    decline: 'No thanks',
   };
 }

@@ -21,11 +21,21 @@ export interface TenantStay extends DateWindow {
   leave: { leaveType: LeaveType; startDate: string; expectedReturnDate: string } | null;
 }
 
+/** ADR-233. Mirrors `GuardianConsentView` in the backend stay service. */
+export interface GuardianConsent {
+  /** There is a guardian we could actually message: present, verified, not the resident. */
+  eligible: boolean;
+  name: string | null;
+  consent: 'UNASKED' | 'GRANTED' | 'DECLINED' | 'REVOKED' | 'STOPPED';
+}
+
 export interface MyStay {
   tenantId: string | null;
   hostel: { id: string; name: string } | null;
   resident: boolean;
   stay: TenantStay | null;
+  /** ADR-233. Null when there is no guardian on file to speak of. */
+  guardian: GuardianConsent | null;
 }
 
 export interface StayEventInput {

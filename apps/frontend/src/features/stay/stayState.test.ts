@@ -1,9 +1,9 @@
 import { describe, expect, it } from 'vitest';
 import {
-  boardHeadline, boardSections, friendlyDate, roomLines, scanViewFor, screenFor, shouldConfirmPresence,
-  suggestedLabel, tonightCards,
+  boardHeadline, boardSections, friendlyDate, guardianConsentCopy, roomLines, scanViewFor, screenFor,
+  shouldAskGuardianConsent, shouldConfirmPresence, suggestedLabel, tonightCards,
 } from './stayState';
-import type { MyStay, StayBoard, TenantStay } from './types';
+import type { GuardianConsent, MyStay, StayBoard, TenantStay } from './types';
 
 const TODAY = '2026-09-14'; // Monday
 const WINDOW = { today: TODAY, suggestedReturn: { date: '2026-09-15', label: 'tomorrow' as const }, minReturnDate: '2026-09-15', maxReturnDate: '2026-12-13' };
@@ -48,7 +48,7 @@ describe('screenFor — one primary action at most', () => {
 });
 
 describe('scanViewFor', () => {
-  const mine: MyStay = { tenantId: 't1', hostel: { id: 'h1', name: 'Sri Adithya' }, resident: true, stay: stay('PRESENT') };
+  const mine: MyStay = { tenantId: 't1', hostel: { id: 'h1', name: 'Sri Adithya' }, resident: true, guardian: null, stay: stay('PRESENT') };
   it('routes every visitor to exactly one screen', () => {
     expect(scanViewFor({ signedIn: false, role: null, mine: undefined, hostelId: 'h1' })).toBe('SIGNED_OUT');
     expect(scanViewFor({ signedIn: true, role: 'OWNER', mine: undefined, hostelId: 'h1' })).toBe('NOT_TENANT');
@@ -165,5 +165,51 @@ describe('tonightCards — Owner Home', () => {
       roomsToCheck: { value: 2, caption: 'Empty or returning' },
     });
     expect(tonightCards(summary(2))?.backToday).toEqual({ value: 2, caption: '2 late', tone: 'danger' });
+  });
+});
+
+describe('shouldAskGuardianConsent', () => {
+  const guardian = (over: Partial<GuardianConsent> = {}): GuardianConsent => ({
+    eligible: true,
+    name: 'Ramesh',
+    consent: 'UNASKED',
+    ...over,
+  });
+
+  it('asks once, when there is an eligible guardian and no decision yet', () => {
+    expect(shouldAskGuardianConsent(guardian())).toBe(true);
+  });
+
+  it('never asks again once the tenant has decided, either way', () => {
+    for (const consent of ['GRANTED', 'DECLINED', 'REVOKED', 'STOPPED'] as const) {
+      expect(shouldAskGuardianConsent(guardian({ consent })), consent).toBe(false);
+    }
+  });
+
+  it('does not ask when there is no guardian to ask about', () => {
+    expect(shouldAskGuardianConsent(null)).toBe(false);
+    expect(shouldAskGuardianConsent(undefined)).toBe(false);
+  });
+
+  it('does not ask when the guardian is unverified or is the resident themselves', () => {
+    expect(shouldAskGuardianConsent(guardian({ eligible: false }))).toBe(false);
+  });
+});
+
+describe('guardianConsentCopy', () => {
+  it('names the guardian — the tenant is consenting to a person, not a role', () => {
+    const copy = guardianConsentCopy('Ramesh');
+    expect(copy.title).toContain('Ramesh');
+    expect(copy.accept).toContain('Ramesh');
+  });
+
+  it('states the limit, which is what makes this not a tracker', () => {
+    expect(guardianConsentCopy('Ramesh').body.toLowerCase()).toContain('never where you are');
+  });
+
+  it('falls back to a neutral word when the guardian has no name on file', () => {
+    const copy = guardianConsentCopy(null);
+    expect(copy.title).toContain('your guardian');
+    expect(copy.title).not.toContain('null');
   });
 });

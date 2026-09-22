@@ -182,7 +182,9 @@ export function TenantHomePage() {
         source="APP"
         variant="card"
         onRecord={stay.record}
-        busy={stay.isRecording}
+        busy={stay.isRecording || stay.isSettingConsent}
+        guardian={stay.mine.guardian}
+        onGuardianConsent={(granted) => stay.setGuardianConsent({ granted, source: 'APP' })}
       />
     </div>
   );
