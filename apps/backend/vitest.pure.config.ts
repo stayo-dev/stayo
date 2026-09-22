@@ -99,6 +99,9 @@ export default defineConfig({
       // app must move, not the template. Guards the backend-served ones that
       // the SPA's own templateLinkRoutes test structurally cannot see.
       'tests/whatsapp-template-link-survival.test.ts',
+      // The UPI intent string — the entire payment instruction, with no gateway
+      // to catch a mistake and no callback to reveal one.
+      'tests/upi-intent.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-request.test.ts',
       'tests/owner-export-documents.test.ts',
