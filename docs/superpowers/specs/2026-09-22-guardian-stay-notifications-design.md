@@ -212,7 +212,7 @@ So the backstop is up to ~24 hours behind, and two consequences follow:
    be lost forever; it is not a substitute for prompt delivery, and it should not be reasoned about
    as one.
 2. **Both templates are self-dating, which is what makes a late send survivable.** "checked in at
-   7:40 PM, 28 Sep" arriving on the morning of the 29th is still true and still legible — it reads
+   7:40 PM, 27 Sep" arriving on the morning of the 29th is still true and still legible — it reads
    as a record rather than a stale alert. Any future template in this family must carry its own
    date for the same reason; one that says "just now" cannot be swept.
 
@@ -263,9 +263,9 @@ Footer:  Stayo · Reply STOP to pause stay updates
 | 2 | `tenant_name` | Aarav |
 | 3 | `hostel_name` | Sunrise PG |
 | 4 | `leave_type` | `home` (GOING_HOME) · `a trip` (VACATION) |
-| 5 | `return_date` | Sunday, 28 September |
+| 5 | `return_date` | Sunday, 27 September |
 
-> Hello Ramesh, Aarav has left Sunrise PG for home and is expected back on Sunday, 28 September.
+> Hello Ramesh, Aarav has left Sunrise PG for home and is expected back on Sunday, 27 September.
 > We'll message you again when Aarav returns.
 
 `{{4}}` is the only reason both leave types share one template — the single preposition "for"
@@ -286,9 +286,9 @@ Footer:  Stayo · Reply STOP to pause stay updates
 | 1 | `guardian_name` | Ramesh |
 | 2 | `tenant_name` | Aarav |
 | 3 | `hostel_name` | Sunrise PG |
-| 4 | `check_in_time` | 7:40 PM, 28 Sep (IST) |
+| 4 | `check_in_time` | 7:40 PM, 27 Sep (IST) |
 
-> Hello Ramesh, Aarav has returned to Sunrise PG and checked in at 7:40 PM, 28 Sep. Nothing is
+> Hello Ramesh, Aarav has returned to Sunrise PG and checked in at 7:40 PM, 27 Sep. Nothing is
 > needed from you — this is just so you know.
 
 **IST is explicit**, not the hostel's timezone: production `hostels.timezone` is `UTC`, and the rest

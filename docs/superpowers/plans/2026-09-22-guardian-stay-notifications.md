@@ -106,12 +106,12 @@ describe("leaveTypeWord", () => {
 
 describe("dates are rendered in IST, never the server's zone", () => {
   it("formats a return date as a weekday and a full month", () => {
-    expect(formatReturnDate("2026-09-28")).toBe("Sunday, 28 September");
+    expect(formatReturnDate("2026-09-27")).toBe("Sunday, 27 September");
   });
 
   it("formats a check-in instant in IST", () => {
     // 14:10 UTC = 19:40 IST on the same day.
-    expect(formatCheckInTime("2026-09-28T14:10:00.000Z")).toBe("7:40 PM, 28 Sep");
+    expect(formatCheckInTime("2026-09-27T14:10:00.000Z")).toBe("7:40 PM, 27 Sep");
   });
 
   it("converts rather than relabelling: a UTC instant late in the day rolls the IST date forward", () => {
@@ -127,9 +127,9 @@ describe("payload builders", () => {
       tenantName: "Aarav",
       hostelName: "Sunrise PG",
       leaveType: "GOING_HOME",
-      returnDate: "2026-09-28",
+      returnDate: "2026-09-27",
     });
-    expect(params).toEqual(["Ramesh", "Aarav", "Sunrise PG", "home", "Sunday, 28 September"]);
+    expect(params).toEqual(["Ramesh", "Aarav", "Sunrise PG", "home", "Sunday, 27 September"]);
     expect(params).toHaveLength(STAY_GUARDIAN_TEMPLATES.DEPARTURE.parameters.length);
   });
 
@@ -138,9 +138,9 @@ describe("payload builders", () => {
       guardianName: "Ramesh",
       tenantName: "Aarav",
       hostelName: "Sunrise PG",
-      checkInAt: "2026-09-28T14:10:00.000Z",
+      checkInAt: "2026-09-27T14:10:00.000Z",
     });
-    expect(params).toEqual(["Ramesh", "Aarav", "Sunrise PG", "7:40 PM, 28 Sep"]);
+    expect(params).toEqual(["Ramesh", "Aarav", "Sunrise PG", "7:40 PM, 27 Sep"]);
     expect(params).toHaveLength(STAY_GUARDIAN_TEMPLATES.RETURN.parameters.length);
   });
 
@@ -152,7 +152,7 @@ describe("payload builders", () => {
         tenantName: name,
         hostelName: "Sunrise PG",
         leaveType: "VACATION",
-        returnDate: "2026-09-28",
+        returnDate: "2026-09-27",
       });
       expect(tenantName, name).not.toMatch(/['’]s?$/);
     }
@@ -164,13 +164,13 @@ describe("payload builders", () => {
       tenantName: null,
       hostelName: undefined,
       leaveType: null,
-      returnDate: "2026-09-28",
+      returnDate: "2026-09-27",
     });
     const ret = buildStayReturnPayload({
       guardianName: null,
       tenantName: "   ",
       hostelName: "",
-      checkInAt: "2026-09-28T14:10:00.000Z",
+      checkInAt: "2026-09-27T14:10:00.000Z",
     });
     expect(departure.every((v) => v.trim().length > 0)).toBe(true);
     expect(ret.every((v) => v.trim().length > 0)).toBe(true);
@@ -211,7 +211,7 @@ import { tenantDisplayName } from "./guardian-activation-template-contract";
  * 1. **Both bodies carry their own date or time.** The sweep that recovers a
  *    lost send (see `/api/cron/stay-guardian-sweep`) can only run daily on
  *    this Vercel plan, so a recovered message may arrive up to a day late.
- *    "checked in at 7:40 PM, 28 Sep" is still true and still legible the next
+ *    "checked in at 7:40 PM, 27 Sep" is still true and still legible the next
  *    morning; "checked in just now" would not be. Any future template in this
  *    family must be self-dating for the same reason.
  *
@@ -276,7 +276,7 @@ export function leaveTypeWord(leaveType: string | null | undefined): string {
   return String(leaveType || "").trim().toUpperCase() === "GOING_HOME" ? "home" : "a trip";
 }
 
-/** `{{5}}` of DEPARTURE: "Sunday, 28 September". */
+/** `{{5}}` of DEPARTURE: "Sunday, 27 September". */
 export function formatReturnDate(isoDate: string): string {
   const date = new Date(`${isoDate}T00:00:00.000Z`);
   if (Number.isNaN(date.getTime())) return "the agreed date";
@@ -288,7 +288,7 @@ export function formatReturnDate(isoDate: string): string {
   return `${weekday}, ${day} ${month}`;
 }
 
-/** `{{4}}` of RETURN: "7:40 PM, 28 Sep", always IST. */
+/** `{{4}}` of RETURN: "7:40 PM, 27 Sep", always IST. */
 export function formatCheckInTime(instant: string | Date): string {
   const date = instant instanceof Date ? instant : new Date(instant);
   if (Number.isNaN(date.getTime())) return "today";
@@ -1475,7 +1475,7 @@ const LEAVE = {
   tenantId: "t1",
   eventType: "LEAVE_STARTED",
   leaveType: "GOING_HOME",
-  expectedReturnDate: "2026-09-28",
+  expectedReturnDate: "2026-09-27",
   occurredAt: "2026-09-25T09:00:00.000Z",
 };
 
@@ -1519,7 +1519,7 @@ describe("sendStayGuardianUpdate", () => {
       "Aarav",
       "Sunrise PG",
       "home",
-      "Sunday, 28 September",
+      "Sunday, 27 September",
     ]);
   });
 
@@ -1530,7 +1530,7 @@ describe("sendStayGuardianUpdate", () => {
       eventType: "RETURNED",
       leaveType: null,
       expectedReturnDate: null,
-      occurredAt: "2026-09-28T14:10:00.000Z",
+      occurredAt: "2026-09-27T14:10:00.000Z",
     });
     expect(result).toEqual({ sent: true, reason: "RETURN" });
     expect(send.mock.calls[0][0].templateName).toBe("stayo_guardian_stay_return");
@@ -1538,7 +1538,7 @@ describe("sendStayGuardianUpdate", () => {
       "Ramesh",
       "Aarav",
       "Sunrise PG",
-      "7:40 PM, 28 Sep",
+      "7:40 PM, 27 Sep",
     ]);
   });
 
@@ -1893,7 +1893,7 @@ vi.mock("@/lib/services/notifications/command-center/stay-guardian-updates", () 
 import { isStaleDeparture, runStayGuardianSweep } from "@/src/services/stay/stay-guardian-sweep";
 
 describe("isStaleDeparture", () => {
-  const today = "2026-09-28";
+  const today = "2026-09-27";
 
   it("is fresh while the leave is still active and the return date is ahead", () => {
     expect(isStaleDeparture({ leaveStatus: "ACTIVE", expectedReturnDate: "2026-09-30", today })).toBe(false);
@@ -2082,7 +2082,7 @@ const logger = getLogger("stay.guardian-sweep");
  *    that would otherwise be lost forever; it is not a substitute for prompt
  *    delivery and must not be reasoned about as one.
  * 2. **Both templates are self-dating**, which is what makes a late send
- *    survivable: "checked in at 7:40 PM, 28 Sep" is still true the next
+ *    survivable: "checked in at 7:40 PM, 27 Sep" is still true the next
  *    morning. A template saying "just now" could not be swept.
  *
  * The 48-hour window is slack around a daily run, not a delivery promise.
