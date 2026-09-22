@@ -1,7 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
   MONEY_EXPORTS, exportById, periodOptions, previewLine, customRangeError,
-  financialYearOf, financialYearLabel, divergenceNote,
+  financialYearOf, financialYearLabel, divergenceNote, exportStatusLine,
 } from './exportDocuments';
 
 describe('the three exports', () => {
@@ -146,5 +146,48 @@ describe('divergenceNote', () => {
 
   it('stays quiet when there is nothing to compare against', () => {
     expect(divergenceNote(742, null)).toBeNull();
+  });
+});
+
+describe('exportStatusLine', () => {
+  /**
+   * The line under the period is the only thing that ever speaks in this sheet.
+   * Leaving it on "Checking…" after the preview has failed tells the owner the
+   * app is still working when it has already given up — he waits, taps nothing,
+   * and reports the export as broken. That is precisely what happened when the
+   * Collections and Finance previews started answering 500.
+   */
+  it('says what is in the file once the preview lands', () => {
+    expect(exportStatusLine({
+      queryError: null,
+      failed: false,
+      preview: { count: 1247, total: 1480000, noun: 'payments' },
+    })).toBe('1,247 payments · ₹14,80,000');
+  });
+
+  it('says it is checking only while it really is', () => {
+    expect(exportStatusLine({ queryError: null, failed: false, preview: null })).toBe('Checking…');
+  });
+
+  it('stops saying "Checking…" once the preview has failed', () => {
+    const line = exportStatusLine({ queryError: null, failed: true, preview: null });
+    expect(line).not.toMatch(/Checking/);
+  });
+
+  it('tells him the file is still downloadable when only the preview failed', () => {
+    // The preview is decorative; the export is not. A failed count must never
+    // read as "the export is broken", because it is not.
+    expect(exportStatusLine({ queryError: null, failed: true, preview: null }))
+      .toBe("Couldn't check what's in this file — you can still download it");
+  });
+
+  it('prefers a range the owner can fix over anything else', () => {
+    // He can act on "the start date is after the end date". He cannot act on a
+    // failed preview, so the actionable message wins.
+    expect(exportStatusLine({
+      queryError: 'The start date is after the end date',
+      failed: true,
+      preview: null,
+    })).toBe('The start date is after the end date');
   });
 });

@@ -8,6 +8,28 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Collections and Money → Overview. The export sheet opened, showed the period chips and the scope line, and its status line stayed on **"Checking…"** indefinitely. Download produced nothing. The Expenses export was fine — which made it look like a frontend bug in the two sheets that were broken.
+
+**Root cause — one missing column, two dead endpoints.** Both money exports are built on `ownerPayoutReadModel.rentReceived()`, and its gateway half joins `LEFT JOIN tenants t ON t.id = g.tenant_id`. `gateway_transactions.tenant_id` arrives with **migration 075, which is deliberately absent from `schema.prisma` and is not applied on the canonical production project** — so that statement raises `42703 / P2022` and the call rejects. `GET /api/owner/exports/preview` and `GET /api/owner/exports` both answer 500. The Expenses document never calls `rentReceived`, which is exactly why it alone kept working.
+
+Migration 075's own header claims "application code is correct whether or not this file has been applied yet". That was true of `items()` and of `getSummary()` — whose comment already says *"migration 075 pending, in practice"* and settles its four reads independently so one unreadable table cannot blank the strip. It was never true of `rentReceived`, added later by [[Decisions#ADR-229|ADR-229]] and hard-joining the same column with no guard.
+
+**Why it looked like a spinner rather than an error.** The export sheet rendered `queryError ?? previewLine(preview) ?? 'Checking…'`, and `previewLine(null)` is `null` — so a *failed* preview was indistinguishable from a *pending* one. The effect's `.catch(() => undefined)` swallowed the 500 outright. A permanently misleading "Checking…" is what turned a backend fault into "the export button is broken": the owner waits instead of tapping Download, which was enabled the whole time.
+
+**Fix.** Two independent faults, fixed at their own level:
+- `rentReceived` now writes the gateway query twice, the way `items()` already does for `expected_payout_date`: the attributed query first, and on failure an unattributed one that does not name `tenant_id`. The payer's name is lost; not one rupee, reference or date is. Losing the whole export over a decorative column was the actual defect.
+- The sheet's status line moved into a pure, tested function, `exportStatusLine()`. It distinguishes "checking" from "couldn't check", and says plainly that the file is still downloadable — because the preview is decorative and the spreadsheet is not.
+
+**Lesson.** A column held out of `schema.prisma` so that unapplied migrations cannot break reads only delivers that if **every** raw query that touches it is written twice. Two of the three call sites carried the guard and said so in comments; the third was added months later by someone reading the query, not the policy. And a loading state that is also the failure state will always be read as loading.
+
+**Still unguarded** (same column, same risk, not touched here): `getBreakdown()` and `itemIdsMatchingTenant()` on the payouts screens. `getSummary()` and `payoutsForPeriod()` are already safe. **The real cure is applying migration 075** — see [[Database]].
+
+**Not verified against a live database.** Production reads are blocked from the development machine, so the failure was reproduced with a mocked client that rejects any statement naming `g.tenant_id` (`tests/owner-export-missing-migration.test.ts` — 2 of its 3 cases fail against the old code). Nobody has opened the sheet in a browser since the fix.
+
+**See:** [[Decisions#ADR-229|ADR-229]] · [[Database]] · [[Backend]] · [[Changelog]] · [[APIs]]
+
 ## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
 
 **Symptom:** `POST /api/auth/login` returned 200, then Clerk's `sign_ins` returned `400 session_exists` ("You're already signed in"), and the modal blamed the server. Every retry failed the same way, so that browser could not sign in until its Clerk session was cleared.

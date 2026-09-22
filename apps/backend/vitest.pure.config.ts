@@ -91,6 +91,10 @@ export default defineConfig({
       'tests/marketing-editor-scope.test.ts',
       'tests/owner-payout-promise.test.ts',
       'tests/owner-payout-month.test.ts',
+      // The two money exports must survive migration 075 being unapplied:
+      // `gateway_transactions.tenant_id` is deliberately out of schema.prisma,
+      // so the read model has to tolerate its absence. Mocks `@/lib/db`.
+      'tests/owner-export-missing-migration.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-request.test.ts',
       'tests/owner-export-documents.test.ts',
