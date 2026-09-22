@@ -16,6 +16,7 @@ import {
 import { buildStayBoard, summarizeHostel, summarizePortfolio, type BoardResident, type StayBoard } from "./stay-board";
 import { eventToRow, leaveFromRow, leaveToRow, toDbDate } from "./stay-rows";
 import { guardianViewFor, type GuardianConsentView } from "./stay-guardian-consent";
+import { sendStayGuardianUpdate } from "@/lib/services/notifications/command-center/stay-guardian-updates";
 import { ineligible, invalidRequest, rejection } from "./stay-errors";
 
 /**
@@ -166,6 +167,25 @@ export function createStayService(deps: { db?: any; capacity?: typeof roomCapaci
         // so the stream and the projection still agree.
         if (!(error instanceof LostRace) && error?.code !== "P2002") throw error;
       }
+
+      // ADR-233 — tell the guardian, if the tenant agreed to it. Deliberately
+      // outside the transaction and deliberately not awaited: this is a
+      // notification about a fact that is already recorded, and it must never
+      // extend, fail or roll back the write above. A lost send is recovered by
+      // /api/cron/stay-guardian-sweep.
+      //
+      // It sits after the catch on purpose. When a duplicate lost the race,
+      // the write that won already fired its own notification with the same
+      // idempotency key, so this attempt skips at the delivery layer rather
+      // than messaging a guardian twice.
+      void sendStayGuardianUpdate({
+        eventId: event.id,
+        tenantId: event.tenantId,
+        eventType: event.type,
+        leaveType: event.leaveType,
+        expectedReturnDate: event.expectedReturnDate,
+        occurredAt: event.occurredAt,
+      });
     }
 
     return tenantStay(input.tenantId, effectiveDate);

@@ -142,6 +142,7 @@ export default defineConfig({
       'tests/stay-guardian-policy.test.ts',
       'tests/stay-guardian-schema.test.ts',
       'tests/stay-guardian-consent-service.test.ts',
+      'tests/stay-guardian-send.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
       // ADR-172 owner subscription billing — Phase 1 schema guard. Reads
