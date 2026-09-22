@@ -15,6 +15,7 @@ import {
 } from "./stay-status";
 import { buildStayBoard, summarizeHostel, summarizePortfolio, type BoardResident, type StayBoard } from "./stay-board";
 import { eventToRow, leaveFromRow, leaveToRow, toDbDate } from "./stay-rows";
+import { guardianViewFor, type GuardianConsentView } from "./stay-guardian-consent";
 import { ineligible, invalidRequest, rejection } from "./stay-errors";
 
 /**
@@ -42,6 +43,8 @@ export interface MyStay {
   hostel: { id: string; name: string } | null;
   resident: boolean;
   stay: TenantStay | null;
+  /** ADR-233. Null when there is no guardian on file to speak of. */
+  guardian: GuardianConsentView | null;
 }
 
 export type StayBoardView = StayBoard & DateWindow;
@@ -173,11 +176,19 @@ export function createStayService(deps: { db?: any; capacity?: typeof roomCapaci
       where: liveTenancyWhere(profileId),
       select: { id: true, hostel_id: true, hostels: { select: { id: true, name: true } } },
     });
-    if (!tenancy?.hostel_id || !tenancy.hostels) return { tenantId: null, hostel: null, resident: false, stay: null };
+    if (!tenancy?.hostel_id || !tenancy.hostels) {
+      return { tenantId: null, hostel: null, resident: false, stay: null, guardian: null };
+    }
     const hostel = { id: tenancy.hostels.id, name: tenancy.hostels.name };
     const residency = await findResidency(tenancy.id, tenancy.hostel_id);
-    if (!residency) return { tenantId: tenancy.id, hostel, resident: false, stay: null };
-    return { tenantId: tenancy.id, hostel, resident: true, stay: await tenantStay(tenancy.id, istDateOf(now)) };
+    if (!residency) {
+      return { tenantId: tenancy.id, hostel, resident: false, stay: null, guardian: null };
+    }
+    const [stay, guardian] = await Promise.all([
+      tenantStay(tenancy.id, istDateOf(now)),
+      guardianViewFor(tenancy.id),
+    ]);
+    return { tenantId: tenancy.id, hostel, resident: true, stay, guardian };
   }
 
   async function getHostelBoard(hostelId: string, now: Date = new Date()): Promise<StayBoardView> {
