@@ -1298,3 +1298,51 @@ Rules for delivering tenant enquiries to a hostel owner who is not on Stayo. See
 - **No pricing claim in partner copy.** The commercial model is undecided and these messages go out at scale in writing.
 
 Related: [[Database]], [[APIs]], [[Features]]
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+
+Sits beside the guardian **rent** reminder escalation above; the two share an audience and nothing
+else. **Files:** `lib/services/notifications/command-center/stay-guardian-policy.ts` (pure),
+`stay-guardian-updates.ts` (I/O, never throws), `src/services/stay/stay-guardian-consent-state.ts`
+(pure), `stay-guardian-sweep.ts`.
+
+`decideStayGuardianNotice` returns its own reason, so "why did / didn't they get this" is answerable
+from a log line:
+
+| `reason` | Notifies | Meaning |
+|---|---|---|
+| `LEAVE` / `RETURN` | yes | `LEAVE_STARTED` / `RETURNED`, everything satisfied |
+| `NOT_NOTIFIABLE` | no | any other event type — checked **first**, so an unrelated event never becomes a consent question |
+| `NO_GUARDIAN_PHONE` | no | field empty (reads `guardian_phone`, falling back to `phone_2`) |
+| `SAME_AS_RESIDENT` | no | one handset in both fields, compared on normalised digits |
+| `NO_CONSENT` | no | never asked |
+| `DECLINED` | no | asked, said no |
+| `REVOKED` | no | tenant switched it off |
+| `STOPPED_BY_GUARDIAN` | no | guardian replied STOP — outranks a later re-grant |
+| `PHONE_CHANGED_SINCE_CONSENT` | no | `guardian_phone` ≠ the snapshot; a different person |
+| `GUARDIAN_UNVERIFIED` | no | no OTP proof inside the 90-day window |
+
+**Why `LATE` is not in this table.** It is the event a parent would most want and the one most
+likely to be wrong. Silence = Present is trust-based and self-reported, so a resident who returned
+at 2am without tapping *I'm back* is indistinguishable, to this system, from one who did not return
+at all. A late template turns that ambiguity into "your child is not where they said they would be",
+delivered to a parent, at scale, on the strength of a missed tap — and no phone has ever scanned the
+Stay QR in production, so the real missed-tap rate is unobserved, not merely unmeasured. Late
+returns stay on the owner's board, where a human reads them in context.
+
+**Ordering matters inside the notifier.** The policy runs once assuming verification so the free
+refusals answer first; `isGuardianVerified` is a database round trip and there is no point paying
+for it to learn the tenant never consented.
+
+**STOP is scoped, and ungated.** It is resolved ahead of the guardian OTP challenge — answering
+"stop messaging me" with "prove who you are first" is indefensible — and it stops *stay updates
+only*, with the reply stating that rent reminders and receipts continue. It applies to
+`identity.guardianResidents`, never `tenantIds`: one phone can be both a resident and a sibling's
+guardian contact, and a resident's STOP must not switch off their own guardian's updates.
+
+**Staleness.** A departure notice expires; a return notice does not. The sweep drops a
+`LEAVE_STARTED` whose leave is no longer `ACTIVE` or whose expected return date has passed —
+"expected back on Sunday" must not reach a parent on Monday, or one whose child is already home.
+
+See [[Features]], [[Database]], [[APIs]].
+

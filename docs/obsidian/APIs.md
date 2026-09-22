@@ -964,3 +964,24 @@ Admin, `ADMIN` role:
 **Changed:** `POST /api/platform-admin/managers/[id]/resend-invitation` now returns `{ invitation: { reminded: true, expiresAt } }` when a live token was nudged, instead of always minting a new token ([[Decisions#ADR-230|ADR-230]]).
 
 **Fixed:** `GET /api/platform-admin/platform-listings` counted enquiries via `prisma.leads`, which is not a model — see [[Bugs]].
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/api/tenant/stay/guardian-consent` | TENANT | `{ granted: boolean, source: "QR" \| "APP" }` → `{ guardian }`. Tenant comes from the session, never the body. Turning a `GRANTED` consent off writes `revoked_at`, which is a different column from a guardian's `stopped_at`. 409 `STAY_INELIGIBLE` when the caller is not a current resident or has no guardian on file. |
+| GET | `/api/cron/stay-guardian-sweep` | `CRON_SECRET` bearer | Re-attempts the guardian message for `LEAVE_STARTED` / `RETURNED` events in the last 48h whose inline send was lost. Deduped on `whatsapp_logs.idempotency_key = stay_guardian:{eventId}`. **Daily** (`0 6 * * *`) — a sub-daily Vercel cron fails the deploy on this plan. Returns `{ considered, sent, skipped, stale }`. |
+
+**Changed:** `GET /api/tenant/stay` now also returns a `guardian` block:
+
+```ts
+guardian: { eligible: boolean; name: string | null;
+            consent: 'UNASKED' | 'GRANTED' | 'DECLINED' | 'REVOKED' | 'STOPPED' } | null
+```
+
+`null` means no guardian on file. `eligible` is computed server-side (present, OTP-verified, not the
+resident's own number) so the frontend never re-derives a rule the policy owns. A guardian number
+that changed since consent is reported as `UNASKED` — the stored decision was about someone else.
+
+See [[Business-Rules]], [[Database]], [[Features]].
+

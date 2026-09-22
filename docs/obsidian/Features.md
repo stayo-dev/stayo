@@ -1743,3 +1743,26 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 `manager-invitation-service.sendInvitation()` now sends `stayo_admin_invitation` first and falls back to email only on failure; resend nudges a live token with `stayo_admin_invitation_reminder` instead of minting a new one. The approved templates point at `/admin/activate/:token`, which the SPA redirects to `/admin/manager-invitation/:token`. See [[Decisions#ADR-230|ADR-230]].
 
 **Not verified:** no invitation has been sent through the new path.
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+
+A guardian is messaged on WhatsApp when their ward leaves the hostel and when they get back — and
+about nothing else. Built as [[Decisions#ADR-194|ADR-194]] says Stay follow-ups are built: a read
+model over `stay_events`, with no change to `applyStayEvent`.
+
+- **Consent is asked once**, on the tenant's first `Going home` / `Vacation`, after the return date
+  is picked. Every subsequent trip is unchanged — two taps. A declined answer is stored, so the
+  sheet never reappears.
+- **Two events notify:** `LEAVE_STARTED` and `RETURNED`. `RETURN_DATE_CHANGED`, `LEAVE_CANCELLED`
+  and `LATE` are silent — see [[Business-Rules]] for why `LATE` in particular is not sent.
+- **The guardian can stop it** by replying `STOP`, which pauses stay updates only and says so.
+- **The tenant is told it happened** — a toast naming the guardian on every leave that notifies.
+
+Files: `src/services/stay/stay-guardian-consent.ts`, `stay-guardian-consent-state.ts`,
+`stay-guardian-sweep.ts`; `lib/services/notifications/command-center/stay-guardian-policy.ts`,
+`stay-guardian-updates.ts`; `providers/whatsapp/stay-guardian-template-contracts.ts`;
+`apps/frontend/src/features/stay/components/GuardianConsentSheet.tsx`.
+
+**Not exercised:** no message has been sent, and both Meta templates are unsubmitted. See
+[[Changelog]].
+

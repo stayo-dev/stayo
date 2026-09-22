@@ -977,3 +977,26 @@ Five tables shipped with **RLS disabled**: `manager_profiles`, `manager_permissi
 `apps/backend/tests/migration-rls.test.ts` fails if a migration numbered 083 or higher creates a table and no migration enables RLS on it. Verified non-vacuous: removing 092 makes it name all eight.
 
 Related: [[Bugs]], [[Business-Rules]]
+
+### `stay_guardian_consent` — the tenant's decision, one row per tenancy (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+
+Migration `093_stay_guardian_consent.sql` — **written, not applied.**
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | `UUID` PK | One decision per tenancy. |
+| `hostel_id` | `UUID` | |
+| `granted` | `BOOLEAN` | **`false` rows are kept.** The row is the memory of *having asked*; deleting it makes the consent sheet reappear on every trip for the tenants who said no. |
+| `guardian_phone` | `TEXT` | The number consented to, snapshotted. Compared on normalised digits, because the schema stores phones inconsistently. If `tenants.guardian_phone` later differs, consent lapses and the tenant is asked again. |
+| `decided_at` | `TIMESTAMPTZ(6)` | |
+| `revoked_at` | `TIMESTAMPTZ(6)?` | The **tenant** switched it off. |
+| `stopped_at` | `TIMESTAMPTZ(6)?` | The **guardian** replied STOP. Separate from `revoked_at` on purpose, and outranks a later re-grant — someone who asked to be left alone is not re-subscribed by the tenant changing their mind. |
+| `source` | `TEXT` | `APP` \| `QR`. |
+| `updated_at` | `TIMESTAMPTZ(6)` | |
+
+- **Partial index** `stay_guardian_consent_live_idx` on `(hostel_id) WHERE granted AND revoked_at IS NULL AND stopped_at IS NULL` — the sweep's only filter. **Deliberately not declared in `schema.prisma`:** Prisma cannot express a `WHERE` on an index, so declaring a plain one would leave the schema permanently out of step with the database. Same reasoning as the ADR-212 migration.
+- **RLS enabled, 0 policies**, plus explicit `REVOKE ALL … FROM anon` / `authenticated` — this table records which residents are reported on and to which phone number, and the anon key ships in the browser bundle. Matches `stay_events` / `stay_leaves`.
+- **Deliberately not columns on `tenants`.** `getSession()` → `getActiveTenancy` reads `tenants` with no explicit `select` on every authenticated request for every role, so a declared-but-missing column there 500s the whole authenticated API — the 2026-08-14 outage in [[Bugs]]. Because this is a new table with no existing reader, **the code deploys before the migration**, which is the reverse of this repo's usual order and is stated at the top of the migration file.
+
+See [[Decisions#ADR-233|ADR-233]], [[Business-Rules]], [[APIs]].
+
