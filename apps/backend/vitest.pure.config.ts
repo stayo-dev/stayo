@@ -139,6 +139,7 @@ export default defineConfig({
       // ADR-233 — guardian stay notifications. The template contracts and the
       // notify policy are pure so they can be verified without a database.
       'tests/stay-guardian-templates.test.ts',
+      'tests/stay-guardian-policy.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
       // ADR-172 owner subscription billing — Phase 1 schema guard. Reads
