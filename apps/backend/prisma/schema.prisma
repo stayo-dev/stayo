@@ -4990,3 +4990,64 @@ model partner_lead_deliveries {
   @@index([partner_listing_id, state])
   @@index([partner_listing_id, created_at(sort: Desc)])
 }
+
+/// A tenant's assertion that they paid over UPI — evidence, never money.
+///
+/// With the payment gateway disconnected (ADR pending; see
+/// docs/superpowers/specs/2026-09-23-upi-collection-gateway-disconnect-design.md)
+/// rent moves directly from tenant to owner and Stayo cannot observe it: no
+/// webhook, no capture, no callback. The tenant saying so is the only thing
+/// that can start the process.
+///
+/// A row here NEVER alters an obligation. Rent is recorded when the owner
+/// confirms, through the same settlement path every other payment uses.
+///
+/// Declared here — unlike migration 075's columns — because the table is new,
+/// so there is no existing unselected read that adding it could break.
+/// Migration 093.
+model tenant_payment_claims {
+  id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+
+  /// `payment_link_tokens` has no surrogate id; `token` is its primary key.
+  /// This is what the tenant actually held — it arrives in an approved
+  /// WhatsApp template button and needs no login, which matters because many
+  /// tenants are OWNER_MANAGED and have no account.
+  token_id String @db.Uuid
+
+  /// Denormalised from the token so the owner's pending list needs no
+  /// four-table join on every dashboard read. Nullable like the token's own.
+  obligation_id String? @db.Uuid
+  tenant_id     String  @db.Uuid
+  hostel_id     String  @db.Uuid
+  owner_id      String  @db.Uuid
+
+  /// Integer paise, and what the tenant says they actually sent. For a UPI P2P
+  /// intent this is routinely NOT what was asked for: most apps let the payer
+  /// edit the amount, so a mismatch is ordinary rather than suspicious.
+  claimed_amount BigInt
+
+  /// The UPI reference. Required — it is the only part of a claim the owner
+  /// can match against their own bank statement.
+  utr String
+
+  /// Supporting only, never proof: trivially edited and endlessly reusable.
+  proof_url String?
+
+  /// PENDING | CONFIRMED | REJECTED. A plain string, as most statuses here are.
+  state            String  @default("PENDING")
+  rejection_reason String?
+
+  /// Ties the claim to the payment it produced, so either can be walked back
+  /// to the other during a dispute.
+  confirmed_by     String?   @db.Uuid
+  confirmed_at     DateTime? @db.Timestamptz(6)
+  payment_group_id String?   @db.Uuid
+
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
+
+  @@index([owner_id, state, created_at(sort: Desc)])
+  @@index([tenant_id, created_at(sort: Desc)])
+  @@index([utr])
+  @@map("tenant_payment_claims")
+}
