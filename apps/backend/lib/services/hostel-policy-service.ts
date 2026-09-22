@@ -2,6 +2,9 @@ import { prisma } from "../db";
 import { eventLog } from "./event-log-service";
 import { eventSystem } from "../events";
 import { applyDueDayChangeInTx } from "@/src/services/payments/due-day-change-service";
+// The one rule about what a UPI ID may be, shared with the QR and intent
+// builders so a VPA accepted on save cannot be rejected at payment time.
+import { isValidVpa } from "@/src/services/payments/upi/upi-intent";
 
 export type MaintenanceType = "MONTHLY" | "ONE_TIME" | "NONE";
 export type RentCycle = "MONTHLY";
@@ -812,6 +815,18 @@ function changedDomains(before: HostelPolicy, after: HostelPolicy) {
 }
 
 export function validateHostelPolicyForWrite(policy: HostelPolicy) {
+  /**
+   * The UPI ID is the entire rent-collection mechanism now that the gateway is
+   * disconnected, so a typo here is not a cosmetic defect: it becomes a QR that
+   * fails inside the tenant's UPI app, where nobody on our side can observe it,
+   * and the tenant concludes Stayo lost their rent. Absence stays valid — most
+   * hostels have none set — but a present value must be a real VPA.
+   */
+  const upi = policy.payments?.upi_id;
+  if (upi && !isValidVpa(upi)) {
+    throw new Error("VALIDATION: Enter a valid UPI ID, like name@bank");
+  }
+
   if (policy.billing.rent_cycle !== "MONTHLY") throw new Error("VALIDATION: Unsupported rent cycle");
   boundedNumber(policy.billing.auto_rent_day, 1, 1, 28, "Rent generation day");
   boundedNumber(policy.billing.due_day, 5, 1, 28, "Due day");

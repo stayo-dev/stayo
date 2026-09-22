@@ -102,6 +102,8 @@ export default defineConfig({
       // The UPI intent string — the entire payment instruction, with no gateway
       // to catch a mistake and no callback to reveal one.
       'tests/upi-intent.test.ts',
+      'tests/upi-qr.test.ts',
+      'tests/hostel-upi-validation.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-request.test.ts',
       'tests/owner-export-documents.test.ts',
