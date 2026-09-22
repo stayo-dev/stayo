@@ -672,6 +672,24 @@ Automatic topic + sentiment detection on a review's free-text `body`, distinct f
 
 **Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.
 
+## Migration 093 — `tenant_payment_claims` (NOT applied)
+
+A tenant's assertion that they paid over UPI, added when the payment gateway was disconnected ([[Decisions#ADR-233|ADR-233]]).
+
+**A row is evidence, never money.** It never alters an obligation; rent is recorded only when the owner confirms, through the same settlement path every other payment uses.
+
+**Why a new table and not columns on `payment_attempts`:** adding a scalar to an existing Prisma model makes every read of that table *without* an explicit `select` demand the column — the mechanism behind the 2026-08-22 hostel-listings outage. A new table has no such blast radius. A tenant-initiated claim is also genuinely not a gateway attempt: modelling it as one means carrying provider, order-id and capture state that can never be filled.
+
+Unlike migration 075's columns, this table **is** declared in `schema.prisma` — it is new, so no existing unselected read can break. Nothing queries it yet, so code may deploy ahead of the migration.
+
+Two constraints carry the design:
+- A **partial unique index** allows one `PENDING` claim per token, so a tenant tapping "I've paid" twice on a slow connection cannot show the owner the same rent twice.
+- A **CHECK** forbids a resolved claim with no resolver, so a half-written confirmation cannot read as confirmed.
+
+RLS is enabled with no policies, per the convention migration 092 established.
+
+**Status: not applied.** Every FK target was verified against production's catalog (`payment_link_tokens` has no surrogate id — `token` is its primary key), but the migration has not been executed anywhere: the `stayo-test` project is empty (0 tables).
+
 ## Migration 075 — two columns that are NOT in `schema.prisma`
 
 Applied via `migrations/075_owner_payout_visibility.sql` ([[Decisions#ADR-092|ADR-092]]).

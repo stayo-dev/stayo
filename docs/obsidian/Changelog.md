@@ -10,6 +10,14 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-23**: **The payment gateway is disconnected; rent collection moves to direct UPI** ([[Decisions#ADR-233|ADR-233]], [[Database]], [[APIs]]). **Partially implemented — see ADR-233 for what is not built.**
+  - **Why now:** the gateway never processed a rupee. Production has 0 `gateway_transactions` all time, 1 `payment_attempts` row with 0 successes, and all 40 real payments recorded directly by owners.
+  - **Phase 1** — `create-intent`, `verify`, `test-intent` and the Razorpay webhook return `410 GATEWAY_DISCONNECTED`. Handlers are self-contained and import no provider; every service file stays on disk. The webhook mattered most: an unauthenticated internet-facing POST on a subsystem nobody would keep patching.
+  - **`/pay/:token` is deliberately untouched** — it is the button in three approved rent-reminder templates and the command centre's `PAY` reply, and a Meta button URL is fixed at approval time. `tests/whatsapp-template-link-survival.test.ts` now enforces that: the vercel rewrite, the route file, both URL builders, and that no disconnected route is ever a template target. The SPA's own `templateLinkRoutes` test structurally cannot cover this one — there is no React route to find — which is exactly how it would have been missed. **The guard was verified by breaking the rewrite and watching it fail.**
+  - **Phase 2** — pure `upi-intent` and `upi-qr` modules (QR via the existing `qrcode` dep, so nothing added to the bundle), plus `upi_id` validation on hostel policy write, which previously accepted any string. A dotted handle is rejected because `owner@gmail.com` is otherwise shape-identical to a VPA and owners paste emails constantly.
+  - **Phase 3a** — migration **093** `tenant_payment_claims` (**not applied**), its Prisma model, and the pure claim rules. A claim is evidence, never money.
+  - **Not built:** the tenant-facing UPI page, claim submission, owner confirmation, the `tenant_claimed` provenance tier, and the frontend unlink of the old checkout. **Nothing has been exercised against a database or a real UPI app.**
+
 - **2026-09-22**: **Fixed: the Action queue showed every overdue tenant as "1590d overdue"** ([[Bugs]]).
   - The API's `overdue_days` (days since the oldest unpaid due date) was mapped into a field named `overdueMonths`, and `TenantDueRow` multiplied it by 30. 53 real days rendered as 1590. All three rows matched because those tenants share an oldest unpaid due date of 2026-08-01 — **confirmed against production**, along with a fourth tenant at 17 days matching the API payload.
   - `MockTenant.overdueMonths` is renamed `overdueDays`, the mapper passes it through unconverted, and the badge goes through a new pure `overdueBadgeLabel(days)`. The "Most overdue" sort follows the rename; its ordering was never affected.

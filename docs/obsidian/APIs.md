@@ -75,6 +75,22 @@ The owner's most recent agreement signature across their hostels, so the Add Hos
 
 Both now carry `hostel_type`, validated on write against the same four codes. The portfolio summary returns it too, so the Hostels tab can prompt for a hostel that has none.
 
+## Disconnected: the payment gateway (2026-09-23)
+
+These return **`410 GATEWAY_DISCONNECTED`**. Handlers are self-contained and import no service or provider; every service file stays on disk. See [[Decisions#ADR-233|ADR-233]].
+
+| Endpoint | Was |
+|---|---|
+| `POST /api/payments/create-intent` | started a gateway checkout |
+| `POST /api/payments/verify` | verified a gateway payment |
+| `POST /api/payments/test-intent` | a gateway test intent |
+| `POST /api/webhooks/payments/razorpay` | Razorpay's webhook receiver |
+
+`POST /api/payments/confirm` and `/api/payments/manual-confirm` are **left in place but unreachable** — both finalise a payment *attempt*, and no attempt can be created any more. They were not modified, to avoid disturbing the manual path admins may still need for the one historical attempt row.
+
+**`GET /api/payments/pay/[token]` is NOT disconnected.** `apps/frontend/vercel.json` rewrites `/pay/:token` to it, and that URL is the button in three approved rent-reminder templates (`stayo_rent_due_reminder`, `_due_today`, `_overdue_reminder`) and in the command centre's `PAY` reply. A Meta button URL is fixed at approval time, so 410-ing it would strand every message already delivered. It becomes the UPI payment surface instead. `tests/whatsapp-template-link-survival.test.ts` enforces this.
+
+
 ## Auth (`/api/auth/*`)
 
 **Since [[Decisions#ADR-031\|ADR-031]] (2026-07-28), Supabase Auth is the single authentication provider** — see [[Backend#Auth/session model|Backend's Auth/session model]] for the full architecture (dual-accept JWT verification, JIT identity linking via `profiles.auth_user_id`, `resolveSupabaseSession`). Login stays backend-mediated (the frontend never calls `supabase.auth.signInWithPassword()` directly) so rate-limiting, tenant-status checks, and the JIT linking step can still run; the response body now additionally returns `access_token`/`refresh_token`/`expires_in` so the frontend can call `supabase.auth.setSession()`.
