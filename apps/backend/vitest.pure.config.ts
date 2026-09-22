@@ -95,6 +95,10 @@ export default defineConfig({
       // `gateway_transactions.tenant_id` is deliberately out of schema.prisma,
       // so the read model has to tolerate its absence. Mocks `@/lib/db`.
       'tests/owner-export-missing-migration.test.ts',
+      // Approved Meta template button URLs are fixed at approval time, so the
+      // app must move, not the template. Guards the backend-served ones that
+      // the SPA's own templateLinkRoutes test structurally cannot see.
+      'tests/whatsapp-template-link-survival.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-request.test.ts',
       'tests/owner-export-documents.test.ts',

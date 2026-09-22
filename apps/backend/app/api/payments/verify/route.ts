@@ -2,75 +2,37 @@ export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
 
 import { NextResponse } from "next/server";
-import { paymentService } from "@/src/services/payments/payment-service";
-import { authService } from "@/lib/services/auth-service";
-import { apiError, apiResponse } from "@/lib/utils/api-utils";
-import { prisma } from "@/lib/db";
-import { getLogger } from "@/lib/logger";
-import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
-const logger = getLogger("verify");
-
-export async function POST(req: Request) {
-  try {
-    const user = await authService.getCurrentUser(req);
-    if (!user) {
-      console.warn("[verify] Unauthorized access attempt");
-      return apiError("Unauthorized", "UNAUTHORIZED", 401);
-    }
-
-    // user.id is profile_id, but payment attempts store tenant_id (tenants table PK).
-    let tenantId: string | undefined;
-    if (user.role === "TENANT") {
-      const tenant = await prisma.tenants.findFirst({
-        where: liveTenancyWhere(user.id),
-        select: { id: true },
-      });
-      tenantId = tenant?.id;
-    }
-
-    const body = await req.json().catch(() => ({}));
-    
-    console.log(`[verify] Request by user ${user.id} (${user.role})`, body);
-
-    logger.info("verify_started", {
-      userId: user.id,
-      userRole: user.role,
-      attemptId: body?.attempt_id,
-      merchantTxnId: body?.merchant_txn_id || body?.merchantTransactionId,
-    });
-
-    const result = await paymentService.verifyPaymentStatus({
-      userId: user.id,
-      role: user.role,
-      tenantId,
-      attemptId: body?.attempt_id,
-      merchantTxnId: body?.merchant_txn_id || body?.merchantTransactionId,
-      gatewayTxnId: body?.gateway_txn_id || body?.transactionId || body?.gateway_transaction_id,
-      razorpay_payment_id: body?.razorpay_payment_id,
-      razorpay_order_id: body?.razorpay_order_id,
-      razorpay_signature: body?.razorpay_signature,
-    });
-
-    return apiResponse({
-      success: true,
-      ...result
-    });
-  } catch (error: any) {
-    console.error("Detailed API Error [verify]:", error);
-    const message = String(error?.message ?? error);
-    
-    if (message.includes("FORBIDDEN")) return apiError(message, "FORBIDDEN", 403);
-    if (message.includes("NOT_FOUND")) return apiError(message, "NOT_FOUND", 404);
-    if (message.includes("BAD_REQUEST")) return apiError(message, "VALIDATION_ERROR", 400);
-    if (message.includes("CONFIG_ERROR")) return apiError(message, "CONFIG_ERROR", 422);
-    
-    return Response.json(
-      {
-        success: false,
-        error: "Internal Server Error"
+/**
+ * POST /api/payments/verify — retired.
+ *
+ * **DISCONNECTED.** Stayo no longer collects rent through a payment gateway.
+ * Tenants pay the owner's UPI ID directly and the owner confirms it; see
+ * `docs/superpowers/specs/2026-09-23-upi-collection-gateway-disconnect-design.md`.
+ *
+ * The gateway was never used in production — 0 `gateway_transactions` ever, 1
+ * `payment_attempts` row with 0 successes, and all 40 real payments recorded
+ * directly by owners. Nothing is being taken away from anyone.
+ *
+ * This handler is deliberately self-contained: it imports no service, no
+ * provider and no payment machinery, so there is no path by which a request
+ * here can reach a gateway. **Every service and provider file is untouched on
+ * disk** — re-enabling this route means restoring this one file.
+ *
+ */
+function disconnected() {
+  return NextResponse.json(
+    {
+      success: false,
+      error: {
+        message: "Gateway verification has been retired. Payments are confirmed by the owner.",
+        code: "GATEWAY_DISCONNECTED",
       },
-      { status: 500 }
-    );
-  }
+    },
+    { status: 410 },
+  );
+}
+
+export async function POST() {
+  return disconnected();
 }
