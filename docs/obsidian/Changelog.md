@@ -10,6 +10,13 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-09-22**: **Fixed: the Action queue showed every overdue tenant as "1590d overdue"** ([[Bugs]]).
+  - The API's `overdue_days` (days since the oldest unpaid due date) was mapped into a field named `overdueMonths`, and `TenantDueRow` multiplied it by 30. 53 real days rendered as 1590. All three rows matched because those tenants share an oldest unpaid due date of 2026-08-01 — **confirmed against production**, along with a fourth tenant at 17 days matching the API payload.
+  - `MockTenant.overdueMonths` is renamed `overdueDays`, the mapper passes it through unconverted, and the badge goes through a new pure `overdueBadgeLabel(days)`. The "Most overdue" sort follows the rename; its ordering was never affected.
+  - Files: `shared/mocks/tenants.ts`, `owner-tenants/hooks/useRealTenantList.ts`, `owner-money/components/collections/TenantDueRow.tsx`, `owner-money/pages/MoneyPage.tsx`, new `overdueLabel.ts` + 6 tests. **Not verified in a browser.**
+- **2026-09-22**: **Migrations 075 and 082 identified as the only ones still pending on production** ([[Database]]).
+  - A live audit of `qgfyfbdccjnibdhhvnsr` found 083, 085, 086, 088, 089, 090, 091 and **092 (RLS) all already applied** — earlier notes listing them as pending were stale. Only **075** (payout attribution columns) and **082** (two `activity_logs` indexes) are genuinely missing. 075 is the cause of the money-export outage above.
+
 - **2026-09-22**: **Fixed: the Collections and Finance exports never produced a file, and said "Checking…" forever** ([[Bugs]], [[Decisions#ADR-229|ADR-229]]).
   - Both exports run through `ownerPayoutReadModel.rentReceived()`, whose gateway query joins `gateway_transactions.tenant_id` — a **migration 075 column that is not applied on production** and is deliberately kept out of `schema.prisma`. The join raised `42703`, so `/api/owner/exports` and `/api/owner/exports/preview` both answered 500. The Expenses export never calls it and was unaffected.
   - `rentReceived` now falls back to an unattributed gateway query when the column is absent, exactly as `items()` already does for `expected_payout_date`. The payer's name is lost; the amounts, references and dates are not. `getSummary()` was already hardened for this and its comment names the cause: *"migration 075 pending, in practice"*.

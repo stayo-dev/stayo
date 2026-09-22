@@ -159,7 +159,7 @@ export function MoneyPage() {
   const overdueTenants = useMemo(() => {
     let list = real.overdueTenants;
     if (effectiveHostelFilter !== 'all') list = list.filter((t) => t.hostelId === effectiveHostelFilter);
-    if (collectionsSort === 'Most overdue') list = [...list].sort((a, b) => b.overdueMonths - a.overdueMonths);
+    if (collectionsSort === 'Most overdue') list = [...list].sort((a, b) => b.overdueDays - a.overdueDays);
     if (collectionsSort === 'Highest amount') list = [...list].sort((a, b) => b.outstanding - a.outstanding);
     if (collectionsSort === 'Name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     return list;

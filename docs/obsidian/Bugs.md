@@ -8,6 +8,26 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Action queue said every overdue tenant was "1590d overdue" (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Overview. The Action queue showed Mohammed Afreed, Sayanisai and B Avinash Kumar each as **"1590d overdue"** — four and a half years — and the identical number on all three rows made it look like a hardcoded placeholder.
+
+**It was neither static nor a placeholder. It was real data multiplied by thirty.**
+
+`GET /api/tenants` returns `overdue_days` — days since the **oldest** unpaid obligation's `due_date` (`tenant-service.ts`). `useRealTenantList` mapped it as `overdueMonths: t.overdueDays`, renaming days to months without converting them. `TenantDueRow` then did the conversion the name implied: `const daysOverdue = tenant.overdueMonths * 30`. 53 real days became 1590.
+
+The three rows agreed because the tenants genuinely agree: verified against production, all three carry an oldest unpaid due date of **2026-08-01** — 52 days at the time of the fix, 53 when the screenshot was taken. 53 × 30 = 1590, exactly. A fourth tenant, Md Sezan Hussain, has an oldest due of 2026-09-05 → 17 days, matching the `days_overdue: 17` visible in the network panel. So the API was right throughout; only this one render path was wrong.
+
+**Why it survived.** Every other consumer of the same value treats it as days and says so — `CompactFinancialStrip` ("{overdueDays} days", "Since oldest due date"), `FinancialHealthBanner`, both tenant-facing pages. This path alone renamed it, and the rename *created* the bug: the ×30 is not a typo, it is a correct conversion applied to a field whose name lied about its unit. Nothing else read `overdueMonths`, so there was no second opinion to disagree.
+
+**Fix.** The unit is now in the name everywhere: `MockTenant.overdueMonths` → `overdueDays` (with a comment saying what it is and what went wrong), the mapper passes it through unconverted, and the badge renders through `overdueBadgeLabel()` — a pure, tested module that takes **days** and multiplies by nothing. `MoneyPage`'s "Most overdue" sort moves with it; the ordering was never wrong, since ×30 is monotonic.
+
+**Lesson.** A field name is a unit declaration. Rename a quantity across a boundary and the next reader will convert it to match the name — correctly, and disastrously. The dead mock fixtures that seeded the name (`overdueMonths: 3`) had genuinely been months; nothing re-checked the name when real data replaced them.
+
+**Verified** against production data (read-only) and by 6 new node tests. **Not verified in a browser** — the corrected badge has not been rendered on a screen.
+
+**See:** [[Frontend]] · [[APIs]] · [[Changelog]]
+
 ## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
 
 **Symptom.** Reported by the owner from Money → Collections and Money → Overview. The export sheet opened, showed the period chips and the scope line, and its status line stayed on **"Checking…"** indefinitely. Download produced nothing. The Expenses export was fine — which made it look like a frontend bug in the two sheets that were broken.
