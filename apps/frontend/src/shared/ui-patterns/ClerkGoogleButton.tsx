@@ -1,5 +1,5 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { ClerkProvider, useClerk } from '@clerk/clerk-react';
+import { ClerkProvider, useClerk, useSignIn } from '@clerk/clerk-react';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
 import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
 
@@ -17,13 +17,25 @@ import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
  * handshake and transfers to sign-up when the Google email is new to Clerk.
  * `redirectUrlComplete` is where *this app* wants the person afterwards.
  *
- * Reads Clerk through `useClerk()` rather than `useSignIn()`: this component
- * may sign out an existing session first (see below), and the `signIn`
- * resource `useSignIn()` hands back is a value captured at render time — after
- * an awaited call to `clerk.signOut()`, Clerk has replaced its `Client`, and calling a method
- * on the old resource is exactly the kind of staleness bug that class of hook
- * exists to prevent. `clerk.client.signIn` is a live property read instead,
- * always current at the point it's called.
+ * Reads Clerk through **both** hooks, each for what it alone gets right:
+ * `useSignIn()`'s `isLoaded` purely for the effect's gate — it is reactive
+ * (Clerk-react re-renders this component when it flips), which is what lets
+ * the effect run a second time once the SDK finishes loading in the
+ * background. `useClerk()`'s live instance for every actual call — this
+ * component may sign out an existing session first (see below), and the
+ * `signIn` resource `useSignIn()` hands back is a value captured at render
+ * time; after an awaited `clerk.signOut()`, Clerk has replaced its `Client`,
+ * and calling a method on the old resource is exactly the kind of staleness
+ * bug `clerk.client.signIn`, read fresh at call time, avoids.
+ *
+ * Gating on `clerk.loaded` (from `useClerk()`) instead of `isLoaded` was tried
+ * first and shipped a real regression: `clerk.loaded` is a plain property on
+ * the singleton Clerk mutates in place, so reading it inside this effect only
+ * sees its value at the moment the effect happens to run. The SDK loads
+ * asynchronously, so that first run reliably saw `false`, returned, and
+ * nothing ever gave the effect a second chance — `clerk` itself never changes
+ * identity, so the dependency array never re-fires it. The button sat on
+ * "Please wait…" forever: no request, no error, nothing to see anywhere.
  */
 function ClerkGoogleRedirect({
   redirectUrlComplete,
@@ -35,11 +47,12 @@ function ClerkGoogleRedirect({
   /** Called once the redirect could not be started. The caller un-arms back to idle so the person can retry. */
   onFailed: () => void;
 }) {
+  const { isLoaded } = useSignIn();
   const clerk = useClerk();
   const started = useRef(false);
 
   useEffect(() => {
-    if (!clerk.loaded || started.current) return;
+    if (!isLoaded || started.current) return;
     started.current = true;
 
     const run = async () => {
@@ -57,21 +70,30 @@ function ClerkGoogleRedirect({
         await clerk.signOut(() => undefined);
       }
 
-      await clerk.client?.signIn.authenticateWithRedirect({
+      // Thrown, not `?.`-swallowed: `isLoaded` true means the SignIn resource
+      // is ready, so a missing `client` here is a real failure, and reporting
+      // it is what lets `onFailed` below ever fire for it.
+      if (!clerk.client) throw new Error('Clerk loaded with no client resource');
+
+      await clerk.client.signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: '/sign-in/sso-callback',
         redirectUrlComplete,
       });
     };
 
-    run().catch(() => {
+    run().catch((error: unknown) => {
+      // Logged rather than swallowed: this exact failure mode — busy forever,
+      // no network request, nothing in the console — is what made the bug
+      // above invisible for as long as it was.
+      console.error('[ClerkGoogleButton] could not start the Google redirect', error);
       // The redirect never happened, so this mount has nothing left to do.
       // `onFailed` un-arms the parent back to its idle "Continue with Google"
       // button — otherwise this component stays mounted showing "Please
       // wait…" forever, unclickable, with no way to retry short of reloading.
       onFailed();
     });
-  }, [clerk, redirectUrlComplete, onFailed]);
+  }, [isLoaded, clerk, redirectUrlComplete, onFailed]);
 
   return <>{children({ disabled: true, onClick: () => {}, busy: true })}</>;
 }

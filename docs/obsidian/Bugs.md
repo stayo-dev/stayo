@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Google-sign-in fix itself shipped a silent hook-reactivity bug (2026-09-23)
+
+**Symptom:** after the `session_exists` fix ([[Changelog]], 2026-09-23) deployed, "Continue with Google" still stuck on "Please wait…" — but differently this time: zero network requests to Clerk for sign-in, zero console errors, across two separate live tests (one running ~5 minutes with nothing happening).
+
+**Cause:** the fix itself. `ClerkGoogleButton.tsx` moved from `useSignIn()` to `useClerk()` to read a fresh Clerk instance for calls made after an awaited `signOut()` (avoiding a real staleness risk). But `useClerk()` is not reactive the way `useSignIn()` is — its `.loaded` property is mutated in place on Clerk's singleton, and reading it inside a `useEffect` only reflects the value at the moment the effect runs. Since Clerk's SDK loads asynchronously (confirmed via Network-tab evidence: `environment`/`client` resolve *after* this component mounts), the effect's first run saw `loaded: false` and returned — and because the `clerk` object's identity never changes, nothing ever re-triggered the effect once loading actually finished. Compounded by `clerk.client?.signIn...` — an optional chain that would have silently no-op'd rather than failed loudly even if that guess had been wrong.
+
+**Fix:** kept both hooks for what each gets right — `useSignIn()`'s reactive `isLoaded` for the effect's gate, `useClerk()`'s live instance for the actual calls. Replaced the optional chain with an explicit throw, and added logging so a failure like this is never silent again. **Not covered by an automated test** — a React hook-timing bug is outside what this repo's node-only, no-component-rendering test suite can exercise (see `CLAUDE.md`); verification requires a live retest. Related: [[Frontend]].
+
 ## "Continue with Google" stuck forever on "Please wait…" (2026-09-23)
 
 **Symptom:** clicking Google while the browser already held a Clerk session (from an earlier sign-in as a different account, or a leftover session the public shell never saw) left the button disabled and busy permanently. No error, no retry, until a full page reload.
