@@ -106,6 +106,7 @@ export default defineConfig({
       'tests/hostel-upi-validation.test.ts',
       'tests/tenant-payment-claim-rules.test.ts',
       'tests/upi-pay-page-section.test.ts',
+      'tests/tenant-payment-claim-confirm.test.ts',
       'tests/owner-export-financial-year.test.ts',
       'tests/owner-export-request.test.ts',
       'tests/owner-export-documents.test.ts',
