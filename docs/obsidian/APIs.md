@@ -75,6 +75,19 @@ The owner's most recent agreement signature across their hostels, so the Add Hos
 
 Both now carry `hostel_type`, validated on write against the same four codes. The portfolio summary returns it too, so the Hostels tab can prompt for a hostel that has none.
 
+## UPI collection (2026-09-23)
+
+The replacement for the gateway. See [[Decisions#ADR-234|ADR-234]].
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /pay/:token` | anyone with the link | The tenant-facing UPI page — QR, tap-to-pay intent, per-app iOS links, and "I've already paid". Server-rendered, framework-free, **no login**. Reached from approved rent-reminder templates. |
+| `POST /pay/:token` `{action:"qr"}` | same | Rebuilds the QR for an edited amount, so the code and the amount box cannot disagree. |
+| `POST /pay/:token` `{action:"claim"}` | same | Records a tenant's claim: UTR (required), amount, optional screenshot. **Never touches the obligation.** A second submission on the same token returns success rather than a duplicate. |
+| `POST /pay/:token` (any other action) | — | `410 GATEWAY_DISCONNECTED`. |
+| `GET /api/owner/payment-claims?state=&hostelId=` | owner | Claims awaiting a verdict. Leads with the UTR, the one field the owner can match against a bank statement. |
+| `POST /api/owner/payment-claims/[id]` | owner | `{action:"confirm"\|"reject", reason?}`. Confirming records rent through the shared settlement path. Rate-limited 60/min; **deliberately not step-up gated** — see ADR-234. |
+
 ## Disconnected: the payment gateway (2026-09-23)
 
 These return **`410 GATEWAY_DISCONNECTED`**. Handlers are self-contained and import no service or provider; every service file stays on disk. See [[Decisions#ADR-234|ADR-234]].
