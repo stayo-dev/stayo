@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## A new Google sign-up ran entirely on Clerk's hosted Account Portal, not this app (2026-09-23)
+
+**Symptom:** after the CSP fix above, a brand-new Google sign-up's CAPTCHA rendered correctly — but on `accounts.yourstayo.com`, not `yourstayo.com`. Solving it (or not) was moot: the entire remaining flow ran as Clerk's own default, generic sign-in/up UI, and the final redirect landed on bare `https://yourstayo.com/`, not `/auth/callback` — `AuthCallbackPage`'s account-linking logic never ran, so nothing in this app's database or session ever reflected what Clerk did.
+
+**Cause:** `ClerkGoogleButton.tsx` passed relative paths to `authenticateWithRedirect` — `redirectUrl: '/sign-in/sso-callback'`, `redirectUrlComplete` (`/auth/callback` or `/lead-signup/callback` depending on the caller). Google doesn't redirect back into the browser tab that started the flow; it redirects to **Clerk's own server**, which is what resolves these URLs into the final destination. A relative path has no origin for a server-side resolver to anchor to, so Clerk used its own default — this instance's Account Portal — and everything downstream ran there instead, using the Account Portal's own defaults rather than anything this app configured.
+
+**Fix:** both URLs are resolved to fully-qualified absolute URLs (`lib/auth/absoluteRedirectUrl.ts`) before being handed to Clerk, removing the ambiguity. **Not yet verified against a real completed sign-up** — the Account Portal detour itself was confirmed live; whether this fix actually keeps the flow on `yourstayo.com` end to end has not been. Related: [[Frontend]].
+
 ## Google's OAuth trip completed but never actually signed anyone in (2026-09-23)
 
 **Symptom:** after the two hook-level fixes above shipped, "Continue with Google" finally reached Google and returned — confirmed live: real navigation to `accounts.google.com`, real account chooser, real redirect back to `yourstayo.com`. It then rendered Clerk's generic, empty "Sign in to Stayo" form (email/password + Google button again) instead of completing and landing the person in the app.

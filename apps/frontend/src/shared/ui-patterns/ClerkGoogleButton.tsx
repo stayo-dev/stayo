@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from 'react';
 import { ClerkProvider, useClerk, useSignIn } from '@clerk/clerk-react';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
 import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
+import { toAbsoluteUrl } from '@lib/auth/absoluteRedirectUrl';
 
 /**
  * The half of `<ClerkGoogleSignIn>` that touches the Clerk SDK, kept in its own
@@ -12,10 +13,17 @@ import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
  * because the user just clicked Google, so waiting for a second click would be
  * a worse flow than the one it replaces.
  *
- * `redirectUrl` is Clerk's own SSO landing route (`/sign-in/sso-callback`,
- * served by `<SignIn routing="path" path="/sign-in">`), which completes the
- * handshake and transfers to sign-up when the Google email is new to Clerk.
- * `redirectUrlComplete` is where *this app* wants the person afterwards.
+ * `redirectUrl` is `/sign-in/sso-callback`, served by `ClerkOAuthCallbackPage`
+ * (not `<SignIn>` — see that page's header comment). `redirectUrlComplete` is
+ * where *this app* wants the person afterwards. **Both are made absolute**
+ * (`toAbsoluteUrl`) before being handed to Clerk: Google's callback lands on
+ * Clerk's own server, which is what resolves these into the final URL, and a
+ * relative path resolves against Clerk's default domain (this app's Account
+ * Portal, `accounts.yourstayo.com`) rather than `yourstayo.com` — confirmed
+ * live (2026-09-23, [[Bugs]]) by a relative `redirectUrl` landing the whole
+ * flow on the Account Portal, which then ran its own default sign-in/up UI
+ * end to end, redirectUrlComplete discarded along with everything else this
+ * app had configured.
  *
  * Reads Clerk through **both** hooks, each for what it alone gets right:
  * `useSignIn()`'s `isLoaded` purely for the effect's gate — it is reactive
@@ -75,10 +83,11 @@ function ClerkGoogleRedirect({
       // it is what lets `onFailed` below ever fire for it.
       if (!clerk.client) throw new Error('Clerk loaded with no client resource');
 
+      const origin = window.location.origin;
       await clerk.client.signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: '/sign-in/sso-callback',
-        redirectUrlComplete,
+        redirectUrl: toAbsoluteUrl('/sign-in/sso-callback', origin),
+        redirectUrlComplete: toAbsoluteUrl(redirectUrlComplete, origin),
       });
     };
 
