@@ -16,6 +16,14 @@ Log of significant bugs — open and fixed. Not meant to replace an issue tracke
 
 **Fix:** a dedicated `/sign-in/sso-callback` route renders `<AuthenticateWithRedirectCallback>` — Clerk's own component for completing an imperatively-started attempt, which reads the per-call `redirectUrlComplete` back off the attempt rather than using a single hardcoded fallback. Related: [[Frontend]], [[APIs]].
 
+## Google sign-up blocked by our own CSP silently blocking Clerk's CAPTCHA (2026-09-23)
+
+**Symptom:** after the routing fix above, a Google account new to Clerk reached `/sign-in/sso-callback`'s "Finishing sign-in…" screen and stalled there for 28+ seconds before Clerk answered a `sign_ups` request with `400 captcha_invalid` — "The CAPTCHA failed to load." Network tab showed several blocked `api.js?render=explicit` requests and a CSP violation.
+
+**Cause:** Clerk v5's default bot-protection widget for new sign-ups is Cloudflare Turnstile, served from `challenges.cloudflare.com`. This app's CSP (`apps/frontend/vercel.json`, the only place it's defined) never allowlisted that origin in any directive — because nothing had ever driven a real user through to a new Clerk sign-up before this point in testing. The browser silently blocked Turnstile's script; with no widget to solve, Clerk's server-side CAPTCHA check had nothing valid to verify and refused the sign-up.
+
+**Fix:** `challenges.cloudflare.com` added to `script-src`, `script-src-elem`, `connect-src`, and `frame-src`, matching the same per-provider pattern already used for Clerk, Google and Razorpay in this file (each addition documented and guarded by a no-wildcard test, per the CSP's own bug history — see the two `2026-09-09` CSP entries below). **Not confirmed against the literal blocked-domain string** — inferred from Clerk's documented default provider and the script's URL shape; needs a live retest. Related: [[Frontend]].
+
 ## The Google-sign-in fix itself shipped a silent hook-reactivity bug (2026-09-23)
 
 **Symptom:** after the `session_exists` fix ([[Changelog]], 2026-09-23) deployed, "Continue with Google" still stuck on "Please wait…" — but differently this time: zero network requests to Clerk for sign-in, zero console errors, across two separate live tests (one running ~5 minutes with nothing happening).
