@@ -1,6 +1,6 @@
 import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
 import { signOutClerk } from '@lib/auth/clerkBrowser';
-import { decideCallbackAction } from '@lib/auth/sessionAuthority';
+import { decideCallbackAction, isDiscoverSignupCallback } from '@lib/auth/sessionAuthority';
 import { useClerkSessionState } from '@/app/providers/clerkSessionContext';
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
@@ -9,24 +9,18 @@ import api from '@lib/api-client';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 
 /**
- * Reads the sign-in intent WITHOUT destroying it.
+ * A note on history, for whoever next touches the Discover-provisioning
+ * branch below: an earlier version of this page carried the "should this
+ * sign-in provision an account" signal in sessionStorage, read by this
+ * effect. That flag had to be consumed carefully — deleting it on read broke
+ * Google signup outright, because this effect can genuinely run more than
+ * once (StrictMode double-invokes it, and `AuthContext` hydrates on every
+ * Supabase auth event) and the wrong pass could consume it before the pass
+ * that actually saw the 403 got a turn.
  *
- * It used to delete on read, which silently broke Google signup: this effect
- * can run more than once (React StrictMode double-invokes it, and
- * `AuthContext` hydrates on every Supabase auth event, so several passes race
- * over the same callback). The first pass consumed the flag; whichever pass
- * actually received the 403 then saw `allowed: false` and rendered "No account
- * found" instead of creating the account. The POST never happened at all.
- *
- * has genuinely finished — see below.
- */
-
-/**
- * Clear the intent once this sign-in has resolved either way.
- *
- * Called on success and on terminal failure — never mid-flight — so a retry
- * within the same tab starts clean, but a re-run of this effect cannot strip
- * the intent out from under itself.
+ * The current mechanism (`isDiscoverSignupCallback`, `sessionAuthority.ts`)
+ * reads the signal off the URL instead — present or absent on every read,
+ * nothing to consume, so that whole class of race can't recur.
  */
 
 /**
@@ -146,15 +140,37 @@ function AuthCallbackInner() {
         const serverMessage = err?.response?.data?.error?.message;
 
         /*
-         * ADR-176 Phase 3.1 — authentication never creates a Stayo account.
-         *
-         * This used to call `POST /auth/google/provision` when the sign-in was
-         * marked provisioning-allowed, creating a marketplace tenant for an
-         * unknown Google email (ADR-078). Onboarding is controlled: owners
-         * exist after admin approval, tenants after an owner's invitation. An
-         * unknown email is now simply NO_STAYO_ACCOUNT, handled below like any
-         * other 403.
+         * ADR-176 Phase 3.1 — authentication never creates a Stayo account,
+         * as a general rule. Discover's sign-up tab is the one deliberate,
+         * narrow exception (2026-09-23): the same self-serve marketplace
+         * seeker `POST /api/auth/tenant-signup` already lets anyone create
+         * with a password, no invitation needed, offered through Google too.
+         * `isDiscoverSignupCallback` is what tells this apart from every
+         * other 403 here — owner login, tenant login, admin all reach this
+         * same catch block and take the plain rejection path below unchanged.
          */
+        if (status === 403 && code === 'NO_STAYO_ACCOUNT' && isDiscoverSignupCallback(window.location.search)) {
+          try {
+            await api.post('/auth/discover/google-signup');
+            if (cancelled) return;
+            const retried = await api.get('/auth/me');
+            if (cancelled) return;
+            proceed(retried.data, null);
+            return;
+          } catch (provisionErr: any) {
+            if (cancelled) return;
+            // Falls through to the ordinary rejection path below, using
+            // whichever error actually happened — the provisioning attempt's
+            // own (e.g. "email already registered") if it answered one, else
+            // the original /auth/me rejection.
+            const provisionMessage = provisionErr?.response?.data?.error?.message;
+            await supabase.auth.signOut();
+            await signOutClerk();
+            setError(provisionMessage || serverMessage || 'Could not create your account. Please try again.');
+            return;
+          }
+        }
+
         await supabase.auth.signOut();
         await signOutClerk();
         if (status === 403 && serverMessage) {
