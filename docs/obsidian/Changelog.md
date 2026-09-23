@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
-- **2026-09-22**: **A guardian is told when their ward leaves the hostel and when they get back** ([[Decisions#ADR-233|ADR-233]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).
+- **2026-09-22**: **A guardian is told when their ward leaves the hostel and when they get back** ([[Decisions#ADR-234|ADR-234]], [[Features]], [[APIs]], [[Database]], [[Business-Rules]]).
   - Opt-in, asked **once**, on the tenant's first `Going home` — after that every trip is two taps again, unchanged. A declined answer is stored, so the sheet never reappears for someone who said no.
   - Two Meta templates, both **UTILITY**, **submitted 2026-09-22**: `stayo_guardian_stay_departure` (**6** params) and `stayo_guardian_stay_return` (4 params), 12-hour validity, footer `Stayo Property Management` on both.
   - **Meta refuses a repeated variable**, so the departure body's second mention of the tenant is `{{6}}`, not `{{2}}` again — same value, emitted from one computation so the two can never name different people. (Adjacent variables were *not* the problem: `Hello {{1}}, {{2}} has returned…` was accepted as-is.)

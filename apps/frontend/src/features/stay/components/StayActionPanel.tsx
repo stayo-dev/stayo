@@ -18,7 +18,7 @@ interface StayActionPanelProps {
   variant: 'full' | 'card';
   onRecord: (input: TenantStayEventInput) => Promise<unknown>;
   busy: boolean;
-  /** ADR-233. Null when there is no guardian on file. */
+  /** ADR-234. Null when there is no guardian on file. */
   guardian: GuardianConsent | null;
   onGuardianConsent: (granted: boolean) => Promise<unknown>;
 }
@@ -62,7 +62,7 @@ export function StayActionPanel({
   };
 
   /**
-   * ADR-233 D6: a channel that reports on you is never invisible to you. Shown
+   * ADR-234 D6: a channel that reports on you is never invisible to you. Shown
    * on every leave that actually notifies, not only the trip where consent was
    * given.
    */

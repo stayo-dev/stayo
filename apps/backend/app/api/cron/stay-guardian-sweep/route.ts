@@ -5,7 +5,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runStayGuardianSweep } from "@/src/services/stay/stay-guardian-sweep";
 
 /**
- * 🕐 CRON — guardian stay updates backstop (ADR-233)
+ * 🕐 CRON — guardian stay updates backstop (ADR-234)
  * GET /api/cron/stay-guardian-sweep
  *
  * Re-attempts the guardian message for any LEAVE_STARTED or RETURNED event in

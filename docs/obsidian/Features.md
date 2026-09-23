@@ -1744,7 +1744,7 @@ Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
 
 **Not verified:** no invitation has been sent through the new path.
 
-## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
 
 A guardian is messaged on WhatsApp when their ward leaves the hostel and when they get back — and
 about nothing else. Built as [[Decisions#ADR-194|ADR-194]] says Stay follow-ups are built: a read

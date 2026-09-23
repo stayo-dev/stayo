@@ -1,6 +1,6 @@
--- 093_stay_guardian_consent.sql
+-- 094_stay_guardian_consent.sql
 --
--- ADR-233 — a guardian is told when their ward leaves the hostel and when
+-- ADR-234 — a guardian is told when their ward leaves the hostel and when
 -- they get back, once the tenant has agreed to it.
 --
 -- APPLY THIS *AFTER* DEPLOYING THE CODE THAT DECLARES THE MODEL.
@@ -36,15 +36,15 @@ CREATE TABLE IF NOT EXISTS "public"."stay_guardian_consent" (
 );
 
 COMMENT ON TABLE "public"."stay_guardian_consent" IS
-  'ADR-233. One row per tenancy: whether the tenant agreed to have their guardian told when they leave and return. A granted=false row is the memory of HAVING ASKED, which is what stops the sheet reappearing on every trip.';
+  'ADR-234. One row per tenancy: whether the tenant agreed to have their guardian told when they leave and return. A granted=false row is the memory of HAVING ASKED, which is what stops the sheet reappearing on every trip.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."guardian_phone" IS
-  'ADR-233. The guardian number consented to, snapshotted. Consent was given to tell a person, not a field: if tenants.guardian_phone later differs, the decision is about somebody else and the tenant is asked again.';
+  'ADR-234. The guardian number consented to, snapshotted. Consent was given to tell a person, not a field: if tenants.guardian_phone later differs, the decision is about somebody else and the tenant is asked again.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."revoked_at" IS
-  'ADR-233. The TENANT switched it off. Distinct from stopped_at on purpose.';
+  'ADR-234. The TENANT switched it off. Distinct from stopped_at on purpose.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."stopped_at" IS
-  'ADR-233. The GUARDIAN replied STOP. Outranks a later re-grant by the tenant - someone who asked to be left alone must not be silently re-subscribed.';
+  'ADR-234. The GUARDIAN replied STOP. Outranks a later re-grant by the tenant - someone who asked to be left alone must not be silently re-subscribed.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."source" IS
-  'ADR-233. APP or QR - where the tenant was standing when asked.';
+  'ADR-234. APP or QR - where the tenant was standing when asked.';
 
 -- The sweep's only filter: live consents, so events belonging to tenants who
 -- never consented are never loaded.

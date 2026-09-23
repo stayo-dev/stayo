@@ -44,7 +44,7 @@ export interface MyStay {
   hostel: { id: string; name: string } | null;
   resident: boolean;
   stay: TenantStay | null;
-  /** ADR-233. Null when there is no guardian on file to speak of. */
+  /** ADR-234. Null when there is no guardian on file to speak of. */
   guardian: GuardianConsentView | null;
 }
 
@@ -168,7 +168,7 @@ export function createStayService(deps: { db?: any; capacity?: typeof roomCapaci
         if (!(error instanceof LostRace) && error?.code !== "P2002") throw error;
       }
 
-      // ADR-233 — tell the guardian, if the tenant agreed to it. Deliberately
+      // ADR-234 — tell the guardian, if the tenant agreed to it. Deliberately
       // outside the transaction and deliberately not awaited: this is a
       // notification about a fact that is already recorded, and it must never
       // extend, fail or roll back the write above. A lost send is recovered by

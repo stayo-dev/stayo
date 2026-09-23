@@ -7,7 +7,7 @@ import { fromDbDate } from "./stay-rows";
 const logger = getLogger("stay.guardian-sweep");
 
 /**
- * The backstop for guardian stay updates (ADR-233).
+ * The backstop for guardian stay updates (ADR-234).
  *
  * ── Why it is daily, and what that costs ──
  *

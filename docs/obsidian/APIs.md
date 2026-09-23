@@ -965,7 +965,7 @@ Admin, `ADMIN` role:
 
 **Fixed:** `GET /api/platform-admin/platform-listings` counted enquiries via `prisma.leads`, which is not a model — see [[Bugs]].
 
-## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
 
 | Method | Path | Auth | Notes |
 |---|---|---|---|

@@ -207,7 +207,7 @@ export function tonightCards(summary: StaySummary | undefined): TonightCards | n
 }
 
 /**
- * Ask once, on the first leave — never again (ADR-233).
+ * Ask once, on the first leave — never again (ADR-234).
  *
  * `DECLINED` is as final as `GRANTED`. A stored no is what stops the sheet
  * reappearing on every trip, for exactly the tenants who least want it; that

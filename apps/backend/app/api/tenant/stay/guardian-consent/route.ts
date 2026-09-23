@@ -13,7 +13,7 @@ const SOURCES = new Set(["QR", "APP"]);
  * POST /api/tenant/stay/guardian-consent
  * Body: { granted: boolean, source: "QR" | "APP" }
  *
- * ADR-233. Separate from the stay event on purpose: a declined consent must be
+ * ADR-234. Separate from the stay event on purpose: a declined consent must be
  * recorded even when the leave that prompted it then fails, or the tenant is
  * asked again next time having already said no.
  *

@@ -4,12 +4,12 @@ import { join } from "node:path";
 
 const SCHEMA = readFileSync(join(__dirname, "../prisma/schema.prisma"), "utf8");
 const MIGRATION = readFileSync(
-  join(__dirname, "../../../migrations/093_stay_guardian_consent.sql"),
+  join(__dirname, "../../../migrations/094_stay_guardian_consent.sql"),
   "utf8",
 );
 
 /**
- * ADR-233. Guards the two ways this table can ship broken: a Prisma field the
+ * ADR-234. Guards the two ways this table can ship broken: a Prisma field the
  * database does not have, and a table the public anon key can read.
  */
 describe("stay_guardian_consent schema", () => {

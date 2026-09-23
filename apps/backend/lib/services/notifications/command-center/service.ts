@@ -201,7 +201,7 @@ export class CommandCenterService {
       return this.completeGuardianWardConfirmation(phone, identity, tenantId);
     }
 
-    // ADR-233. Ahead of the guardian gate, for the same reason CONFIRM is:
+    // ADR-234. Ahead of the guardian gate, for the same reason CONFIRM is:
     // answering "please stop messaging me" with "prove who you are first" is
     // indefensible, and an OTP challenge is not a precondition for being left
     // alone.

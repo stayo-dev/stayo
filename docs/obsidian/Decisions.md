@@ -3519,7 +3519,7 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
 - **Consequences:** `stayo_partner_listing_live` came back from Meta as **MARKETING**, not the UTILITY it was submitted as — so the first message a cold owner receives is marketing-category, sent on offline consent, which is the highest block-risk combination in the design. Partner outreach should move to a **separate phone number on the same WABA**, so a block report cannot degrade the number delivering rent reminders to paying customers. That is configuration, not code, and is **not done**.
 - **Related:** [[Decisions#ADR-230|ADR-230]], [[Decisions#ADR-073|ADR-073]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]]
 
-### ADR-233 — A guardian is told when their ward leaves and returns, once the tenant has agreed (2026-09-22)
+### ADR-234 — A guardian is told when their ward leaves and returns, once the tenant has agreed (2026-09-22)
 
 - **Status:** Accepted. Built; **both Meta templates unsubmitted**, migration 093 **not applied**.
 - **Context:** Stay Status ([[Decisions#ADR-194|ADR-194]]) records `LEAVE_STARTED` and `RETURNED` and shows them to the owner. A guardian — who in this product funds much of the rent and is already a recognised messaging identity ([[Decisions#ADR-127|ADR-127]]) — saw none of it. The parent of a student living away from home had no way to know their child had left or arrived, short of calling them.

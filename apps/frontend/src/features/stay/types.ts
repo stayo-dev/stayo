@@ -21,7 +21,7 @@ export interface TenantStay extends DateWindow {
   leave: { leaveType: LeaveType; startDate: string; expectedReturnDate: string } | null;
 }
 
-/** ADR-233. Mirrors `GuardianConsentView` in the backend stay service. */
+/** ADR-234. Mirrors `GuardianConsentView` in the backend stay service. */
 export interface GuardianConsent {
   /** There is a guardian we could actually message: present, verified, not the resident. */
   eligible: boolean;
@@ -34,7 +34,7 @@ export interface MyStay {
   hostel: { id: string; name: string } | null;
   resident: boolean;
   stay: TenantStay | null;
-  /** ADR-233. Null when there is no guardian on file to speak of. */
+  /** ADR-234. Null when there is no guardian on file to speak of. */
   guardian: GuardianConsent | null;
 }
 

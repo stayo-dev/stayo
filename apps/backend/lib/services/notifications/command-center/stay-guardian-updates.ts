@@ -14,7 +14,7 @@ import {
 const logger = getLogger("whatsapp.command-center.stay-guardian");
 
 /**
- * "Your ward has left" / "your ward is back" — the two messages of ADR-233.
+ * "Your ward has left" / "your ward is back" — the two messages of ADR-234.
  *
  * Called twice for the same event by design: once inline when the stay event
  * commits, and again by `/api/cron/stay-guardian-sweep` if that inline send

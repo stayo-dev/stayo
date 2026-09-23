@@ -1,7 +1,7 @@
 import type { ConsentState } from "@/src/services/stay/stay-guardian-consent-state";
 
 /**
- * Whether one stay event tells a guardian anything (ADR-233).
+ * Whether one stay event tells a guardian anything (ADR-234).
  *
  * The shape follows `guardian-reminder-policy.ts` deliberately: the rule is a
  * pure function returning its own reason, so "why did / didn't they get this"

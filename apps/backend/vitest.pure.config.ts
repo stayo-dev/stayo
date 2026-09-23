@@ -136,7 +136,7 @@ export default defineConfig({
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
-      // ADR-233 — guardian stay notifications. The template contracts and the
+      // ADR-234 — guardian stay notifications. The template contracts and the
       // notify policy are pure so they can be verified without a database.
       'tests/stay-guardian-templates.test.ts',
       'tests/stay-guardian-policy.test.ts',

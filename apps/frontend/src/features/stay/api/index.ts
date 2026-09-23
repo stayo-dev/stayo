@@ -13,7 +13,7 @@ export const stayApi = {
   record: async (input: TenantStayEventInput): Promise<TenantStay> =>
     body<{ stay: TenantStay }>(await api.post('/tenant/stay/events', input)).stay,
 
-  /** ADR-233. Posted separately from the event, so a declined consent survives a failed leave. */
+  /** ADR-234. Posted separately from the event, so a declined consent survives a failed leave. */
   setGuardianConsent: async (granted: boolean, source: 'QR' | 'APP'): Promise<GuardianConsent | null> =>
     body<{ guardian: GuardianConsent | null }>(
       await api.post('/tenant/stay/guardian-consent', { granted, source }),

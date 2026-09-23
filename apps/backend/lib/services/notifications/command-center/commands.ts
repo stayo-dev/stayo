@@ -38,7 +38,7 @@ export const COMMANDS = {
    */
   CONFIRM: "CONFIRM",
   /**
-   * Stop stay updates (ADR-233) — what the footer of
+   * Stop stay updates (ADR-234) — what the footer of
    * `stayo_guardian_stay_departure` / `_return` tells a guardian to send.
    *
    * In `VOCABULARY` because people type it, and deliberately absent from
@@ -111,7 +111,7 @@ const VOCABULARY: Record<string, CommandName> = {
   "PAYMENT HISTORY": COMMANDS.RECEIPT,
   HISTORY: COMMANDS.RECEIPT,
 
-  // ── STOP (stay updates only — ADR-233) ─────────────────
+  // ── STOP (stay updates only — ADR-234) ─────────────────
   STOP: COMMANDS.STOP,
   "STOP UPDATES": COMMANDS.STOP,
   "STOP STAY UPDATES": COMMANDS.STOP,

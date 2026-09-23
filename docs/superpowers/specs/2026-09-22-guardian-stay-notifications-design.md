@@ -1,7 +1,7 @@
 # Guardian stay notifications — design
 
 **Date:** 2026-09-22 · **Status:** approved, not yet built · **Branch:** `feat/guardian-stay-notifications`
-**ADR:** ADR-233 (claimed against `origin/main` at 152d29e3, where ADR-232 is the high-water mark — **re-check at merge time**, per the ADR-193 collision recorded in [[Decisions#ADR-194|ADR-194]])
+**ADR:** ADR-234, **renumbered from ADR-233 on 2026-09-23.** `fix/money-export-preview-stuck` had independently taken both ADR-233 *and* `migrations/093` for the payment-gateway disconnect, so this slice moved to ADR-234 / `migrations/094` — both verified unclaimed across every local and remote branch. Exactly the collision [[Decisions#ADR-194|ADR-194]] warned about: claim the number against `origin/main` **at merge time**, not at start.
 **Builds on:** [Stay Status Phase 1](2026-09-14-stay-status-design.md) (ADR-194) · [Guardian verification policy](2026-09-16-guardian-verification-policy-design.md) (ADR-212/213)
 
 ## 1. What this is
@@ -439,7 +439,7 @@ number" must not become the sixth.
 
 In the same change, per CLAUDE.md: [[Features]], [[APIs]], [[Database]], [[Business-Rules]]
 (a guardian-stay-updates section alongside the guardian reminder escalation rules), [[Decisions]]
-(ADR-233), [[Changelog]].
+(ADR-234), [[Changelog]].
 
 ## 14. Open questions
 

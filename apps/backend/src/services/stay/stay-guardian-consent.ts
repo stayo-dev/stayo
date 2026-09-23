@@ -4,7 +4,7 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { consentStateOf, type ConsentRecord, type ConsentState } from "./stay-guardian-consent-state";
 
 /**
- * The tenant's decision about guardian stay updates (ADR-233).
+ * The tenant's decision about guardian stay updates (ADR-234).
  *
  * Stay owns the consent record; `notifications/` owns the sending. This module
  * is the boundary between them.

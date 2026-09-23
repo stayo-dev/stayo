@@ -4736,7 +4736,7 @@ model stay_leaves {
   @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
 }
 
-/// ADR-233. Whether the tenant agreed to have their guardian told when they
+/// ADR-234. Whether the tenant agreed to have their guardian told when they
 /// leave the hostel and when they return. A `granted = false` row is the
 /// memory of having asked — without it the consent sheet reappears on every
 /// trip, for exactly the tenants who said no.

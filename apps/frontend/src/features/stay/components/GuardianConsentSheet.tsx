@@ -9,7 +9,7 @@ interface GuardianConsentSheetProps {
 /**
  * Asked once, after the return date is picked on the tenant's first leave.
  * Two buttons, no default, no third option — a consent question with a
- * pre-selected answer is not a consent question. See ADR-233.
+ * pre-selected answer is not a consent question. See ADR-234.
  */
 export function GuardianConsentSheet({ guardianName, busy, onDecide }: GuardianConsentSheetProps) {
   const copy = guardianConsentCopy(guardianName);

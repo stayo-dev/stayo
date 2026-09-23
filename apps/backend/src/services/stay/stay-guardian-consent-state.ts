@@ -1,5 +1,5 @@
 /**
- * What a stored consent row means right now (ADR-233).
+ * What a stored consent row means right now (ADR-234).
  *
  * The single place a row becomes a state. The tenant API renders this for the
  * consent sheet and the notify policy branches on it, so the two cannot drift

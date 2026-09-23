@@ -1,7 +1,7 @@
 import { tenantDisplayName } from "./guardian-activation-template-contract";
 
 /**
- * The two templates a guardian receives about their ward's stay (ADR-233).
+ * The two templates a guardian receives about their ward's stay (ADR-234).
  *
  * One tells them the ward has left; the other tells them the ward is back.
  * Nothing else in this family exists, and the copy says so — "Nothing is

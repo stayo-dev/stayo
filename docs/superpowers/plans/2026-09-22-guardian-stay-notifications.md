@@ -12,7 +12,7 @@
 
 ## Global Constraints
 
-- **ADR number is `ADR-233`.** Claimed against `origin/main` at `152d29e3`, where ADR-232 is the high-water mark. **Re-check `docs/obsidian/Decisions.md` on `origin/main` at merge time** and renumber if it moved — ADR-193 collided exactly this way.
+- **ADR number is `ADR-234`.** Claimed against `origin/main` at `152d29e3`, where ADR-232 is the high-water mark. **Re-check `docs/obsidian/Decisions.md` on `origin/main` at merge time** and renumber if it moved — ADR-193 collided exactly this way.
 - **There is no test database.** `npm test` cannot run. Every backend test in this plan goes in `apps/backend/vitest.pure.config.ts`'s `include` array and is run with `npm run test:pure`. That array is an **explicit allowlist, not a glob** — a file not added to it silently never runs.
 - **Pure modules import nothing with I/O.** No `@/lib/db`, no provider clients. `Intl` is fine.
 - **Backend test command:** `cd apps/backend && npx vitest run --config vitest.pure.config.ts <file>`
@@ -183,7 +183,7 @@ describe("payload builders", () => {
 Add to the `include` array in `apps/backend/vitest.pure.config.ts`, immediately after the `'tests/whatsapp-guardian-activation-template.test.ts',` line:
 
 ```ts
-      // ADR-233 — guardian stay notifications. The template contracts and the
+      // ADR-234 — guardian stay notifications. The template contracts and the
       // notify policy are pure so they can be verified without a database.
       'tests/stay-guardian-templates.test.ts',
 ```
@@ -199,7 +199,7 @@ Create `apps/backend/lib/services/notifications/providers/whatsapp/stay-guardian
 import { tenantDisplayName } from "./guardian-activation-template-contract";
 
 /**
- * The two templates a guardian receives about their ward's stay (ADR-233).
+ * The two templates a guardian receives about their ward's stay (ADR-234).
  *
  * One tells them the ward has left; the other tells them the ward is back.
  * Nothing else in this family exists, and the copy says so — "Nothing is
@@ -549,7 +549,7 @@ Create `apps/backend/src/services/stay/stay-guardian-consent-state.ts`:
 
 ```ts
 /**
- * What a stored consent row means right now (ADR-233).
+ * What a stored consent row means right now (ADR-234).
  *
  * The single place a row becomes a state. The tenant API renders this for the
  * consent sheet and the notify policy branches on it, so the two cannot drift
@@ -613,7 +613,7 @@ Create `apps/backend/lib/services/notifications/command-center/stay-guardian-pol
 import type { ConsentState } from "@/src/services/stay/stay-guardian-consent-state";
 
 /**
- * Whether one stay event tells a guardian anything (ADR-233).
+ * Whether one stay event tells a guardian anything (ADR-234).
  *
  * The shape follows `guardian-reminder-policy.ts` deliberately: the rule is a
  * pure function returning its own reason, so "why did / didn't they get this"
@@ -721,7 +721,7 @@ Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>"
 ### Task 3: Migration and Prisma model
 
 **Files:**
-- Create: `migrations/093_stay_guardian_consent.sql`
+- Create: `migrations/094_stay_guardian_consent.sql`
 - Modify: `apps/backend/prisma/schema.prisma` (append a model; place it directly after `model stay_leaves`)
 - Create: `apps/backend/tests/stay-guardian-schema.test.ts`
 - Modify: `apps/backend/vitest.pure.config.ts`
@@ -741,12 +741,12 @@ import { join } from "node:path";
 
 const SCHEMA = readFileSync(join(__dirname, "../prisma/schema.prisma"), "utf8");
 const MIGRATION = readFileSync(
-  join(__dirname, "../../../migrations/093_stay_guardian_consent.sql"),
+  join(__dirname, "../../../migrations/094_stay_guardian_consent.sql"),
   "utf8",
 );
 
 /**
- * ADR-233. Guards the two ways this table can ship broken: a Prisma field the
+ * ADR-234. Guards the two ways this table can ship broken: a Prisma field the
  * database does not have, and a table the public anon key can read.
  */
 describe("stay_guardian_consent schema", () => {
@@ -801,16 +801,16 @@ describe("stay_guardian_consent schema", () => {
 Add `'tests/stay-guardian-schema.test.ts',` to `include` below the Task 2 entry.
 
 Run: `cd apps/backend && npx vitest run --config vitest.pure.config.ts tests/stay-guardian-schema.test.ts`
-Expected: FAIL — `ENOENT ... migrations/093_stay_guardian_consent.sql`
+Expected: FAIL — `ENOENT ... migrations/094_stay_guardian_consent.sql`
 
 - [ ] **Step 3: Write the migration**
 
-Create `migrations/093_stay_guardian_consent.sql`:
+Create `migrations/094_stay_guardian_consent.sql`:
 
 ```sql
--- 093_stay_guardian_consent.sql
+-- 094_stay_guardian_consent.sql
 --
--- ADR-233 — a guardian is told when their ward leaves the hostel and when
+-- ADR-234 — a guardian is told when their ward leaves the hostel and when
 -- they get back, once the tenant has agreed to it.
 --
 -- APPLY THIS *AFTER* DEPLOYING THE CODE THAT DECLARES THE MODEL.
@@ -846,15 +846,15 @@ CREATE TABLE IF NOT EXISTS "public"."stay_guardian_consent" (
 );
 
 COMMENT ON TABLE "public"."stay_guardian_consent" IS
-  'ADR-233. One row per tenancy: whether the tenant agreed to have their guardian told when they leave and return. A granted=false row is the memory of HAVING ASKED, which is what stops the sheet reappearing on every trip.';
+  'ADR-234. One row per tenancy: whether the tenant agreed to have their guardian told when they leave and return. A granted=false row is the memory of HAVING ASKED, which is what stops the sheet reappearing on every trip.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."guardian_phone" IS
-  'ADR-233. The guardian number consented to, snapshotted. Consent was given to tell a person, not a field: if tenants.guardian_phone later differs, the decision is about somebody else and the tenant is asked again.';
+  'ADR-234. The guardian number consented to, snapshotted. Consent was given to tell a person, not a field: if tenants.guardian_phone later differs, the decision is about somebody else and the tenant is asked again.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."revoked_at" IS
-  'ADR-233. The TENANT switched it off. Distinct from stopped_at on purpose.';
+  'ADR-234. The TENANT switched it off. Distinct from stopped_at on purpose.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."stopped_at" IS
-  'ADR-233. The GUARDIAN replied STOP. Outranks a later re-grant by the tenant — someone who asked to be left alone must not be silently re-subscribed.';
+  'ADR-234. The GUARDIAN replied STOP. Outranks a later re-grant by the tenant — someone who asked to be left alone must not be silently re-subscribed.';
 COMMENT ON COLUMN "public"."stay_guardian_consent"."source" IS
-  'ADR-233. APP or QR — where the tenant was standing when asked.';
+  'ADR-234. APP or QR — where the tenant was standing when asked.';
 
 -- The sweep's only filter: live consents, so events belonging to tenants who
 -- never consented are never loaded.
@@ -880,7 +880,7 @@ REVOKE ALL ON TABLE "public"."stay_guardian_consent" FROM authenticated;
 In `apps/backend/prisma/schema.prisma`, insert directly after the closing `}` of `model stay_leaves`:
 
 ```prisma
-/// ADR-233. Whether the tenant agreed to have their guardian told when they
+/// ADR-234. Whether the tenant agreed to have their guardian told when they
 /// leave the hostel and when they return. A `granted = false` row is the
 /// memory of having asked — without it the consent sheet reappears on every
 /// trip, for exactly the tenants who said no.
@@ -915,7 +915,7 @@ Expected: both PASS. `migration-rls.test.ts` must still pass — it scans every 
 - [ ] **Step 6: Commit**
 
 ```bash
-git add migrations/093_stay_guardian_consent.sql apps/backend/prisma/schema.prisma apps/backend/tests/stay-guardian-schema.test.ts apps/backend/vitest.pure.config.ts
+git add migrations/094_stay_guardian_consent.sql apps/backend/prisma/schema.prisma apps/backend/tests/stay-guardian-schema.test.ts apps/backend/vitest.pure.config.ts
 git commit -m "feat(guardian-stay): stay_guardian_consent table
 
 A separate table, not two columns on tenants: getSession reads tenants
@@ -1127,7 +1127,7 @@ import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/w
 import { consentStateOf, type ConsentRecord, type ConsentState } from "./stay-guardian-consent-state";
 
 /**
- * The tenant's decision about guardian stay updates (ADR-233).
+ * The tenant's decision about guardian stay updates (ADR-234).
  *
  * Stay owns the consent record; `notifications/` owns the sending. This module
  * is the boundary between them.
@@ -1317,7 +1317,7 @@ export interface MyStay {
   hostel: { id: string; name: string } | null;
   resident: boolean;
   stay: TenantStay | null;
-  /** ADR-233. Null when there is no guardian on file to speak of. */
+  /** ADR-234. Null when there is no guardian on file to speak of. */
   guardian: GuardianConsentView | null;
 }
 ```
@@ -1366,7 +1366,7 @@ const SOURCES = new Set(["QR", "APP"]);
  * POST /api/tenant/stay/guardian-consent
  * Body: { granted: boolean, source: "QR" | "APP" }
  *
- * ADR-233. Separate from the stay event on purpose: a declined consent must be
+ * ADR-234. Separate from the stay event on purpose: a declined consent must be
  * recorded even when the leave that prompted it then fails, or the tenant is
  * asked again next time having already said no.
  *
@@ -1631,7 +1631,7 @@ import {
 const logger = getLogger("whatsapp.command-center.stay-guardian");
 
 /**
- * "Your ward has left" / "your ward is back" — the two messages of ADR-233.
+ * "Your ward has left" / "your ward is back" — the two messages of ADR-234.
  *
  * Called twice for the same event by design: once inline when the stay event
  * commits, and again by `/api/cron/stay-guardian-sweep` if that inline send
@@ -1810,7 +1810,7 @@ import { sendStayGuardianUpdate } from "@/lib/services/notifications/command-cen
 In `recordStayEvent`, inside the `if (result.kind === "record") { … }` block, **after** the `try { await db.$transaction(...) } catch { … }` and before the closing brace of that block, add:
 
 ```ts
-      // ADR-233 — tell the guardian, if the tenant agreed to it. Deliberately
+      // ADR-234 — tell the guardian, if the tenant agreed to it. Deliberately
       // outside the transaction and deliberately un-awaited for its result:
       // this is a notification about a fact that is already recorded, and it
       // must never extend, fail or roll back the write above. A lost send is
@@ -2064,7 +2064,7 @@ import { fromDbDate } from "./stay-rows";
 const logger = getLogger("stay.guardian-sweep");
 
 /**
- * The backstop for guardian stay updates (ADR-233).
+ * The backstop for guardian stay updates (ADR-234).
  *
  * ── Why it is daily, and what that costs ──
  *
@@ -2209,7 +2209,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { runStayGuardianSweep } from "@/src/services/stay/stay-guardian-sweep";
 
 /**
- * 🕐 CRON — guardian stay updates backstop (ADR-233)
+ * 🕐 CRON — guardian stay updates backstop (ADR-234)
  * GET /api/cron/stay-guardian-sweep
  *
  * Re-attempts the guardian message for any LEAVE_STARTED or RETURNED event in
@@ -2367,7 +2367,7 @@ Add to the `COMMANDS` object, after `CONFIRM`:
 
 ```ts
   /**
-   * Stop stay updates (ADR-233) — what the footer of
+   * Stop stay updates (ADR-234) — what the footer of
    * `stayo_guardian_stay_departure` / `_return` tells a guardian to send.
    *
    * In `VOCABULARY` because people type it, and deliberately absent from
@@ -2381,7 +2381,7 @@ Add to the `COMMANDS` object, after `CONFIRM`:
 Add to `VOCABULARY`, as a new block before the `// ── HELP ──` block:
 
 ```ts
-  // ── STOP (stay updates only — ADR-233) ─────────────────
+  // ── STOP (stay updates only — ADR-234) ─────────────────
   STOP: COMMANDS.STOP,
   "STOP UPDATES": COMMANDS.STOP,
   "STOP STAY UPDATES": COMMANDS.STOP,
@@ -2435,7 +2435,7 @@ import { stopGuardianConsent } from "@/src/services/stay/stay-guardian-consent";
 In `dispatch`, insert the STOP branch **immediately after the `COMMANDS.CONFIRM` branch and before the `if (audience === "GUARDIAN")` verification gate**:
 
 ```ts
-    // ADR-233. Ahead of the guardian gate, for the same reason CONFIRM is:
+    // ADR-234. Ahead of the guardian gate, for the same reason CONFIRM is:
     // answering "please stop messaging me" with "prove who you are first" is
     // indefensible, and an OTP challenge is not a precondition for being left
     // alone.
@@ -2576,7 +2576,7 @@ Expected: FAIL — `shouldAskGuardianConsent` is not exported.
 In `apps/frontend/src/features/stay/types.ts`, add:
 
 ```ts
-/** ADR-233. Mirrors `GuardianConsentView` in the backend stay service. */
+/** ADR-234. Mirrors `GuardianConsentView` in the backend stay service. */
 export interface GuardianConsent {
   /** There is a guardian we could actually message: present, verified, not the resident. */
   eligible: boolean;
@@ -2605,7 +2605,7 @@ In `apps/frontend/src/features/stay/stayState.ts`, add the import and append:
 import type { GuardianConsent } from './types';
 
 /**
- * Ask once, on the first leave — never again (ADR-233).
+ * Ask once, on the first leave — never again (ADR-234).
  *
  * `DECLINED` is as final as `GRANTED`. A stored no is what stops the sheet
  * reappearing on every trip, for exactly the tenants who least want it; that
@@ -2694,7 +2694,7 @@ interface GuardianConsentSheetProps {
 /**
  * Asked once, after the return date is picked on the tenant's first leave.
  * Two buttons, no default, no third option — a consent question with a
- * pre-selected answer is not a consent question. See ADR-233.
+ * pre-selected answer is not a consent question. See ADR-234.
  */
 export function GuardianConsentSheet({ guardianName, busy, onDecide }: GuardianConsentSheetProps) {
   const copy = guardianConsentCopy(guardianName);
@@ -2850,7 +2850,7 @@ Per CLAUDE.md this is not optional follow-up — a feature that ships without it
 git fetch origin && git show origin/main:docs/obsidian/Decisions.md | grep -oE "ADR-[0-9]+" | sort -u -t- -k2 -n | tail -3
 ```
 
-If the highest is still ADR-232, this is **ADR-233**. If it moved, renumber throughout — including the comments already written into the code in Tasks 1–8. ADR-193 collided exactly this way; claim the number against `origin/main` at merge time, not at start time.
+If the highest is still ADR-232, this is **ADR-234**. If it moved, renumber throughout — including the comments already written into the code in Tasks 1–8. ADR-193 collided exactly this way; claim the number against `origin/main` at merge time, not at start time.
 
 - [ ] **Step 2: Write the ADR**
 
@@ -2887,7 +2887,7 @@ Expected: no `BROKEN:` lines beyond any that already existed on `origin/main` (c
 
 ```bash
 git add docs/obsidian/
-git commit -m "docs: ADR-233 and the vault updates for guardian stay notifications
+git commit -m "docs: ADR-234 and the vault updates for guardian stay notifications
 
 Also corrects the README's claim that root migrations/ is archived — it
 is the live sequence, and 093 lands there.

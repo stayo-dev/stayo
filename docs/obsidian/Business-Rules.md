@@ -1299,7 +1299,7 @@ Rules for delivering tenant enquiries to a hostel owner who is not on Stayo. See
 
 Related: [[Database]], [[APIs]], [[Features]]
 
-## Guardian stay updates (2026-09-22, [[Decisions#ADR-233|ADR-233]])
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
 
 Sits beside the guardian **rent** reminder escalation above; the two share an audience and nothing
 else. **Files:** `lib/services/notifications/command-center/stay-guardian-policy.ts` (pure),
