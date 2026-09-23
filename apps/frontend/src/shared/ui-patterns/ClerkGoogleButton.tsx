@@ -1,6 +1,7 @@
 import { useEffect, useRef, type ReactNode } from 'react';
-import { ClerkProvider, useSignIn } from '@clerk/clerk-react';
+import { ClerkProvider, useClerk } from '@clerk/clerk-react';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
+import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
 
 /**
  * The half of `<ClerkGoogleSignIn>` that touches the Clerk SDK, kept in its own
@@ -15,33 +16,62 @@ import { readClerkConfig } from '@lib/auth/clerkConfig';
  * served by `<SignIn routing="path" path="/sign-in">`), which completes the
  * handshake and transfers to sign-up when the Google email is new to Clerk.
  * `redirectUrlComplete` is where *this app* wants the person afterwards.
+ *
+ * Reads Clerk through `useClerk()` rather than `useSignIn()`: this component
+ * may sign out an existing session first (see below), and the `signIn`
+ * resource `useSignIn()` hands back is a value captured at render time — after
+ * an awaited call to `clerk.signOut()`, Clerk has replaced its `Client`, and calling a method
+ * on the old resource is exactly the kind of staleness bug that class of hook
+ * exists to prevent. `clerk.client.signIn` is a live property read instead,
+ * always current at the point it's called.
  */
 function ClerkGoogleRedirect({
   redirectUrlComplete,
   children,
+  onFailed,
 }: {
   redirectUrlComplete: string;
   children: (state: { disabled: boolean; onClick: () => void; busy: boolean }) => ReactNode;
+  /** Called once the redirect could not be started. The caller un-arms back to idle so the person can retry. */
+  onFailed: () => void;
 }) {
-  const { signIn, isLoaded } = useSignIn();
+  const clerk = useClerk();
   const started = useRef(false);
 
   useEffect(() => {
-    if (!isLoaded || started.current) return;
+    if (!clerk.loaded || started.current) return;
     started.current = true;
 
-    signIn
-      ?.authenticateWithRedirect({
+    const run = async () => {
+      // Clerk refuses a new sign-in outright while this browser already holds
+      // one (`session_exists`) — reachable here because the public shell can
+      // reach the login modal without ever having loaded Clerk, so a session
+      // left over from an earlier sign-in survives unnoticed. Who this Google
+      // sign-in is *for* isn't known until it completes, so unlike the ticket
+      // flow there is no same-person check to make first — any existing
+      // session is ended.
+      if (shouldSignOutBeforeGoogle(Boolean(clerk.session))) {
+        // A callback suppresses Clerk's default post-sign-out navigation,
+        // which would otherwise race the redirect this function is about to
+        // start.
+        await clerk.signOut(() => undefined);
+      }
+
+      await clerk.client?.signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
         redirectUrl: '/sign-in/sso-callback',
         redirectUrlComplete,
-      })
-      .catch(() => {
-        // Leaving `started` set: a failed redirect that re-armed itself would
-        // loop. The button returns to its idle state and the person can retry.
-        started.current = false;
       });
-  }, [isLoaded, signIn, redirectUrlComplete]);
+    };
+
+    run().catch(() => {
+      // The redirect never happened, so this mount has nothing left to do.
+      // `onFailed` un-arms the parent back to its idle "Continue with Google"
+      // button — otherwise this component stays mounted showing "Please
+      // wait…" forever, unclickable, with no way to retry short of reloading.
+      onFailed();
+    });
+  }, [clerk, redirectUrlComplete, onFailed]);
 
   return <>{children({ disabled: true, onClick: () => {}, busy: true })}</>;
 }
@@ -65,6 +95,7 @@ function ClerkGoogleRedirect({
 export function ClerkGoogleButton(props: {
   redirectUrlComplete: string;
   children: (state: { disabled: boolean; onClick: () => void; busy: boolean }) => ReactNode;
+  onFailed: () => void;
 }) {
   const config = readClerkConfig();
   if (!config.configured) {

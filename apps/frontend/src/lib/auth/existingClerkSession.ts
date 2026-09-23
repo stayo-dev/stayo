@@ -53,3 +53,21 @@ export function readHandoffProfileId(responseData: unknown): string {
   const body = (responseData ?? {}) as Record<string, unknown>;
   return id(body.user_id);
 }
+
+/**
+ * Same root cause as `decideExistingSession`, for Google rather than a
+ * password ticket: Clerk refuses `signIn.create`/`authenticateWithRedirect`
+ * outright whenever this browser already holds a session (`session_exists`),
+ * and the public shell reaching the login modal without having loaded Clerk
+ * means a leftover session is common here too.
+ *
+ * There is no `expectedProfileId` to compare against — that is the point of
+ * redirecting to Google in the first place, the identity isn't known yet — so
+ * "reuse" is not an option; an existing session is always ended first. Once
+ * Google's own account chooser and consent step decide who this is,
+ * `redeemSignInTicket`'s identity check (or the backend's own linking rule)
+ * governs everything downstream of that.
+ */
+export function shouldSignOutBeforeGoogle(hasActiveSession: boolean): boolean {
+  return hasActiveSession;
+}

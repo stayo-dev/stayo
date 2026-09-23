@@ -8,6 +8,16 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## "Continue with Google" stuck forever on "Please wait…" (2026-09-23)
+
+**Symptom:** clicking Google while the browser already held a Clerk session (from an earlier sign-in as a different account, or a leftover session the public shell never saw) left the button disabled and busy permanently. No error, no retry, until a full page reload.
+
+**Cause — two bugs in one file, [[Decisions#ADR-176|ADR-176]]'s `ClerkGoogleButton.tsx`:**
+1. Same class as the [[Decisions#ADR-204|ADR-204]] ticket-login bug three days earlier ([[Changelog]], 2026-09-21): Clerk refuses `authenticateWithRedirect` outright while a session exists (`session_exists`), and nothing checked for one first.
+2. Independent of (1): `ClerkGoogleRedirect` rendered `busy: true` unconditionally for as long as it stayed mounted, and a failed redirect never unmounted it. A code comment claimed "the button returns to its idle state and the person can retry" — the render never implemented that, so every failure of this kind (or any other) looked identical: a silently broken button.
+
+**Fix:** before redirecting, an existing session is signed out unconditionally (no `expectedProfileId` is available for Google the way there is for a password ticket — identity isn't known until Google's own account chooser decides it). A new `onFailed` callback lets a failed attempt un-arm the button back to its clickable idle state instead of staying stuck. Related: [[Frontend]].
+
 ## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
 
 **Symptom:** `POST /api/auth/login` returned 200, then Clerk's `sign_ins` returned `400 session_exists` ("You're already signed in"), and the modal blamed the server. Every retry failed the same way, so that browser could not sign in until its Clerk session was cleared.

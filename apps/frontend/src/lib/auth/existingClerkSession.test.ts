@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decideExistingSession, readHandoffProfileId } from './existingClerkSession';
+import { decideExistingSession, readHandoffProfileId, shouldSignOutBeforeGoogle } from './existingClerkSession';
 
 describe('decideExistingSession (ADR-204)', () => {
   it('redeems the ticket as usual when the browser holds no Clerk session', () => {
@@ -52,6 +52,16 @@ describe('decideExistingSession (ADR-204)', () => {
         ).not.toBe('reuse');
       }
     }
+  });
+});
+
+describe('shouldSignOutBeforeGoogle', () => {
+  it('signs out first whenever a session already exists — identity is unknown until Google decides it', () => {
+    expect(shouldSignOutBeforeGoogle(true)).toBe(true);
+  });
+
+  it('does nothing extra when the browser holds no session', () => {
+    expect(shouldSignOutBeforeGoogle(false)).toBe(false);
   });
 });
 
