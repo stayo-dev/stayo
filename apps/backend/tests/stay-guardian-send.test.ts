@@ -80,6 +80,8 @@ describe("sendStayGuardianUpdate", () => {
       "Sunrise PG",
       "home",
       "Sunday, 27 September",
+      // {{6}} — the tenant again, because Meta refuses a repeated variable.
+      "Aarav",
     ]);
   });
 

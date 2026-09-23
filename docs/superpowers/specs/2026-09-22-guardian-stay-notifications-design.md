@@ -244,17 +244,22 @@ otherwise every run would re-evaluate the policy for every leave in the system t
 
 ## 8. The Meta templates
 
-Category **UTILITY**, language **en**, no buttons. Third person about the ward, per `voice.ts`.
+Category **UTILITY**, language **en**, no buttons, 12-hour validity period. Third person about the ward, per `voice.ts`.
 `{{2}}` is a **bare name, never a possessive** — `tenantDisplayName()` strips one if a caller passes
 it, exactly as `guardian-activation-template-contract.ts` documents.
 
 ### 8.1 `stayo_guardian_stay_departure` — on `LEAVE_STARTED`
 
+**As submitted to Meta on 2026-09-22** — this differs from the design below it, and Meta's copy is
+authoritative:
+
 ```
 Header:  Left the hostel
-Body:    Hello {{1}}, {{2}} has left {{3}} for {{4}} and is expected back on {{5}}.
-         We'll message you again when {{2}} returns.
-Footer:  Stayo · Reply STOP to pause stay updates
+Body:    Hello {{1}},
+         {{2}} has left {{3}} for {{4}} and is expected back on {{5}}.
+
+         _We'll message you again {{6}} when returns._
+Footer:  Stayo Property Management
 ```
 
 | # | Parameter | Example |
@@ -264,9 +269,17 @@ Footer:  Stayo · Reply STOP to pause stay updates
 | 3 | `hostel_name` | Sunrise PG |
 | 4 | `leave_type` | `home` (GOING_HOME) · `a trip` (VACATION) |
 | 5 | `return_date` | Sunday, 27 September |
+| 6 | `tenant_name_repeat` | Aarav — **the same value as `{{2}}`, always** |
 
-> Hello Ramesh, Aarav has left Sunrise PG for home and is expected back on Sunday, 27 September.
-> We'll message you again when Aarav returns.
+**Why six parameters and not five.** The design reused `{{2}}` for the second mention of the
+tenant. **Meta refuses a body that uses the same variable twice**, so the second mention became its
+own variable carrying an identical value. `buildStayDeparturePayload` computes the name once and
+emits it at both positions, so they cannot drift into naming two different people.
+
+⚠️ **The submitted wording of that last line is wrong and reads as broken English:** "We'll message
+you again Aarav when returns." The variable sits before the verb instead of after it. The correct
+line is `_We'll message you again when {{6}} returns._` — same six parameters, same order, so
+**fixing it changes no code beyond the stored `body` string**. Not yet corrected at Meta.
 
 `{{4}}` is the only reason both leave types share one template — the single preposition "for"
 carries `for home` and `for a trip` alike. Meta rejects a blank parameter, so the mapper falls back
@@ -278,7 +291,7 @@ to `a trip` for an unrecognised leave type rather than emitting an empty string.
 Header:  Back at the hostel
 Body:    Hello {{1}}, {{2}} has returned to {{3}} and checked in at {{4}}.
          Nothing is needed from you — this is just so you know.
-Footer:  Stayo · Reply STOP to pause stay updates
+Footer:  Stayo Property Management
 ```
 
 | # | Parameter | Example |
@@ -287,6 +300,10 @@ Footer:  Stayo · Reply STOP to pause stay updates
 | 2 | `tenant_name` | Aarav |
 | 3 | `hostel_name` | Sunrise PG |
 | 4 | `check_in_time` | 7:40 PM, 27 Sep (IST) |
+
+Submitted exactly as designed. Note it kept `Hello {{1}}, {{2}} has returned` — two variables with
+only a comma between them — and Meta accepted it, so adjacency was never the constraint. The
+repeated variable in 8.1 was.
 
 > Hello Ramesh, Aarav has returned to Sunrise PG and checked in at 7:40 PM, 27 Sep. Nothing is
 > needed from you — this is just so you know.
@@ -299,6 +316,13 @@ of the Stay module already works in IST for this reason.
 New entry in `VOCABULARY` (`commands.ts`). Deliberately **absent from `PUBLISHED_COMMANDS`** — the
 HELP menu is about rent, and advertising an opt-out there invites a parent to switch off the
 payment channel while trying to switch off location updates.
+
+⚠️ **Both templates went to Meta with the house footer `Stayo Property Management`, not the
+designed `Stayo · Reply STOP to pause stay updates`.** STOP still works, and is still scoped, but
+**no approved template tells a guardian it exists.** In practice a parent who wants these to stop
+will block the number instead of replying to it — and that degrades the same WhatsApp number that
+delivers rent reminders to paying customers. Restoring the disclosure means editing an approved
+template, which re-triggers Meta review (ADR-230), so it is an open item rather than a quick fix.
 
 `STOP` sets `stopped_at` and replies naming precisely what stopped and what did not:
 

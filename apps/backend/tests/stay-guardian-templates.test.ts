@@ -29,7 +29,7 @@ describe("stay guardian template contracts", () => {
   });
 
   it("carries the one footer both templates were approved with", () => {
-    expect(STAY_GUARDIAN_FOOTER).toBe("Stayo · Reply STOP to pause stay updates");
+    expect(STAY_GUARDIAN_FOOTER).toBe("Stayo Property Management");
   });
 });
 
@@ -72,8 +72,29 @@ describe("payload builders", () => {
       leaveType: "GOING_HOME",
       returnDate: "2026-09-27",
     });
-    expect(params).toEqual(["Ramesh", "Aarav", "Sunrise PG", "home", "Sunday, 27 September"]);
+    expect(params).toEqual([
+      "Ramesh",
+      "Aarav",
+      "Sunrise PG",
+      "home",
+      "Sunday, 27 September",
+      "Aarav",
+    ]);
     expect(params).toHaveLength(STAY_GUARDIAN_TEMPLATES.DEPARTURE.parameters.length);
+  });
+
+  it("repeats the tenant name as {{6}}, and the two can never disagree", () => {
+    // Meta refuses a body that uses {{2}} twice, so the second mention is its
+    // own variable. If these ever diverged the message would name two people.
+    const params = buildStayDeparturePayload({
+      guardianName: "Ramesh",
+      tenantName: "Aarav's",
+      hostelName: "Sunrise PG",
+      leaveType: "VACATION",
+      returnDate: "2026-09-27",
+    });
+    expect(params[5]).toBe(params[1]);
+    expect(params[5]).toBe("Aarav");
   });
 
   it("builds the four return parameters in the declared order", () => {

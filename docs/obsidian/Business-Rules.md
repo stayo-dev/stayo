@@ -1334,9 +1334,13 @@ returns stay on the owner's board, where a human reads them in context.
 refusals answer first; `isGuardianVerified` is a database round trip and there is no point paying
 for it to learn the tenant never consented.
 
-**STOP is scoped, and ungated.** It is resolved ahead of the guardian OTP challenge — answering
-"stop messaging me" with "prove who you are first" is indefensible — and it stops *stay updates
-only*, with the reply stating that rent reminders and receipts continue. It applies to
+**STOP is scoped, and ungated — but undisclosed.** It is resolved ahead of the guardian OTP
+challenge — answering "stop messaging me" with "prove who you are first" is indefensible — and it
+stops *stay updates only*, with the reply stating that rent reminders and receipts continue.
+**⚠️ As submitted on 2026-09-22 neither template mentions STOP:** both carry the house footer
+`Stayo Property Management` rather than the designed opt-out line. The vocabulary entry works and
+is tested; nobody is told it exists. Expect blocks instead of replies until a template edit restores
+the disclosure. It applies to
 `identity.guardianResidents`, never `tenantIds`: one phone can be both a resident and a sibling's
 guardian contact, and a resident's STOP must not switch off their own guardian's updates.
 

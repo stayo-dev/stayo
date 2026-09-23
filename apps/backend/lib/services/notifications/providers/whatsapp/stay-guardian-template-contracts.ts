@@ -46,10 +46,25 @@ export const STAY_GUARDIAN_TEMPLATES: Record<StayGuardianKind, StayGuardianTempl
   DEPARTURE: {
     name: "stayo_guardian_stay_departure",
     language: "en",
-    parameters: ["guardian_name", "tenant_name", "hostel_name", "leave_type", "return_date"],
+    /**
+     * Six, not five, and `{{6}}` is the tenant's name a second time.
+     *
+     * Meta refuses a body that uses the same variable twice, so the original
+     * `…when {{2}} returns` could not be submitted. The second mention is a
+     * separate variable carrying the identical value.
+     */
+    parameters: [
+      "guardian_name",
+      "tenant_name",
+      "hostel_name",
+      "leave_type",
+      "return_date",
+      "tenant_name_repeat",
+    ],
     body:
-      "Hello {{1}}, {{2}} has left {{3}} for {{4}} and is expected back on {{5}}. " +
-      "We'll message you again when {{2}} returns.",
+      "Hello {{1}},\n" +
+      "{{2}} has left {{3}} for {{4}} and is expected back on {{5}}.\n\n" +
+      "_We'll message you again {{6}} when returns._",
   },
   RETURN: {
     name: "stayo_guardian_stay_return",
@@ -62,14 +77,20 @@ export const STAY_GUARDIAN_TEMPLATES: Record<StayGuardianKind, StayGuardianTempl
 };
 
 /**
- * The footer both templates carry at Meta.
+ * The footer both templates carry at Meta, as submitted on 2026-09-22.
  *
- * STOP is disclosed here rather than in the body because it is an escape
- * hatch, not an instruction — and scoped to *stay* updates, because a parent
- * who wants less location reporting must not silently lose their rent
- * reminders and payment links. `commands.ts` enforces that scope.
+ * ⚠️ **STOP is no longer advertised anywhere a guardian can see it.** The
+ * design put "Reply STOP to pause stay updates" here; the templates went to
+ * Meta carrying the house footer instead, matching `RENT_REMINDER_FOOTER`.
+ *
+ * The command still works — `commands.ts` resolves STOP, and scopes it to stay
+ * updates alone — but nobody is told it exists, so in practice a guardian who
+ * wants these to end will block the number rather than reply to it, and that
+ * degrades the same WhatsApp number that delivers rent reminders. Disclosing
+ * it again means editing an approved template, which re-triggers Meta review
+ * (see ADR-230), so it is a deliberate open item rather than a quick fix.
  */
-export const STAY_GUARDIAN_FOOTER = "Stayo · Reply STOP to pause stay updates";
+export const STAY_GUARDIAN_FOOTER = "Stayo Property Management";
 
 const IST = "Asia/Kolkata";
 
@@ -129,12 +150,17 @@ export type StayDepartureInput = {
 };
 
 export function buildStayDeparturePayload(input: StayDepartureInput): string[] {
+  const tenant = tenantDisplayName(String(input.tenantName || ""));
   return [
     nonEmpty(input.guardianName, "there"),
-    tenantDisplayName(String(input.tenantName || "")),
+    tenant,
     nonEmpty(input.hostelName, "the hostel"),
     leaveTypeWord(input.leaveType),
     formatReturnDate(input.returnDate),
+    // `{{6}}` is `{{2}}` again — Meta refuses a repeated variable, so the
+    // second mention of the tenant is its own parameter. Same value, always:
+    // they must never disagree, which is why it is computed once above.
+    tenant,
   ];
 }
 
