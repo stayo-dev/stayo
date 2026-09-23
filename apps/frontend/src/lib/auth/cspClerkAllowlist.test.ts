@@ -19,6 +19,15 @@ const APP = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../..
 
 const CLERK_FRONTEND_API = 'https://clerk.yourstayo.com';
 const CLERK_BACKEND_API = 'https://api.clerk.com';
+/**
+ * Clerk's default bot-protection widget on sign-up (Clerk v5). Its script is
+ * `challenges.cloudflare.com/turnstile/v0/api.js?render=explicit` — blocked
+ * without this, the widget never renders, and Clerk answers `captcha_invalid`
+ * ("The CAPTCHA failed to load") rather than completing the sign-up. Found
+ * live (2026-09-23, [[Bugs]]) the first time any flow in this app actually
+ * reached a new-to-Clerk sign-up, since nothing exercised it before then.
+ */
+const TURNSTILE = 'https://challenges.cloudflare.com';
 
 function directives(): Record<string, string[]> {
   const config = JSON.parse(fs.readFileSync(path.join(APP, 'vercel.json'), 'utf8'));
@@ -57,6 +66,13 @@ describe('Clerk is allow-listed', () => {
   it('the SDK can reach both Clerk hosts from connect-src', () => {
     expect(csp['connect-src']).toContain(CLERK_FRONTEND_API);
     expect(csp['connect-src']).toContain(CLERK_BACKEND_API);
+  });
+
+  it('Turnstile (Clerk\'s CAPTCHA) can load its script and render its widget', () => {
+    expect(csp['script-src']).toContain(TURNSTILE);
+    expect(csp['script-src-elem']).toContain(TURNSTILE);
+    expect(csp['connect-src']).toContain(TURNSTILE);
+    expect(csp['frame-src']).toContain(TURNSTILE);
   });
 });
 
@@ -118,5 +134,13 @@ describe('nothing else was loosened', () => {
   it('does not admit Clerk anywhere it is not needed', () => {
     // Clerk uses a top-level redirect, not an iframe.
     expect(csp['frame-src']).not.toContain(CLERK_FRONTEND_API);
+  });
+
+  it('uses no Cloudflare wildcard for Turnstile', () => {
+    for (const [name, values] of Object.entries(csp)) {
+      for (const value of values) {
+        expect(value, `${name} contains a Cloudflare wildcard`).not.toMatch(/\*\.cloudflare\./);
+      }
+    }
   });
 });

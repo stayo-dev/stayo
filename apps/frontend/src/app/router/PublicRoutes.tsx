@@ -33,6 +33,7 @@ const AuthRouteShell = lazy(() => import('@/app/providers/AuthRouteShell').then(
 const ReceiptVerificationPage = lazy(() => import('@/app/pages/public/ReceiptVerificationPage').then((m) => ({ default: m.ReceiptVerificationPage })));
 const ClerkSignInPage = lazy(() => import('@/app/pages/auth/ClerkSignInPage').then((m) => ({ default: m.ClerkSignInPage })));
 const ClerkSignUpPage = lazy(() => import('@/app/pages/auth/ClerkSignUpPage').then((m) => ({ default: m.ClerkSignUpPage })));
+const ClerkOAuthCallbackPage = lazy(() => import('@/app/pages/auth/ClerkOAuthCallbackPage').then((m) => ({ default: m.ClerkOAuthCallbackPage })));
 
 /**
  * Public pages are full-screen takeovers with no persistent chrome, so there is
@@ -143,6 +144,15 @@ export function PublicRoutes() {
             paths, and without it they 404. These are additive: `/login` remains
             the live Supabase surface, and completing a Clerk sign-in does not
             yet authorise anything (see lib/auth/sessionAuthority.ts). */}
+        {/* Google's OAuth round trip (`ClerkGoogleButton.tsx`) lands here — a
+            dedicated `<AuthenticateWithRedirectCallback>` handler, not
+            `<SignIn>`'s own sub-route handling. See ClerkOAuthCallbackPage's
+            header comment for why: `<SignIn>` only auto-completes an attempt
+            it started itself, and this app's Google flow deliberately starts
+            it imperatively instead. React Router ranks this exact path above
+            the `/sign-in/*` splat below regardless of declaration order, but
+            it's kept adjacent for anyone reading this file top to bottom. */}
+        <Route path="/sign-in/sso-callback" element={<ClerkOAuthCallbackPage />} />
         <Route path="/sign-in/*" element={<ClerkSignInPage />} />
         <Route path="/sign-up/*" element={<ClerkSignUpPage />} />
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />

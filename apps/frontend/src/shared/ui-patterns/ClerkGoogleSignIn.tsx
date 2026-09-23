@@ -51,7 +51,13 @@ export function ClerkGoogleSignIn({
 
   return (
     <Suspense fallback={<>{children({ disabled: true, onClick: () => {}, busy: true })}</>}>
-      <ClerkGoogleButton redirectUrlComplete={redirectUrlComplete}>{children}</ClerkGoogleButton>
+      {/* `onFailed` un-arms back to the idle branch above: without it, a
+          redirect that never starts (existing session, network error, Clerk
+          down) leaves this mounted showing "Please wait…" forever — busy,
+          disabled, and with no way to retry short of reloading the page. */}
+      <ClerkGoogleButton redirectUrlComplete={redirectUrlComplete} onFailed={() => setArmed(false)}>
+        {children}
+      </ClerkGoogleButton>
     </Suspense>
   );
 }

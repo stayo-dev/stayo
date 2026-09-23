@@ -65,6 +65,47 @@ Migration 075's own header claims "application code is correct whether or not th
 **Not verified against a live database.** Production reads are blocked from the development machine, so the failure was reproduced with a mocked client that rejects any statement naming `g.tenant_id` (`tests/owner-export-missing-migration.test.ts` — 2 of its 3 cases fail against the old code). Nobody has opened the sheet in a browser since the fix.
 
 **See:** [[Decisions#ADR-229|ADR-229]] · [[Database]] · [[Backend]] · [[Changelog]] · [[APIs]]
+## A new Google sign-up ran entirely on Clerk's hosted Account Portal, not this app (2026-09-23)
+
+**Symptom:** after the CSP fix above, a brand-new Google sign-up's CAPTCHA rendered correctly — but on `accounts.yourstayo.com`, not `yourstayo.com`. Solving it (or not) was moot: the entire remaining flow ran as Clerk's own default, generic sign-in/up UI, and the final redirect landed on bare `https://yourstayo.com/`, not `/auth/callback` — `AuthCallbackPage`'s account-linking logic never ran, so nothing in this app's database or session ever reflected what Clerk did.
+
+**Cause:** `ClerkGoogleButton.tsx` passed relative paths to `authenticateWithRedirect` — `redirectUrl: '/sign-in/sso-callback'`, `redirectUrlComplete` (`/auth/callback` or `/lead-signup/callback` depending on the caller). Google doesn't redirect back into the browser tab that started the flow; it redirects to **Clerk's own server**, which is what resolves these URLs into the final destination. A relative path has no origin for a server-side resolver to anchor to, so Clerk used its own default — this instance's Account Portal — and everything downstream ran there instead, using the Account Portal's own defaults rather than anything this app configured.
+
+**Fix:** both URLs are resolved to fully-qualified absolute URLs (`lib/auth/absoluteRedirectUrl.ts`) before being handed to Clerk, removing the ambiguity. **Not yet verified against a real completed sign-up** — the Account Portal detour itself was confirmed live; whether this fix actually keeps the flow on `yourstayo.com` end to end has not been. Related: [[Frontend]].
+
+## Google's OAuth trip completed but never actually signed anyone in (2026-09-23)
+
+**Symptom:** after the two hook-level fixes above shipped, "Continue with Google" finally reached Google and returned — confirmed live: real navigation to `accounts.google.com`, real account chooser, real redirect back to `yourstayo.com`. It then rendered Clerk's generic, empty "Sign in to Stayo" form (email/password + Google button again) instead of completing and landing the person in the app.
+
+**Cause:** `ClerkGoogleButton.tsx` starts Google imperatively (`clerk.client.signIn.authenticateWithRedirect()`), by design — the button needed to be this app's own, not Clerk's hosted `<SignIn>` UI (ADR-176). Its `redirectUrl: '/sign-in/sso-callback'` was served by `ClerkSignInPage`'s `<SignIn routing="path">`, whose sub-route auto-completion only resumes an attempt `<SignIn>` itself started — nothing here ever used `<SignIn>` to begin the flow, so it had nothing to resume and just showed its idle entry screen. A second, independent problem sat underneath even if that had somehow worked: `<SignIn fallbackRedirectUrl="/">` would have sent everyone to the home page, bypassing `AuthCallbackPage`'s rejection handling for an unlinked or disabled account.
+
+**Fix:** a dedicated `/sign-in/sso-callback` route renders `<AuthenticateWithRedirectCallback>` — Clerk's own component for completing an imperatively-started attempt, which reads the per-call `redirectUrlComplete` back off the attempt rather than using a single hardcoded fallback. Related: [[Frontend]], [[APIs]].
+
+## Google sign-up blocked by our own CSP silently blocking Clerk's CAPTCHA (2026-09-23)
+
+**Symptom:** after the routing fix above, a Google account new to Clerk reached `/sign-in/sso-callback`'s "Finishing sign-in…" screen and stalled there for 28+ seconds before Clerk answered a `sign_ups` request with `400 captcha_invalid` — "The CAPTCHA failed to load." Network tab showed several blocked `api.js?render=explicit` requests and a CSP violation.
+
+**Cause:** Clerk v5's default bot-protection widget for new sign-ups is Cloudflare Turnstile, served from `challenges.cloudflare.com`. This app's CSP (`apps/frontend/vercel.json`, the only place it's defined) never allowlisted that origin in any directive — because nothing had ever driven a real user through to a new Clerk sign-up before this point in testing. The browser silently blocked Turnstile's script; with no widget to solve, Clerk's server-side CAPTCHA check had nothing valid to verify and refused the sign-up.
+
+**Fix:** `challenges.cloudflare.com` added to `script-src`, `script-src-elem`, `connect-src`, and `frame-src`, matching the same per-provider pattern already used for Clerk, Google and Razorpay in this file (each addition documented and guarded by a no-wildcard test, per the CSP's own bug history — see the two `2026-09-09` CSP entries below). **Not confirmed against the literal blocked-domain string** — inferred from Clerk's documented default provider and the script's URL shape; needs a live retest. Related: [[Frontend]].
+
+## The Google-sign-in fix itself shipped a silent hook-reactivity bug (2026-09-23)
+
+**Symptom:** after the `session_exists` fix ([[Changelog]], 2026-09-23) deployed, "Continue with Google" still stuck on "Please wait…" — but differently this time: zero network requests to Clerk for sign-in, zero console errors, across two separate live tests (one running ~5 minutes with nothing happening).
+
+**Cause:** the fix itself. `ClerkGoogleButton.tsx` moved from `useSignIn()` to `useClerk()` to read a fresh Clerk instance for calls made after an awaited `signOut()` (avoiding a real staleness risk). But `useClerk()` is not reactive the way `useSignIn()` is — its `.loaded` property is mutated in place on Clerk's singleton, and reading it inside a `useEffect` only reflects the value at the moment the effect runs. Since Clerk's SDK loads asynchronously (confirmed via Network-tab evidence: `environment`/`client` resolve *after* this component mounts), the effect's first run saw `loaded: false` and returned — and because the `clerk` object's identity never changes, nothing ever re-triggered the effect once loading actually finished. Compounded by `clerk.client?.signIn...` — an optional chain that would have silently no-op'd rather than failed loudly even if that guess had been wrong.
+
+**Fix:** kept both hooks for what each gets right — `useSignIn()`'s reactive `isLoaded` for the effect's gate, `useClerk()`'s live instance for the actual calls. Replaced the optional chain with an explicit throw, and added logging so a failure like this is never silent again. **Not covered by an automated test** — a React hook-timing bug is outside what this repo's node-only, no-component-rendering test suite can exercise (see `CLAUDE.md`); verification requires a live retest. Related: [[Frontend]].
+
+## "Continue with Google" stuck forever on "Please wait…" (2026-09-23)
+
+**Symptom:** clicking Google while the browser already held a Clerk session (from an earlier sign-in as a different account, or a leftover session the public shell never saw) left the button disabled and busy permanently. No error, no retry, until a full page reload.
+
+**Cause — two bugs in one file, [[Decisions#ADR-176|ADR-176]]'s `ClerkGoogleButton.tsx`:**
+1. Same class as the [[Decisions#ADR-204|ADR-204]] ticket-login bug three days earlier ([[Changelog]], 2026-09-21): Clerk refuses `authenticateWithRedirect` outright while a session exists (`session_exists`), and nothing checked for one first.
+2. Independent of (1): `ClerkGoogleRedirect` rendered `busy: true` unconditionally for as long as it stayed mounted, and a failed redirect never unmounted it. A code comment claimed "the button returns to its idle state and the person can retry" — the render never implemented that, so every failure of this kind (or any other) looked identical: a silently broken button.
+
+**Fix:** before redirecting, an existing session is signed out unconditionally (no `expectedProfileId` is available for Google the way there is for a password ticket — identity isn't known until Google's own account chooser decides it). A new `onFailed` callback lets a failed attempt un-arm the button back to its clickable idle state instead of staying stuck. Related: [[Frontend]].
 
 ## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
 
