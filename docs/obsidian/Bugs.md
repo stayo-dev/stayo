@@ -28,6 +28,22 @@ The three rows agreed because the tenants genuinely agree: verified against prod
 
 **See:** [[Frontend]] · [[APIs]] · [[Changelog]]
 
+## UPI ID validation guarded a path the settings screen never takes (2026-09-23)
+
+**Found while auditing what was left to build**, not by a failure — which is the point: it would not have failed loudly.
+
+`upi_id` was validated in `hostelPolicyService.validateHostelPolicyForWrite`, which is reached by `PATCH /hostels/:id/preferences`. But `MoreHostelIdentityPage` — the screen that actually has the UPI ID box — saves through `PATCH /hostels/:id`, whose handler spreads `...body` into `propertyService.updateHostel`, where `upi_id` was assigned with no check at all.
+
+So the validation existed, had tests, passed them, and let every real value through. That is the same shape as the five Money filters that never filtered ([[Bugs]], 2026-09-21): a control that looks applied and is not.
+
+**Why it mattered more than it looks.** While `upi_id` was decorative this was harmless. With the gateway disconnected ([[Decisions#ADR-234|ADR-234]]) it is the entire rent-collection mechanism, and a typo'd VPA becomes a QR that fails *inside the tenant's UPI app* — where nobody on Stayo's side can observe it, and where the tenant concludes Stayo lost their rent.
+
+**Fix.** `propertyService.updateHostel` trims and validates, sharing `isValidVpa` with the QR and intent builders so a value accepted on save cannot be rejected at payment time. Both paths are now covered, with a test per path.
+
+**Lesson.** Adding a validator is not the same as covering a field. The question to ask is not "is this validated?" but "which endpoint does the screen actually call?" — and answering it requires following the frontend's mutation to its route, not reading the service that looks responsible.
+
+**See:** [[Decisions#ADR-234|ADR-234]] · [[Business-Rules]] · [[Changelog]]
+
 ## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
 
 **Symptom.** Reported by the owner from Money → Collections and Money → Overview. The export sheet opened, showed the period chips and the scope line, and its status line stayed on **"Checking…"** indefinitely. Download produced nothing. The Expenses export was fine — which made it look like a frontend bug in the two sheets that were broken.
