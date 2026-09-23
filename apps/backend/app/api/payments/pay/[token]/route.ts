@@ -6,10 +6,15 @@ import { prisma } from "@/lib/db";
 import { paymentService } from "@/src/services/payments/payment-service";
 import { financialPaymentFacade } from "@/src/services/payments/financial-payment-facade";
 import { financialService } from "@/src/services/payments/financial-service";
-import { getProviderContext } from "@/src/services/payments/merchant-context";
+import { imagekit } from "@/lib/imagekit";
+import { renderUpiQrSvg, upiAppLinks } from "@/src/services/payments/upi/upi-qr";
+import { validateClaimSubmission } from "@/src/services/payments/upi/tenant-payment-claim-rules";
 import { getLogger } from "@/lib/logger";
 import { frontendUrl } from "@/lib/config/domains";
 import { DOG_CONCERNED, DOG_HAPPY, stayoMark } from "./brand";
+import {
+  renderUpiPanel, renderClaimForm, upiClientScript, UPI_STYLES,
+} from "./upi-section";
 
 const logger = getLogger("api.payments.pay");
 
@@ -48,6 +53,10 @@ function renderPage(content: {
   breakdown?: { label: string; value: number }[];
   openedFromWhatsApp?: boolean;
   hostelAddress?: string;
+  /** Inline UPI QR SVG, or null when the hostel has set no UPI ID. */
+  upiQrSvg?: string | null;
+  upiUri?: string | null;
+  upiAppLinks?: { label: string; href: string }[];
   logoUrl?: string;
   monthlyRent?: number;
 }): string {
@@ -68,6 +77,9 @@ function renderPage(content: {
     hostelAddress = "",
     logoUrl = "",
     monthlyRent = 0,
+    upiQrSvg = null,
+    upiUri = null,
+    upiAppLinks = [],
   } = content;
 
   const statusBlock = (() => {
@@ -89,10 +101,14 @@ function renderPage(content: {
             </div>
           </div>
 
-          <button type="button" id="pay-btn" class="pay-btn">
-            <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" style="margin-right: 4px;"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-            Pay ${formatCurrency(amount || 0)} securely
-          </button>
+          ${renderUpiPanel({
+            qrSvg: upiQrSvg,
+            uri: upiUri,
+            appLinks: upiAppLinks,
+            hostelName,
+            supportPhone,
+          })}
+          ${renderClaimForm(hostelName)}
           <div id="error-message" class="error-msg" style="display: none;"></div>
         `;
       case "PAID":
@@ -123,289 +139,11 @@ function renderPage(content: {
     }
   })();
 
-  const razorpayScript = status === "DUE" ? `<script src="https://checkout.razorpay.com/v1/checkout.js"></script>` : "";
 
-  const clientScript = status === "DUE" ? `
-    <script>
-      (function() {
-        window.consoleLogs = window.consoleLogs || [];
-        const originalLog = console.log;
-        console.log = function(...args) {
-          window.consoleLogs.push(args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-          originalLog.apply(console, args);
-        };
-        const originalError = console.error;
-        console.error = function(...args) {
-          window.consoleLogs.push('ERROR: ' + args.map(a => typeof a === 'object' ? JSON.stringify(a) : String(a)).join(' '));
-          originalError.apply(console, args);
-        };
-        window.addEventListener('error', function(e) {
-          window.consoleLogs.push('UNCAUGHT ERROR: ' + e.message + ' at ' + e.filename + ':' + e.lineno);
-        });
-
-        const payBtn = document.getElementById('pay-btn');
-        // The idle label, captured once. Restoring it with innerHTML keeps the
-        // padlock and the amount; the old code assigned innerText, which threw
-        // the icon away the first time the button was ever re-enabled.
-        const payBtnIdleLabel = payBtn ? payBtn.innerHTML : '';
-        const errorMsg = document.getElementById('error-message');
-        const logoUrl = "${logoUrl}";
-
-        const amountInput = document.getElementById('amount-input');
-        const breakdownContent = document.getElementById('breakdown-content');
-        const monthlyRent = ${Number(monthlyRent || 0)};
-        let previewDebounceTimer = null;
-
-        function renderBreakdown(plan) {
-          if (!breakdownContent) return;
-          if (!plan.payment_accepted) {
-            breakdownContent.innerHTML = '<p class="breakdown-error">' + escapeHtml(plan.rejection_reason || 'This amount cannot be accepted.') + '</p>';
-            return;
-          }
-          const rows = plan.allocations
-            .filter(function(a) { return a.allocated > 0; })
-            .map(function(a) {
-              return '<div class="breakdown-row"><span>' + escapeHtml(a.label) + '</span><span>₹' + Number(a.allocated).toLocaleString('en-IN') + '</span></div>';
-            })
-            .join('');
-          // ADR-036: no advance/future-credit row — every rupee lands on an
-          // installment, so the breakdown is exactly the allocations.
-          breakdownContent.innerHTML = rows || '<p class="breakdown-loading">Enter an amount above.</p>';
-        }
-
-        async function fetchPreview(amount) {
-          if (!amount || amount <= 0) {
-            if (breakdownContent) breakdownContent.innerHTML = '<p class="breakdown-loading">Enter an amount above.</p>';
-            return;
-          }
-          try {
-            const res = await fetch(window.location.pathname, {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ action: 'preview', amount: amount })
-            });
-            const data = await res.json();
-            if (data.success) renderBreakdown(data.plan);
-          } catch (e) {
-            console.error('preview fetch failed', e);
-          }
-        }
-
-        if (amountInput) {
-          fetchPreview(Number(amountInput.value));
-          amountInput.addEventListener('input', function() {
-            clearTimeout(previewDebounceTimer);
-            previewDebounceTimer = setTimeout(function() {
-              fetchPreview(Number(amountInput.value));
-            }, 400);
-          });
-        }
-
-        if (payBtn) {
-          payBtn.addEventListener('click', async () => {
-            payBtn.disabled = true;
-            payBtn.innerText = 'Initializing...';
-            if (errorMsg) errorMsg.style.display = 'none';
-
-            const enteredAmount = Number(amountInput ? amountInput.value : 0);
-            if (!enteredAmount || enteredAmount <= 0) {
-              payBtn.disabled = false;
-              payBtn.innerHTML = payBtnIdleLabel;
-              if (errorMsg) { errorMsg.textContent = 'Please enter an amount before proceeding.'; errorMsg.style.display = 'block'; }
-              return;
-            }
-            if (monthlyRent > 0 && enteredAmount > monthlyRent * 3) {
-              const confirmed = window.confirm('That is a large amount (₹' + enteredAmount.toLocaleString('en-IN') + '). Are you sure you want to proceed?');
-              if (!confirmed) {
-                payBtn.disabled = false;
-                payBtn.innerHTML = payBtnIdleLabel;
-                return;
-              }
-            }
-
-            try {
-              const response = await fetch(window.location.pathname, {
-                method: 'POST',
-                headers: {
-                  'Content-Type': 'application/json'
-                },
-                body: JSON.stringify({ action: 'initiate', amount: enteredAmount })
-              });
-
-              const data = await response.json();
-              console.log('[Payment Link Client Debug] Received response:', data);
-              if (!data.success) {
-                throw new Error(data.error?.message || data.error || 'Failed to initiate payment');
-              }
-
-              const attempt = data.attempt;
-              console.log('[Payment Link Client Debug] data.attempt:', attempt);
-              if (attempt) {
-                console.log('[Payment Link Client Debug] data.attempt.raw_response:', attempt.raw_response);
-              }
-              const raw_response = attempt ? attempt.raw_response : null;
-              const raw = typeof raw_response === "string"
-                  ? JSON.parse(raw_response)
-                  : raw_response || {};
-
-              console.log('[Payment Link Client Debug] parsed raw_response (raw):', raw);
-              console.log('[Payment Link Client Debug] raw.key_id:', raw.key_id);
-              console.log('[Payment Link Client Debug] raw.amount:', raw.amount);
-              console.log('[Payment Link Client Debug] raw.currency:', raw.currency);
-              console.log('[Payment Link Client Debug] attempt.gateway_txn_id:', attempt ? attempt.gateway_txn_id : undefined);
-
-              const options = {
-                key: raw.key_id,
-                amount: raw.amount,
-                currency: raw.currency || 'INR',
-                name: '${hostelName.replace(/'/g, "\\'")}',
-                description: '${dueMonth} Rent Payment',
-                order_id: attempt ? attempt.gateway_txn_id : undefined,
-                image: logoUrl || '${frontendUrl("/hostel_icon.png")}',
-                prefill: {
-                  name: raw.notes?.tenant_name || '',
-                  email: raw.notes?.tenant_email || '',
-                  contact: raw.notes?.tenant_phone || '',
-                },
-                theme: {
-                  color: '#F97316',
-                },
-                handler: async (rzpResponse) => {
-                  payBtn.innerText = 'Verifying...';
-                  try {
-                    const verifyRes = await fetch(window.location.pathname, {
-                      method: 'POST',
-                      headers: {
-                        'Content-Type': 'application/json'
-                      },
-                      body: JSON.stringify({
-                        action: 'verify',
-                        attempt_id: attempt.id,
-                        razorpay_payment_id: rzpResponse.razorpay_payment_id,
-                        razorpay_order_id: rzpResponse.razorpay_order_id,
-                        razorpay_signature: rzpResponse.razorpay_signature
-                      })
-                    });                     const verifyData = await verifyRes.json();
-                    if (verifyData.success && (verifyData.status === 'SUCCESS' || verifyData.attempt?.status === 'SUCCESS')) {
-                      document.querySelector('.container').innerHTML = \`
-                        <div class="header-section">
-                          <div class="hostel-logo-container">
-                            \${logoUrl ? \`<img class="hostel-logo" src="\${logoUrl}" alt="Hostel Logo"/>\` : \`<span class="hostel-logo-fallback">🏠</span>\`}
-                          </div>
-                          <p class="hostel-name">\${escapeHtml("${hostelName}")}</p>
-                          <div class="verified-badge">
-                            <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2C6.5 2 2 6.5 2 12s4.5 10 10 10 10-4.5 10-10S17.5 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
-                            <span>Verified Hostel</span>
-                          </div>
-                        </div>
-                        
-                        <div class="status-card paid">
-                          <div class="status-icon">
-                            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#16a34a" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><polyline points="22 4 12 14.01 9 11.01"/></svg>
-                          </div>
-                          <p class="status-text">Payment Successful</p>
-                          <p class="status-sub">Your payment has been successfully recorded. Thank you!</p>
-                        </div>
-                        \${"${supportPhone}" ? \`<p class="support">Need help? Call <a href="tel:${supportPhone}">${supportPhone}</a></p>\` : ""}
-                        \${"${hostelAddress}" ? \`
-                        <div class="footer-section">
-                          <p class="footer-hostel-info">\${escapeHtml("${hostelName}")}</p>
-                          <p>\${escapeHtml("${hostelAddress}")}</p>
-                        </div>
-                        \` : ""}
-                      \`;
-                    } else if (verifyData.success && (verifyData.status === 'PENDING_VERIFICATION' || verifyData.attempt?.status === 'PENDING_VERIFICATION')) {
-                      document.querySelector('.container').innerHTML = \`
-                        <div class="header-section">
-                          <div class="hostel-logo-container">
-                            \${logoUrl ? \`<img class="hostel-logo" src="\${logoUrl}" alt="Hostel Logo"/>\` : \`<span class="hostel-logo-fallback">🏠</span>\`}
-                          </div>
-                          <p class="hostel-name">\${escapeHtml("${hostelName}")}</p>
-                        </div>
-                        
-                        <div class="status-card pending">
-                          <div class="status-icon">
-                            <svg viewBox="0 0 24 24" width="32" height="32" fill="none" stroke="#F97316" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
-                          </div>
-                          <p class="status-text">Payment Received</p>
-                          <p class="status-sub">We're confirming your payment. This usually takes a few seconds. Feel free to close this page.</p>
-                        </div>
-                        \${"${supportPhone}" ? \`<p class="support">Need help? Call <a href="tel:${supportPhone}">${supportPhone}</a></p>\` : ""}
-                        \${"${hostelAddress}" ? \`
-                        <div class="footer-section">
-                          <p class="footer-hostel-info">\${escapeHtml("${hostelName}")}</p>
-                          <p>\${escapeHtml("${hostelAddress}")}</p>
-                        </div>
-                        \` : ""}
-                      \`;
-                    } else {
-                      throw new Error(verifyData.error?.message || verifyData.error || 'Payment verification pending or failed');
-                    }
-                  } catch (err) {
-                    if (errorMsg) {
-                      errorMsg.innerText = err.message || 'Payment verification failed. Please contact support.';
-                      errorMsg.style.display = 'block';
-                    }
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = payBtnIdleLabel;
-                  }
-                },
-                modal: {
-                  ondismiss: () => {
-                    payBtn.disabled = false;
-                    payBtn.innerHTML = payBtnIdleLabel;
-                  }
-                }
-              };
- 
-              console.log('[Payment Link Client Debug] Razorpay initialization options:');
-              console.table(options);
-              console.log('[Payment Link Client Debug] window.Razorpay definition:', window.Razorpay);
-
-              // DIAGNOSTIC BEACON: Send checkout options to server so we can see them in Vercel logs.
-              // Fire-and-forget — does not block checkout.
-              try {
-                fetch(window.location.pathname, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({
-                    action: 'client_diagnostic',
-                    diagnostic: {
-                      key_defined: options.key !== undefined && options.key !== null,
-                      key_type: typeof options.key,
-                      key_length: options.key ? options.key.length : 0,
-                      key_prefix: options.key ? options.key.substring(0, 8) : '__UNDEFINED__',
-                      order_id_defined: options.order_id !== undefined && options.order_id !== null,
-                      order_id: options.order_id || '__UNDEFINED__',
-                      amount: options.amount,
-                      currency: options.currency,
-                      raw_response_type: typeof data.attempt?.raw_response,
-                      raw_response_keys: data.attempt?.raw_response ? Object.keys(data.attempt.raw_response) : [],
-                      window_razorpay_defined: typeof window.Razorpay !== 'undefined',
-                    }
-                  })
-                }).catch(function() {});
-              } catch(e) {}
-
-              const rzp = new window.Razorpay(options);
-              rzp.open();
-            } catch (err) {
-              if (errorMsg) {
-                errorMsg.innerText = err.message || 'Failed to initialize checkout';
-                errorMsg.style.display = 'block';
-              }
-              payBtn.disabled = false;
-              payBtn.innerHTML = payBtnIdleLabel;
-            }
-          });
-        }
-
-        function escapeHtml(str) {
-          return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
-        }
-      })();
-    </script>
-  ` : "";
+  // The UPI flow: keep the QR in step with the amount box, and submit the
+  // tenant's "I've already paid" claim. Lives in ./upi-section so this file
+  // stays a page rather than an application.
+  const clientScript = status === "DUE" ? upiClientScript(token || "") : "";
 
   const whatsappContinuityHtml = (openedFromWhatsApp && status === "DUE") ? `
     <div class="wa-banner">
@@ -428,7 +166,6 @@ function renderPage(content: {
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Manrope:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  ${razorpayScript}
   <style>
     /*
      * Stayo brand tokens, mirroring apps/frontend/src/styles/tokens/marketing.css.
@@ -695,6 +432,7 @@ function renderPage(content: {
       .container { animation: none; }
       .pay-btn { transition: none; }
     }
+  ${UPI_STYLES}
   </style>
 </head>
 <body>
@@ -739,7 +477,7 @@ function renderPage(content: {
       <div class="trust-container">
         <div class="trust-item">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10zm-1-6l-3-3 1.41-1.41L11 13.17l4.59-4.59L17 10l-6 6z"/></svg>
-          <span>Secure Razorpay</span>
+          <span>Paid direct to your hostel</span>
         </div>
         <div class="trust-item">
           <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg>
@@ -785,6 +523,19 @@ function renderPage(content: {
  * Safely parses and sanitizes a raw token from the URL parameter.
  * Logs if the token was malformed but successfully recovered, or if it is unrecoverable.
  */
+/**
+ * The note the tenant sees in their UPI app, e.g. "Rent Sept 2026".
+ *
+ * It is also what shows up in the owner's bank statement line, which is the
+ * only thing tying a UPI credit back to a month once the gateway is gone.
+ */
+function obligationNote(linkToken: any): string {
+  const month = linkToken?.rent_obligations?.month
+    ?? linkToken?.rent_obligations?.due_date
+    ?? null;
+  return month ? `Rent ${formatMonth(month)}` : "Rent";
+}
+
 function sanitizeAndValidateToken(rawToken: string, requestType: "GET" | "POST"): { token: string | null; errorResponse?: NextResponse } {
   let token = rawToken;
   let decoded: string | null = null;
@@ -904,6 +655,7 @@ export async function GET(
             state: true,
             pincode: true,
             logo_url: true,
+            upi_id: true,
           },
         },
       },
@@ -1009,6 +761,36 @@ export async function GET(
       return d.toLocaleDateString("en-IN", { day: "2-digit", month: "short", year: "numeric", timeZone: "Asia/Kolkata" });
     };
 
+    /**
+     * The UPI QR for the amount we are asking for.
+     *
+     * Built here rather than in the browser so the page stays framework-free
+     * and works with JavaScript disabled or blocked — which in-app browsers
+     * sometimes do. A hostel with no UPI ID yields nulls, and the panel says
+     * so rather than showing a QR that would fail inside the tenant's app.
+     */
+    let upiQrSvg: string | null = null;
+    let upiUri: string | null = null;
+    let upiAppLinkList: { label: string; href: string }[] = [];
+    const hostelUpiId = (linkToken.hostels as any)?.upi_id ?? null;
+    if (hostelUpiId && defaultAmount > 0) {
+      try {
+        const built = await renderUpiQrSvg({
+          vpa: hostelUpiId,
+          payeeName: hostelName,
+          amountPaise: Math.round(defaultAmount * 100),
+          note: obligationNote(linkToken),
+        });
+        upiQrSvg = built.svg;
+        upiUri = built.uri;
+        upiAppLinkList = upiAppLinks(built.uri);
+      } catch (err: any) {
+        // A bad VPA must not take the page down — the tenant can still record
+        // a payment they made directly.
+        logger.error("payment_link.qr_build_failed", { token, error: String(err?.message || err) });
+      }
+    }
+
     // 4. Render summary page with the editable amount + Proceed button
     return new NextResponse(
       renderPage({
@@ -1026,6 +808,9 @@ export async function GET(
         hostelAddress,
         logoUrl,
         monthlyRent: Number(linkToken.tenants.monthly_rent || 0),
+        upiQrSvg,
+        upiUri,
+        upiAppLinks: upiAppLinkList,
       }),
       { status: 200, headers: { "Content-Type": "text/html; charset=utf-8" } }
     );
@@ -1069,7 +854,7 @@ export async function POST(
       where: { token },
       include: {
         rent_obligations: true,
-        hostels: { select: { name: true, phone: true } },
+        hostels: { select: { name: true, phone: true, upi_id: true } },
         tenants: { include: { profiles: { select: { name: true } } } },
       },
     });
@@ -1116,146 +901,116 @@ export async function POST(
       return NextResponse.json({ success: true, plan });
     }
 
-    if (body.action === "verify") {
-      logger.info("payment_link.verify.initiate", {
-        token,
-        attempt_id: body.attempt_id,
-        razorpay_payment_id: body.razorpay_payment_id,
-        razorpay_order_id: body.razorpay_order_id,
-      });
-
-      // Verification uses owner role context since this is a public token lookup
-      const verifyResult = await paymentService.verifyPaymentStatus({
-        userId: linkToken.owner_id,
-        role: "OWNER",
-        attemptId: body.attempt_id,
-        razorpay_payment_id: body.razorpay_payment_id,
-        razorpay_order_id: body.razorpay_order_id,
-        razorpay_signature: body.razorpay_signature,
-      });
-
-      return NextResponse.json({ success: true, ...verifyResult });
+    /**
+     * The QR encodes the amount, so it has to follow the amount box. A tenant
+     * who edits the amount and then scans a QR carrying the old one pays the
+     * wrong sum — and with no gateway there is no callback to catch it.
+     */
+    if (body.action === "qr") {
+      const upiId = (linkToken.hostels as any)?.upi_id ?? null;
+      if (!upiId) {
+        return NextResponse.json(
+          { success: false, error: { message: "This hostel has not set a UPI ID." } },
+          { status: 409 },
+        );
+      }
+      const rupees = Number(body.amount);
+      if (!Number.isFinite(rupees) || rupees <= 0) {
+        return NextResponse.json(
+          { success: false, error: { message: "Enter a valid amount." } },
+          { status: 400 },
+        );
+      }
+      try {
+        const { svg, uri } = await renderUpiQrSvg({
+          vpa: upiId,
+          payeeName: linkToken.hostels?.name ?? "Hostel",
+          amountPaise: Math.round(rupees * 100),
+          note: obligationNote(linkToken),
+        });
+        return NextResponse.json({ success: true, svg, uri, appLinks: upiAppLinks(uri) });
+      } catch (err: any) {
+        // A malformed VPA must surface here rather than as a QR that fails
+        // silently inside the tenant's app.
+        logger.error("payment_link.qr_failed", { token, error: String(err?.message || err) });
+        return NextResponse.json(
+          { success: false, error: { message: "Could not build the QR code." } },
+          { status: 422 },
+        );
+      }
     }
 
-    // Default: initiate payment
-    const amount = Number(body.amount);
-    if (!Number.isFinite(amount) || amount <= 0) {
-      return NextResponse.json({ success: false, error: "Enter a valid amount before proceeding." }, { status: 400 });
-    }
-
-    logger.info("payment_link.checkout.initiate", {
-      token,
-      amount,
-      obligation_id: linkToken.obligation_id,
-      tenant_id: linkToken.tenant_id,
-      hostel_id: linkToken.hostel_id,
-    });
-
-    const rawAttempt = await paymentService.createAmountPaymentIntent(
-      amount,
-      linkToken.owner_id,
-      linkToken.tenant_id,
-      linkToken.hostel_id,
-      { bypassCollectionPolicy: true, source: "PAYMENT_LINK" }
-    );
-
-    const attempt = (rawAttempt as any).isReused === true
-      ? (rawAttempt as any).attempt
-      : rawAttempt;
-
-    if (attempt) {
-      if (!attempt.raw_response || typeof attempt.raw_response !== "object") {
-        attempt.raw_response = {};
+    /**
+     * "I've already paid" — a claim, which is EVIDENCE and never money.
+     *
+     * It does not touch the obligation. The owner confirms it, and only then
+     * is rent recorded, through the shared settlement path (ADR-234).
+     */
+    if (body.action === "claim") {
+      const amountPaise = Math.round(Number(body.amount) * 100);
+      const check = validateClaimSubmission({ utr: body.utr, claimedAmountPaise: amountPaise });
+      if (check.error) {
+        return NextResponse.json({ success: false, error: { message: check.error } }, { status: 400 });
       }
 
-      // DIAGNOSTIC: Capture raw_response state BEFORE key_id injection
-      const preInjectKeyId = attempt.raw_response.key_id;
-      const preInjectKeys = Object.keys(attempt.raw_response);
+      // Supporting evidence only, and never allowed to fail the claim: losing
+      // a tenant's payment record because an image upload hiccuped would be
+      // the worst possible trade.
+      let proofUrl: string | null = null;
+      if (typeof body.proof === "string" && body.proof.startsWith("data:image/")) {
+        try {
+          // The SDK takes bare base64, not a data URL — same shape
+          // `saveOwnerPhoto` uses.
+          const base64 = body.proof.slice(body.proof.indexOf(",") + 1);
+          const uploaded = await imagekit.files.upload({
+            file: base64,
+            fileName: `payment-proof-${token}-${Date.now()}.jpg`,
+            folder: `payment-proofs/${linkToken.hostel_id}`,
+            useUniqueFileName: true,
+            tags: ["PAYMENT_PROOF", linkToken.tenant_id],
+          });
+          proofUrl = uploaded?.url ?? null;
+        } catch (err: any) {
+          logger.warn("payment_link.proof_upload_failed", { token, error: String(err?.message || err) });
+        }
+      }
 
       try {
-        const providerContext = await getProviderContext({
-          paymentDomain: "RENT_COLLECTION",
-          flowType: "RENT",
-          operationalOwnerId: linkToken.owner_id,
-          hostelId: linkToken.hostel_id,
-          scopeType: "HOSTEL",
+        const claim = await prisma.tenant_payment_claims.create({
+          data: {
+            token_id: token,
+            obligation_id: linkToken.obligation_id ?? null,
+            tenant_id: linkToken.tenant_id,
+            hostel_id: linkToken.hostel_id,
+            owner_id: linkToken.owner_id,
+            claimed_amount: BigInt(amountPaise),
+            utr: check.utr,
+            proof_url: proofUrl,
+            state: "PENDING",
+          },
+          select: { id: true },
         });
-        attempt.raw_response.key_id = providerContext.config.key_id;
-      } catch (e) {
-        logger.warn("payment_link.inject_key_failed", { attemptId: attempt.id, error: String(e) });
-      }
-
-      // DIAGNOSTIC: Capture key_id state AFTER injection attempt
-      logger.info("payment_link.key_id_diagnostic", {
-        attemptId: attempt.id,
-        attemptStatus: attempt.status,
-        preInjectKeyId: preInjectKeyId ?? "__MISSING__",
-        postInjectKeyId: attempt.raw_response.key_id ?? "__MISSING__",
-        preInjectKeys,
-        postInjectKeys: Object.keys(attempt.raw_response),
-        gatewayTxnId: attempt.gateway_txn_id ?? "__MISSING__",
-        hasRawCreateResponse: attempt.raw_create_response != null,
-        rawCreateResponseType: typeof attempt.raw_create_response,
-      });
-
-      if (!attempt.raw_response.amount) {
-        attempt.raw_response.amount = Math.round(Number(attempt.amount) * 100);
-      }
-      if (!attempt.raw_response.currency) {
-        attempt.raw_response.currency = "INR";
-      }
-      if (!attempt.raw_response.notes) {
-        attempt.raw_response.notes = {
-          tenant_name: linkToken.tenants?.profiles?.name || "",
-          tenant_email: linkToken.tenants?.profiles?.email || "",
-          tenant_phone: linkToken.tenants?.profiles?.phone || "",
-        };
+        logger.info("payment_link.claim_created", { token, claim_id: claim.id });
+        return NextResponse.json({ success: true, claim_id: claim.id });
+      } catch (err: any) {
+        // The partial unique index allows one PENDING claim per token, so a
+        // tenant tapping twice lands here. That is success from their side —
+        // their payment is already with the owner.
+        if (String(err?.code) === "P2002") {
+          return NextResponse.json({ success: true, duplicate: true });
+        }
+        logger.error("payment_link.claim_failed", { token, error: String(err?.message || err) });
+        return NextResponse.json(
+          { success: false, error: { message: "Could not send that. Please try again." } },
+          { status: 500 },
+        );
       }
     }
 
-    console.log("[Payment Link Server Debug] POST /pay/:token info:", {
-      token,
-      obligation_id: linkToken.obligation_id,
-      payment_attempt_id: attempt?.id,
-      gateway: attempt?.provider,
-      gateway_transaction_id: attempt?.gateway_txn_id,
-      raw_response: attempt?.raw_response,
-      parsed_raw_response_type: typeof attempt?.raw_response,
-      parsed_key_id: attempt?.raw_response?.key_id,
-      parsed_order_id: attempt?.gateway_txn_id,
-      parsed_amount: attempt?.raw_response?.amount,
-      parsed_currency: attempt?.raw_response?.currency,
-    });
-
-    const responsePayload = {
-      success: true,
-      attempt,
-    };
-
-    console.log("[Payment Link Server Debug] Returning payload:", JSON.stringify(responsePayload, null, 2));
-
-    // DIAGNOSTIC: Verify key_id survives JSON serialization
-    // This is the definitive server-side checkpoint before the response hits the wire.
-    try {
-      const serialized = JSON.stringify(responsePayload);
-      const reparsed = JSON.parse(serialized);
-      logger.info("payment_link.response_serialization_check", {
-        token,
-        attemptId: attempt?.id,
-        keyIdOnObject: attempt?.raw_response?.key_id ?? "__MISSING__",
-        keyIdAfterReparse: reparsed?.attempt?.raw_response?.key_id ?? "__MISSING__",
-        keyIdMatch: attempt?.raw_response?.key_id === reparsed?.attempt?.raw_response?.key_id,
-        gatewayTxnIdOnObject: attempt?.gateway_txn_id ?? "__MISSING__",
-        gatewayTxnIdAfterReparse: reparsed?.attempt?.gateway_txn_id ?? "__MISSING__",
-        rawResponseKeysOnObject: attempt?.raw_response ? Object.keys(attempt.raw_response) : [],
-        rawResponseKeysAfterReparse: reparsed?.attempt?.raw_response ? Object.keys(reparsed.attempt.raw_response) : [],
-        serializedLength: serialized.length,
-      });
-    } catch (serErr) {
-      logger.error("payment_link.serialization_failed", { token, error: String(serErr) });
-    }
-
-    return NextResponse.json(responsePayload);
+    return NextResponse.json(
+      { success: false, error: { message: "Unsupported action.", code: "GATEWAY_DISCONNECTED" } },
+      { status: 410 },
+    );
   } catch (error: any) {
     logger.error("payment_link.post.failed", { token, error: String(error?.message || error) });
     return NextResponse.json({

@@ -72,8 +72,16 @@ describe("backend-served WhatsApp template links", () => {
       expect(DISCONNECTED_ROUTES).not.toContain(routeFile);
 
       const source = readFileSync(resolve(backend, routeFile), "utf8");
-      expect(source).not.toContain("GATEWAY_DISCONNECTED");
+
+      // What must hold is that a tenant arriving from WhatsApp is still served
+      // a page. Checked by what the route DOES, not by scanning for a marker
+      // string: the POST handler legitimately answers 410 for an unsupported
+      // action now that the gateway actions are gone, and a blanket
+      // `not.toContain("GATEWAY_DISCONNECTED")` failed on that — flagging a
+      // correct change as a regression.
       expect(source).toMatch(/export async function GET/);
+      expect(source).toContain("renderPage(");
+      expect(source).toContain("text/html");
     },
   );
 });
