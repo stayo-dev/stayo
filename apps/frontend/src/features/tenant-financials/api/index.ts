@@ -28,8 +28,15 @@ export const tenantFinancialsService = {
     const response = await api.get('/tenants/me/payments/history');
     return unwrap(response);
   },
-  createPaymentIntent: async (data: { obligation_ids?: string[]; payment_type?: string; amount?: number }) => {
-    const response = await api.post('/payments/create-intent', data);
+  /**
+   * A link to the tenant's own UPI payment page.
+   *
+   * Replaces `POST /payments/create-intent`, which is `410 GATEWAY_DISCONNECTED`
+   * (ADR-234). The endpoint fills in the tenant id from the session and refuses
+   * an obligation id from a tenant, so there is nothing to pass.
+   */
+  generatePayLink: async () => {
+    const response = await api.post('/payments/pay-link', {});
     return unwrap(response);
   },
 };

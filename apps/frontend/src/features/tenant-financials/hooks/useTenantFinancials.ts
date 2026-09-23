@@ -48,29 +48,29 @@ export function useTenantFinancials() {
   const [payStage, setPayStage] = useState<PayStage>('closed');
   const [payError, setPayError] = useState<string | null>(null);
 
+  /**
+   * Paying now means opening the tenant's own UPI page, not a gateway checkout.
+   *
+   * It is the same `/pay/{token}` page the WhatsApp rent reminders link to, so
+   * there is one payment surface rather than two that can drift — and the
+   * tenant sees the same QR whichever way they arrived (ADR-234).
+   */
   const payMutation = useMutation({
-    mutationFn: () => {
-      const readModel = readModelQuery.data;
-      const amount = readModel?.current_payable_amount ?? 0;
-      return tenantFinancialsService.createPaymentIntent({ payment_type: 'RENT', amount });
-    },
+    mutationFn: () => tenantFinancialsService.generatePayLink(),
     onMutate: () => {
       setPayStage('paying');
       setPayError(null);
     },
-    onSuccess: (intent: any) => {
-      if (intent?.checkout_url) {
-        window.location.href = intent.checkout_url;
+    onSuccess: (link: any) => {
+      if (link?.url) {
+        window.location.href = link.url;
         return;
       }
-      // No redirect URL (e.g. already-settled edge case) — treat as done.
-      setPayStage('paid');
-      queryClient.invalidateQueries({ queryKey: ['tenant', 'financial-read-model'] });
-      queryClient.invalidateQueries({ queryKey: ['tenant', 'billing-timeline'] });
-      queryClient.invalidateQueries({ queryKey: ['tenant', 'payment-history'] });
+      setPayError('Could not open the payment page. Please try again.');
+      setPayStage('form');
     },
     onError: (err: any) => {
-      setPayError(err?.response?.data?.error?.message || err?.message || 'Could not start payment');
+      setPayError(err?.response?.data?.error?.message || err?.message || 'Could not open the payment page');
       setPayStage('form');
     },
   });

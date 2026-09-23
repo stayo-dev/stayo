@@ -1,4 +1,6 @@
 import { prisma } from "../db";
+// One rule for what a UPI ID may be, shared with the QR and intent builders.
+import { isValidVpa } from "@/src/services/payments/upi/upi-intent";
 import { financialService } from "@/src/services/payments/financial-service";
 import { roomCapacityService } from "./room-capacity-service";
 import crypto from "crypto";
@@ -275,7 +277,22 @@ export class PropertyService {
     if (data.city !== undefined) mapped.city = data.city;
     if (data.state !== undefined) mapped.state = data.state;
     if (data.pincode !== undefined) mapped.pincode = data.pincode;
-    if (data.upi_id !== undefined) mapped.upi_id = data.upi_id;
+    if (data.upi_id !== undefined) {
+      // Validated here as well as in `hostelPolicyService`, because THIS is the
+      // path the settings screen takes (`PATCH /hostels/:id`). The first round
+      // of this check only guarded `/preferences`, which that screen does not
+      // use for this field — a validator that reads as protection and lets
+      // every real value through.
+      //
+      // It matters now in a way it did not before: with the gateway gone, a
+      // typo'd VPA is a QR that fails inside the tenant's app, where nobody on
+      // our side can see it. Trimmed first, since owners paste from WhatsApp.
+      const trimmed = data.upi_id === null ? null : String(data.upi_id).trim();
+      if (trimmed && !isValidVpa(trimmed)) {
+        throw new Error("VALIDATION: Enter a valid UPI ID, like name@bank");
+      }
+      mapped.upi_id = trimmed || null;
+    }
     if (data.gst_number !== undefined) mapped.gst_number = data.gst_number;
     if (data.hostel_type !== undefined) {
       // Validated against the same four codes `identity-field-policy.ts` reads.
