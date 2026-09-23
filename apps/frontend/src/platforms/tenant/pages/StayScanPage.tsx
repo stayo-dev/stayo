@@ -19,7 +19,8 @@ export function StayScanPage() {
   const navigate = useNavigate();
   const { user, loading } = useAuth();
   const isTenant = String(user?.role ?? '').toLowerCase() === 'tenant';
-  const { mine, isLoading, isError, record, isRecording } = useMyStay(isTenant);
+  const { mine, isLoading, isError, record, isRecording, setGuardianConsent, isSettingConsent } =
+    useMyStay(isTenant);
   const [loginOpen, setLoginOpen] = useState(true);
   const confirmed = useRef(false);
 
@@ -59,7 +60,16 @@ export function StayScanPage() {
         {isTenant && isError && <p className="text-center text-lg font-semibold">Couldn't load your stay. Try scanning again.</p>}
 
         {view === 'READY' && mine?.stay && mine.hostel && (
-          <StayActionPanel stay={mine.stay} hostelName={mine.hostel.name} source="QR" variant="full" onRecord={record} busy={isRecording} />
+          <StayActionPanel
+            stay={mine.stay}
+            hostelName={mine.hostel.name}
+            source="QR"
+            variant="full"
+            onRecord={record}
+            busy={isRecording || isSettingConsent}
+            guardian={mine.guardian}
+            onGuardianConsent={(granted) => setGuardianConsent({ granted, source: 'QR' })}
+          />
         )}
 
         {!isError && (view === 'NOT_TENANT' || view === 'NOT_RESIDENT' || view === 'OTHER_HOSTEL') && (

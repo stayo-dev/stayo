@@ -37,6 +37,16 @@ export const COMMANDS = {
    * tap, rather than needing ambient state to remember what was offered.
    */
   CONFIRM: "CONFIRM",
+  /**
+   * Stop stay updates (ADR-234) — what the footer of
+   * `stayo_guardian_stay_departure` / `_return` tells a guardian to send.
+   *
+   * In `VOCABULARY` because people type it, and deliberately absent from
+   * `PUBLISHED_COMMANDS` because the HELP menu is about rent: advertising an
+   * opt-out there invites a parent to switch off the payment channel while
+   * trying to switch off location updates.
+   */
+  STOP: "STOP",
 } as const;
 
 export type CommandName = (typeof COMMANDS)[keyof typeof COMMANDS];
@@ -100,6 +110,12 @@ const VOCABULARY: Record<string, CommandName> = {
   "LAST PAYMENT": COMMANDS.RECEIPT,
   "PAYMENT HISTORY": COMMANDS.RECEIPT,
   HISTORY: COMMANDS.RECEIPT,
+
+  // ── STOP (stay updates only — ADR-234) ─────────────────
+  STOP: COMMANDS.STOP,
+  "STOP UPDATES": COMMANDS.STOP,
+  "STOP STAY UPDATES": COMMANDS.STOP,
+  UNSUBSCRIBE: COMMANDS.STOP,
 
   // ── HELP ──────────────────────────────────────────────
   HELP: COMMANDS.HELP,
@@ -170,4 +186,28 @@ export function resolveCommand(body: string): CommandName | null {
     new Set(tokens.filter((token) => VOCABULARY[token]).map((token) => VOCABULARY[token]))
   );
   return matched.length === 1 ? matched[0] : null;
+}
+
+/**
+ * The reply to STOP.
+ *
+ * It states the scope rather than assuming it. A blanket STOP is the more
+ * conventional reading and the wrong one here: a parent who wanted less
+ * reporting on their child's movements would silently lose the rent reminders
+ * and the payment link, and nobody — not the parent, not the owner, not the
+ * tenant — would find out until rent was late. Saying so in the same breath
+ * makes the narrower behaviour disclosed rather than assumed.
+ *
+ * Third person about the ward, like every other guardian-facing line. A
+ * guardian of two wards who sends a bare STOP stops both, and gets the
+ * neutral phrasing rather than one child's name.
+ */
+export function stayUpdatesStoppedMessage(wardName: string): string {
+  const ward = String(wardName || "").trim() || "your ward";
+  return [
+    `Done — you won't get updates about ${ward} leaving or returning.`,
+    "",
+    "Rent reminders and payment receipts are unaffected.",
+    "Reply HELP for what else this number can do.",
+  ].join("\n");
 }

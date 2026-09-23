@@ -234,3 +234,15 @@ Spec: `docs/superpowers/specs/2026-08-27-owner-managed-tenants-design.md`. Phase
 - [ ] **The payment page's brand art is a second copy that nothing checks.** `apps/backend/app/api/payments/pay/[token]/brand.ts` holds a static reproduction of `StayoMark` and two `StayoDog` poses, because the page is server-rendered HTML and both originals are React ([[Decisions#ADR-197|ADR-197]]). `pay-page-brand.test.ts` is pure, so it can only assert the copy is well-formed — **a brand change in the SPA will not fail anything here.** Either add an fs-based check alongside `check:brand` that diffs the path data, or move the art into a shared package both can import. **why:** the one Stayo surface most residents ever see is the one that will silently go stale — **related:** [[Decisions#ADR-191|ADR-191]], [[Decisions#ADR-197|ADR-197]], [[Frontend]].
 - [ ] **Look at `/pay/{token}` on a real phone.** The redesign has never been rendered in a browser: the dog's framing inside its 148px stage, the Manrope fallback before webfonts land, and the amount input at 320px are all reasoned about and unit-tested, not seen. All four states (DUE, PAID, EXPIRED, ERROR) need one pass each. **why:** it is a money screen reached from WhatsApp, mostly on mid-range Android — **related:** [[Decisions#ADR-197|ADR-197]].
 
+## Two integrity guards that were designed but never written (2026-09-23)
+
+Found while auditing migration state against production. Both are **missing from the database and
+from `migrations/`** — there is no file to apply:
+
+- `rent_obligations_one_active_per_period` — the double-billing guard.
+- `room_allocations_one_tenant_per_bed` — two tenants in one bed.
+
+`udx_mor_tenant_active` and `stay_leaves_one_active_per_tenant` *are* present, so the pattern is
+established; these two simply never got written. Each needs a duplicate sweep before the index can
+be created. See [[Database]], [[Bugs]].
+

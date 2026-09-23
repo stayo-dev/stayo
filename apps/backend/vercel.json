@@ -30,6 +30,14 @@
     {
       "path": "/api/cron/subscription-lifecycle",
       "schedule": "15 1 * * *"
+    },
+    {
+      "path": "/api/cron/partner-lead-fallback",
+      "schedule": "0 4 * * *"
+    },
+    {
+      "path": "/api/cron/stay-guardian-sweep",
+      "schedule": "0 6 * * *"
     }
   ]
 }

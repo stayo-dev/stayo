@@ -45,7 +45,11 @@ export async function GET(req: NextRequest) {
     const next30Days = new Date();
     next30Days.setDate(next30Days.getDate() + 30);
 
-    const renewals = await prisma.Agreement.findMany({
+    // `agreement`, not `Agreement`: Prisma's client property is the model
+    // name with its first letter lowercased. `prisma.Agreement` is undefined,
+    // and `prisma` is exported as `any`, so this compiled and threw only when
+    // the route ran.
+    const renewals = await prisma.agreement.findMany({
       where: {
         hostel_id: { in: hostelIds },
         status: { in: ['SIGNED', 'EXPIRING_SOON'] },

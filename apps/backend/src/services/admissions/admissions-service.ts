@@ -501,14 +501,23 @@ export class AdmissionsService {
     }
 
     await prisma.$transaction(async (tx: any) => {
-      await tx.leadActivity.create({
+      /**
+       * Snake-case delegates, not the camelCase aliases used elsewhere in
+       * this file. `lib/db.ts` assigns those aliases onto its own `prisma`
+       * instance; the interactive-transaction client Prisma hands to this
+       * callback is a different object and carries none of them, so
+       * `tx.leadActivity` was undefined and every call threw. That took the
+       * whole Discover enquiry flow down: the lead row commits, then this
+       * throws, and the caller 500s before the owner is ever notified.
+       */
+      await tx.lead_activities.create({
         data: {
           lead_id: leadId,
           activity_type: activityType,
           metadata,
         },
       });
-      await tx.visitorLead.update({
+      await tx.visitor_leads.update({
         where: { id: leadId },
         data: {
           lead_score: { increment: score },

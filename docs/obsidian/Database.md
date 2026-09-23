@@ -378,7 +378,7 @@ Migration: `CREATE TYPE` + `ALTER TABLE ... ADD COLUMN acceptance_status TenantA
 
 `tenant_owner_attestations` — **no new rows are written** as of ADR-165 (both writers removed). The table + relation stay for grandfathered reads; scheduled for removal once no `NOT_REQUIRED` `OWNER_MANAGED` rows remain. See [[TODO]].
 
-## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **NOT applied to any database**)
+## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **verified applied to production 2026-09-23**)
 
 Two additive columns on `tenants` plus one new table, from `prisma/migrations/20260827100000_owner_managed_tenants/`. **This migration exists only as a Prisma migration file in the repo — it has not been run against any database (dev, test, or production) as of this writing.** Given the 2026-08-14/2026-08-22 outage pattern documented above and below (a `schema.prisma` column with no matching database column 500s every unselected read of that table, and `tenants` is read on effectively every authenticated request via `getSession()`), the code declaring these fields must not reach a real environment ahead of the migration being applied there.
 
@@ -947,3 +947,56 @@ Shipped and applied *before* anything renamed, so the redirect existed before th
 ⚠️ **Renaming must go through `renameHostelSlugAndRevalidate`.** The swap and the history row are one transaction — a slug changed without its history row 404s every link already sent — and the rename must bust **both** slugs' caches. See [[Bugs]].
 
 Related: [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]], [[Features]]
+
+## Marketplace partners (migration 091 — **verified applied to production 2026-09-23**)
+
+Three tables plus one enum, for hostel owners who receive enquiries on a Stayo-authored listing without having a Stayo account. See [[Decisions#ADR-231|ADR-231]].
+
+**`PartnerConsentChannel`** — `PHONE_CALL | IN_PERSON | WHATSAPP_REPLY | WRITTEN`. An enum rather than a string, unlike most status columns here, because it is compliance evidence: Meta permits business-initiated messages on an offline opt-in and this column is what that opt-in looks like if disputed.
+
+**`marketplace_partners`** — one row per person, not per hostel. `phone` unique; `consent_channel`/`consent_at`/`consent_by`/`consent_note` are the audit record; `opted_out_at` is set when they tap "Stop promotions" and stops **every** partner template, not only the marketing ones; `portal_token` is a permanent bearer secret for `/partner/:token` (same trade-off as `platform_leads.tracking_token`); `converted_owner_id`/`converted_at` record the claim.
+
+**`partner_listings`** — partner ↔ hostel. `hostel_id` unique: a listing has one contact. `free_quota` defaults to 3 and is **per listing**, because the proof of demand has to be about a specific building.
+
+**`partner_lead_deliveries`** — the attribution ledger, one row per enquiry, and the only thing that makes "we sent you three students" provable. `visitor_lead_id` unique, so re-enquiring never earns a second message or burns a second free enquiry. `state` is a plain string: `PENDING | SENT | HELD | RELEASED | FAILED | EXPIRED`, with transitions owned by `src/services/marketing/partner-delivery-state.ts`. `delivery_token` is a per-enquiry bearer secret, so a forwarded link leaks one enquiry rather than the listing. Timestamps: `sent_at` (handed to Meta), `delivered_at` (**the only thing that consumes free quota**), `opened_at`, `responded_at`, `released_at`, `fallback_at`.
+
+**No Prisma relations to `hostels`, `visitor_leads` or `profile`**, though the foreign keys exist in the database. Deliberate, following `platform_lead_invitations.lead_id`: it keeps this change from touching existing models at all. Adding a scalar to a model changes every query that does not `select` it — the 2026-08-22 outage.
+
+Indexes: `(partner_listing_id, state)` for the quota check on every enquiry; `(partner_listing_id, created_at DESC)` for the "N students this month" count in the locked template; a partial index on `created_at WHERE state = 'HELD' AND fallback_at IS NULL` for the student-fallback sweep; and a partial index on `wa_message_id` for matching delivery webhooks back.
+
+Related: [[Business-Rules]], [[APIs]], [[Features]]
+
+## Row Level Security (migration 092)
+
+Five tables shipped with **RLS disabled**: `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments` (085), `coverage_requests` (086), `homepage_features` (088). Migration 091's three tables were enabled on the live database but not *by* the migration, so a fresh environment would have come up exposed; 092 states all eight.
+
+**Why it mattered:** `VITE_SUPABASE_ANON_KEY` is a Vite variable, so the Supabase anon key is compiled into the browser bundle and is public by construction. No migration in this repo contains a `REVOKE`, so PostgREST's default grants to `anon` and `authenticated` stand. RLS was the only gate, and on those tables it was open.
+
+**No policies are added, deliberately.** Every legitimate read and write goes through the backend, which connects via Prisma as the owning `postgres` role and bypasses RLS. Enabling it with no policy is a clean lockout of the anon key, not a change to how the application reads its own data.
+
+`apps/backend/tests/migration-rls.test.ts` fails if a migration numbered 083 or higher creates a table and no migration enables RLS on it. Verified non-vacuous: removing 092 makes it name all eight.
+
+Related: [[Bugs]], [[Business-Rules]]
+
+### `stay_guardian_consent` — the tenant's decision, one row per tenancy (2026-09-22, [[Decisions#ADR-234|ADR-234]])
+
+Migration `094_stay_guardian_consent.sql` — **written, not applied.**
+
+| Column | Type | Notes |
+|---|---|---|
+| `tenant_id` | `UUID` PK | One decision per tenancy. |
+| `hostel_id` | `UUID` | |
+| `granted` | `BOOLEAN` | **`false` rows are kept.** The row is the memory of *having asked*; deleting it makes the consent sheet reappear on every trip for the tenants who said no. |
+| `guardian_phone` | `TEXT` | The number consented to, snapshotted. Compared on normalised digits, because the schema stores phones inconsistently. If `tenants.guardian_phone` later differs, consent lapses and the tenant is asked again. |
+| `decided_at` | `TIMESTAMPTZ(6)` | |
+| `revoked_at` | `TIMESTAMPTZ(6)?` | The **tenant** switched it off. |
+| `stopped_at` | `TIMESTAMPTZ(6)?` | The **guardian** replied STOP. Separate from `revoked_at` on purpose, and outranks a later re-grant — someone who asked to be left alone is not re-subscribed by the tenant changing their mind. |
+| `source` | `TEXT` | `APP` \| `QR`. |
+| `updated_at` | `TIMESTAMPTZ(6)` | |
+
+- **Partial index** `stay_guardian_consent_live_idx` on `(hostel_id) WHERE granted AND revoked_at IS NULL AND stopped_at IS NULL` — the sweep's only filter. **Deliberately not declared in `schema.prisma`:** Prisma cannot express a `WHERE` on an index, so declaring a plain one would leave the schema permanently out of step with the database. Same reasoning as the ADR-212 migration.
+- **RLS enabled, 0 policies**, plus explicit `REVOKE ALL … FROM anon` / `authenticated` — this table records which residents are reported on and to which phone number, and the anon key ships in the browser bundle. Matches `stay_events` / `stay_leaves`.
+- **Deliberately not columns on `tenants`.** `getSession()` → `getActiveTenancy` reads `tenants` with no explicit `select` on every authenticated request for every role, so a declared-but-missing column there 500s the whole authenticated API — the 2026-08-14 outage in [[Bugs]]. Because this is a new table with no existing reader, **the code deploys before the migration**, which is the reverse of this repo's usual order and is stated at the top of the migration file.
+
+See [[Decisions#ADR-234|ADR-234]], [[Business-Rules]], [[APIs]].
+

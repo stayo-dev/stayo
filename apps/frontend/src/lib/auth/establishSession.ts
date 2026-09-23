@@ -13,6 +13,7 @@
 import { supabase } from '../supabaseClient';
 import { readSessionHandoff } from './sessionHandoff';
 import { signOutClerk } from './clerkBrowser';
+import { readHandoffProfileId } from './existingClerkSession';
 
 export class SessionEstablishmentError extends Error {
   constructor(message: string) {
@@ -28,7 +29,7 @@ export async function establishSession(responseData: unknown): Promise<'clerk' |
   if (handoff.kind === 'clerk_ticket') {
     try {
       const { redeemSignInTicket } = await import('./clerkTicket');
-      await redeemSignInTicket(handoff.ticket);
+      await redeemSignInTicket(handoff.ticket, readHandoffProfileId(responseData));
     } catch (error) {
       throw new SessionEstablishmentError(error instanceof Error ? error.message : String(error));
     }

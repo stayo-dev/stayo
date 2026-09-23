@@ -371,7 +371,7 @@ Added 2026-08-23 ([[Decisions#ADR-090|ADR-090]]). The owner's view of money Stay
 
 **No hostel filter is accepted, by design.** A payout is one bank transfer covering every hostel at once, so a filtered payout figure would match no line in the owner's passbook. Per-hostel attribution lives inside `/[itemId]`'s `byHostel` instead.
 
-`degraded: true` reports that the payout tables could not be read as expected (in practice: migration 075 not applied) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
+`degraded: true` reports that the payout tables could not be read as expected (migration 075 is applied as of 2026-09-23, so this should no longer fire) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
 
 `/[itemId]` always includes `fee: 0`. Stayo passes rent through in full and says so on every payout; an unstated zero reads as a fee somebody chose not to mention.
 
@@ -536,7 +536,7 @@ host: { platform_listed, name /* full name */, photo_url, bio, languages, hostin
         verified, listed_since, stats: { review_count, rating, residents } }
 ```
 
-It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (including migration 083 not applied), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
+It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (migration 083 is applied as of 2026-09-23), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
 
 | Route | Who | Notes |
 |---|---|---|
@@ -941,3 +941,47 @@ Both are optional catch-alls, so the unfiltered page and its intent variants are
 **Changed:** `/hostels/[slug]` and `/api/discover/share/[slug]` now resolve retired slugs through `hostel_slug_history` and redirect permanently rather than 404ing.
 
 Related: [[Decisions#ADR-227|ADR-227]], [[Database]]
+
+## Marketplace partner endpoints (2026-09-21)
+
+Public, bearer-token — a marketplace partner has no account by definition. `/api/partner` is in `PUBLIC_ROUTES`; every route under it validates its own token. See [[Decisions#ADR-231|ADR-231]].
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/partner/:token` | Portal: the partner's listings, their quota use, and their enquiries. A `HELD` enquiry shows a first name and a masked phone — enough to know it is real, not enough to act on |
+| `GET` | `/api/partner/enquiry/:token` | One enquiry with the student's contact. Records `opened_at` on **first** open only; re-opening is not a new signal |
+| `GET` | `/api/partner/activate/:token` | What they are about to claim: hostels, held-enquiry count, and which student they came to unlock. Accepts either a portal token or a delivery token |
+| `POST` | `/api/partner/activate/:token` | Claims the listings for the calling **owner** session. The one authenticated route under the public prefix — registered in `lib/auth/public-route-exceptions.ts`. The account is created by the normal owner-signup path first |
+
+Admin, `ADMIN` role:
+
+| Method | Path | Notes |
+|---|---|---|
+| `GET` | `/api/platform-admin/partners` | Every partner with their delivered / held / released tally |
+| `POST` | `/api/platform-admin/partners` | `{ name, phone, email?, consent_channel, consent_note? }`. Records the person and the consent together — they are not separable. `consent_by` is the calling admin |
+| `POST` | `/api/platform-admin/platform-listings/:id/partner` | `{ partner_id, announce? }`. Refuses any hostel a live owner already runs. `announce` defaults to true and sends `stayo_partner_listing_live` |
+
+**Changed:** `POST /api/platform-admin/managers/[id]/resend-invitation` now returns `{ invitation: { reminded: true, expiresAt } }` when a live token was nudged, instead of always minting a new token ([[Decisions#ADR-230|ADR-230]]).
+
+**Fixed:** `GET /api/platform-admin/platform-listings` counted enquiries via `prisma.leads`, which is not a model — see [[Bugs]].
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/api/tenant/stay/guardian-consent` | TENANT | `{ granted: boolean, source: "QR" \| "APP" }` → `{ guardian }`. Tenant comes from the session, never the body. Turning a `GRANTED` consent off writes `revoked_at`, which is a different column from a guardian's `stopped_at`. 409 `STAY_INELIGIBLE` when the caller is not a current resident or has no guardian on file. |
+| GET | `/api/cron/stay-guardian-sweep` | `CRON_SECRET` bearer | Re-attempts the guardian message for `LEAVE_STARTED` / `RETURNED` events in the last 48h whose inline send was lost. Deduped on `whatsapp_logs.idempotency_key = stay_guardian:{eventId}`. **Daily** (`0 6 * * *`) — a sub-daily Vercel cron fails the deploy on this plan. Returns `{ considered, sent, skipped, stale }`. |
+
+**Changed:** `GET /api/tenant/stay` now also returns a `guardian` block:
+
+```ts
+guardian: { eligible: boolean; name: string | null;
+            consent: 'UNASKED' | 'GRANTED' | 'DECLINED' | 'REVOKED' | 'STOPPED' } | null
+```
+
+`null` means no guardian on file. `eligible` is computed server-side (present, OTP-verified, not the
+resident's own number) so the frontend never re-derives a rule the policy owns. A guardian number
+that changed since consent is reported as `UNASKED` — the stored decision was about someone else.
+
+See [[Business-Rules]], [[Database]], [[Features]].
+

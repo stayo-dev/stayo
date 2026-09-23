@@ -2410,3 +2410,24 @@ TenantPolicyAcceptance represents a persisted HMS domain record.
 1. The database stores this record with the fields listed above.
 2. Backend services apply business rules before creating or changing it.
 3. UI screens receive normalized versions through API routes.
+
+---
+
+## Stay module tables — documented in the vault, not here
+
+This page predates the Stay Status subsystem and **does not describe any of its tables.** That is a
+real gap, noted here rather than half-filled: `stay_events`, `stay_leaves` (ADR-194),
+`meal_service_logs` (ADR-195) and `stay_guardian_consent` (ADR-234) are all live in
+`prisma/schema.prisma` and absent from the sections above.
+
+For these tables, `docs/obsidian/Database.md` is authoritative — it carries the column inventory,
+the partial indexes that Prisma cannot express, the append-only trigger on `stay_events`, and the
+RLS posture of each. Treat this page as out of date for anything Stay-related until someone
+backfills it.
+
+| Table | ADR | Migration | Applied to production? |
+|---|---|---|---|
+| `stay_events`, `stay_leaves` | ADR-194 | `20260914…_stay_status` | Yes, 2026-09-14, verified object by object |
+| `meal_service_logs` | ADR-195 | `20260915090000_meal_service_logs` | Yes, verified |
+| `stay_guardian_consent` | ADR-234 | `migrations/094_stay_guardian_consent.sql` | **No — not applied** |
+

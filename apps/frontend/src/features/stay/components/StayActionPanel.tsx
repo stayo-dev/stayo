@@ -3,8 +3,11 @@ import { Check, ChevronDown } from 'lucide-react';
 import { playSuccessFeedback } from '@shared/ui-patterns/successFeedback';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { parseApiError } from '@lib/errors';
-import { MORE_ACTION_LABEL, screenFor, type MoreAction, type ReturnDateMode } from '../stayState';
-import type { TenantStay, TenantStayEventInput } from '../types';
+import {
+  MORE_ACTION_LABEL, screenFor, shouldAskGuardianConsent, type MoreAction, type ReturnDateMode,
+} from '../stayState';
+import type { GuardianConsent, LeaveType, TenantStay, TenantStayEventInput } from '../types';
+import { GuardianConsentSheet } from './GuardianConsentSheet';
 import { ReturnDateSheet } from './ReturnDateSheet';
 
 interface StayActionPanelProps {
@@ -15,6 +18,9 @@ interface StayActionPanelProps {
   variant: 'full' | 'card';
   onRecord: (input: TenantStayEventInput) => Promise<unknown>;
   busy: boolean;
+  /** ADR-234. Null when there is no guardian on file. */
+  guardian: GuardianConsent | null;
+  onGuardianConsent: (granted: boolean) => Promise<unknown>;
 }
 
 /**
@@ -23,11 +29,14 @@ interface StayActionPanelProps {
  * takes it back — because the two-second rule is about how it feels.
  * See ADR-194.
  */
-export function StayActionPanel({ stay, hostelName, source, variant, onRecord, busy }: StayActionPanelProps) {
+export function StayActionPanel({
+  stay, hostelName, source, variant, onRecord, busy, guardian, onGuardianConsent,
+}: StayActionPanelProps) {
   const screen = screenFor(stay, hostelName);
   const [moreOpen, setMoreOpen] = useState(false);
   const [sheet, setSheet] = useState<ReturnDateMode | null>(null);
   const [welcomed, setWelcomed] = useState(false);
+  const [pendingLeave, setPendingLeave] = useState<{ type: LeaveType; date: string } | null>(null);
   const full = variant === 'full';
 
   const send = async (input: Omit<TenantStayEventInput, 'source' | 'idempotencyKey'>) => {
@@ -52,11 +61,55 @@ export function StayActionPanel({ stay, hostelName, source, variant, onRecord, b
     else setSheet(action);
   };
 
+  /**
+   * ADR-234 D6: a channel that reports on you is never invisible to you. Shown
+   * on every leave that actually notifies, not only the trip where consent was
+   * given.
+   */
+  const notedGuardian = () => {
+    if (guardian?.consent !== 'GRANTED') return;
+    stayoToast.success(`${(guardian.name || '').trim() || 'Your guardian'} will be told.`);
+  };
+
+  const startLeave = async (mode: LeaveType, date: string, announce: boolean) => {
+    const sent = await send({ type: 'LEAVE_STARTED', leaveType: mode, expectedReturnDate: date });
+    if (sent && announce) notedGuardian();
+    return sent;
+  };
+
   const pickDate = (date: string) => {
     const mode = sheet;
     setSheet(null);
-    if (mode === 'CHANGE_DATE') void send({ type: 'RETURN_DATE_CHANGED', expectedReturnDate: date });
-    else if (mode) void send({ type: 'LEAVE_STARTED', leaveType: mode, expectedReturnDate: date });
+    if (mode === 'CHANGE_DATE') {
+      // Silent by design — a changed date does not reach the guardian.
+      void send({ type: 'RETURN_DATE_CHANGED', expectedReturnDate: date });
+      return;
+    }
+    if (!mode) return;
+    if (shouldAskGuardianConsent(guardian)) {
+      setPendingLeave({ type: mode, date });
+      return;
+    }
+    void startLeave(mode, date, true);
+  };
+
+  const decideConsent = async (granted: boolean) => {
+    const leave = pendingLeave;
+    setPendingLeave(null);
+    // The decision is recorded first and separately: a declined consent must
+    // survive a leave that then fails, or the tenant is asked again next time
+    // having already said no.
+    try {
+      await onGuardianConsent(granted);
+    } catch {
+      // Recording the decision failed. The leave is still what they asked for,
+      // so it goes ahead; they will simply be asked once more next time.
+    }
+    if (!leave) return;
+    const sent = await startLeave(leave.type, leave.date, false);
+    if (sent && granted) {
+      stayoToast.success(`${(guardian?.name || '').trim() || 'Your guardian'} will be told.`);
+    }
   };
 
   const showWelcome = welcomed && screen.kind === 'present';
@@ -116,6 +169,14 @@ export function StayActionPanel({ stay, hostelName, source, variant, onRecord, b
           </div>
         )}
       </div>
+
+      {pendingLeave && (
+        <GuardianConsentSheet
+          guardianName={guardian?.name ?? null}
+          busy={busy}
+          onDecide={(granted) => void decideConsent(granted)}
+        />
+      )}
 
       {sheet && (
         <ReturnDateSheet

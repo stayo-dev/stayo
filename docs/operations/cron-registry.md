@@ -75,6 +75,7 @@ may delay any of them by up to 59 minutes.
 | Rent generation | `/api/cron/generate-rent` | `30 18 * * *` / 00:00 | P0 Business Critical | Billing |
 | Rent reminders & late fees | `/api/cron/rent-reminders` | `0 2 * * *` / 07:30 | P0 Business Critical | Collections |
 | Invitation expiry reminders | `/api/cron/invitation-expiry-reminders` | `0 3 * * *` / 08:30 | P1 Important Operations | Tenant Onboarding |
+| Partner held-enquiry fallback | `/api/cron/partner-lead-fallback` | `0 4 * * *` / 09:30 | P1 Important Operations | Marketplace |
 | Payment reconciliation | `/api/cron/reconcile-payments` | `30 3 * * *` / 09:00 | P0 Business Critical | Payments |
 | Unaccepted tenancy expiry | `/api/cron/expire-unaccepted-tenancies` | `0 5 * * *` / 10:30 | P0 Business Critical | Tenant Onboarding |
 
@@ -97,6 +98,14 @@ Why each one is in the MVP set — i.e. what is *wrong in the product* if it nev
 - **`move-out-releases`** — the only completion path for a future-dated
   move-out. Without it the room never frees, the tenant stays `ACTIVE`, and
   `generate-rent` keeps billing them. See the ordering constraint above.
+- **`partner-lead-fallback`** — a marketplace enquiry we withheld from an
+  off-platform owner is a student waiting to hear where they might live. This
+  sweep ends that wait after the threshold in `partner-fallback-policy.ts`,
+  sending them hostels that are on Stayo and answering. It is the only thing
+  standing between the free-enquiry gate and stranding the demand side to
+  pressure the supply side, so it is not optional. Daily cadence means the
+  12-hour threshold is when an enquiry becomes *eligible*; the real bound is
+  12–36 hours. See [[Decisions#ADR-231|ADR-231]].
 - **`invitation-expiry-reminders`** — the 24h-before-expiry nudge. Kept because
   it is the only warning an invitee gets before `expire-unaccepted-tenancies`
   closes their tenancy; expiring someone silently is a bad first impression.

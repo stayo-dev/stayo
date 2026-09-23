@@ -76,7 +76,7 @@ export class PaymentStatusEventService {
       await tx.$queryRaw`SELECT id FROM payment_attempts WHERE id = ${input.attemptId}::uuid FOR UPDATE`;
 
       // 3. Query the next sequence using Prisma aggregate for database safety
-      const aggregate = await tx.paymentAttemptStatusEvent.aggregate({
+      const aggregate = await tx.payment_attempt_status_events.aggregate({
         where: { payment_attempt_id: input.attemptId },
         _max: { transition_sequence: true },
       });
@@ -88,7 +88,7 @@ export class PaymentStatusEventService {
         : crypto.randomBytes(16).toString("hex").replace(/^(.{8})(.{4})(.{4})(.{4})(.{12})$/, "$1-$2-$3-$4-$5");
 
       try {
-        return await tx.paymentAttemptStatusEvent.create({
+        return await tx.payment_attempt_status_events.create({
           data: {
             id: generatedId,
             payment_attempt_id: input.attemptId,
@@ -107,7 +107,7 @@ export class PaymentStatusEventService {
       } catch (err: any) {
         // Handle P2002 Unique constraint violation
         if (err.code === "P2002") {
-          const existing = await tx.paymentAttemptStatusEvent.findFirst({
+          const existing = await tx.payment_attempt_status_events.findFirst({
             where: {
               payment_attempt_id: input.attemptId,
               transition_sequence: nextSequence,

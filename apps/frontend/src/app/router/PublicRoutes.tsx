@@ -13,6 +13,11 @@ const LeadSignupCallbackPage = lazy(() => import('@/app/pages/public/LeadSignupC
 const OwnerActivationPage = lazy(() => import('@/app/pages/public/OwnerActivationPage').then((m) => ({ default: m.OwnerActivationPage })));
 const ManagerActivationPage = lazy(() => import('@/app/pages/public/ManagerActivationPage').then((m) => ({ default: m.ManagerActivationPage })));
 const EnquiryStatusPage = lazy(() => import('@/app/pages/public/EnquiryStatusPage').then((m) => ({ default: m.EnquiryStatusPage })));
+// Marketplace partner surfaces — a hostel owner with no Stayo account, reached
+// only from the stayo_partner_* WhatsApp templates. See ADR-231.
+const PartnerPortalPage = lazy(() => import('@/app/pages/public/PartnerPortalPage').then((m) => ({ default: m.PartnerPortalPage })));
+const PartnerEnquiryPage = lazy(() => import('@/app/pages/public/PartnerEnquiryPage').then((m) => ({ default: m.PartnerEnquiryPage })));
+const PartnerActivatePage = lazy(() => import('@/app/pages/public/PartnerActivatePage').then((m) => ({ default: m.PartnerActivatePage })));
 const AboutPage = lazy(() => import('@/app/pages/public/AboutPage').then((m) => ({ default: m.AboutPage })));
 const CompanyPage = lazy(() => import('@/app/pages/public/CompanyPage').then((m) => ({ default: m.CompanyPage })));
 const ContactPage = lazy(() => import('@/app/pages/public/ContactPage').then((m) => ({ default: m.ContactPage })));
@@ -53,6 +58,21 @@ function PublicRouteFallback() {
 function OwnerInviteRedirect() {
   const { token } = useParams<{ token: string }>();
   return <Navigate to={token ? `/activation/${token}` : '/activation'} replace />;
+}
+
+/**
+ * `stayo_admin_invitation` and `stayo_admin_invitation_reminder` were approved
+ * in Meta on 2026-09-21 with their URL button hard-coded to
+ * `https://yourstayo.com/admin/activate/{{1}}`, while this app serves the
+ * manager activation screen at `/admin/manager-invitation/:token`.
+ *
+ * Editing an approved template re-triggers Meta review and would strand every
+ * invitation already delivered, so the path is served here instead. Same
+ * reasoning as `OwnerInviteRedirect` above.
+ */
+function ManagerInviteTemplateRedirect() {
+  const { token } = useParams<{ token: string }>();
+  return <Navigate to={token ? `/admin/manager-invitation/${token}` : '/login'} replace />;
 }
 
 function PublicShell() {
@@ -128,8 +148,17 @@ export function PublicRoutes() {
         <Route path="/lead-signup/callback" element={<LeadSignupCallbackPage />} />
         <Route path="/activation/:token" element={<OwnerActivationPage />} />
         <Route path="/admin/manager-invitation/:token" element={<ManagerActivationPage />} />
+        <Route path="/admin/activate/:token" element={<ManagerInviteTemplateRedirect />} />
         <Route path="/owner-invite/:token" element={<OwnerInviteRedirect />} />
         <Route path="/enquiry/:token" element={<EnquiryStatusPage />} />
+        {/*
+          * Order matters: the literal segments must precede the catch-all
+          * `:token`, or a partner opening an enquiry link would land on the
+          * portal with "enquiry" read as their token.
+          */}
+        <Route path="/partner/enquiry/:token" element={<PartnerEnquiryPage />} />
+        <Route path="/partner/activate/:token" element={<PartnerActivatePage />} />
+        <Route path="/partner/:token" element={<PartnerPortalPage />} />
         <Route path="/about" element={<AboutPage />} />
         <Route path="/company" element={<CompanyPage />} />
         <Route path="/contact" element={<ContactPage />} />

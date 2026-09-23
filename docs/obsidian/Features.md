@@ -1478,7 +1478,7 @@ From [[Decisions#ADR-176|ADR-176]]. The first step of moving authentication off 
 - **What it is for:** breaking the coupling ADR-031 created, where Supabase was both our Postgres host and our identity provider. `clerk_user_id` is the only vendor-shaped column in the schema.
 - **What it deliberately does not do:** hold any business data. Roles, hostels, tenancies and money stay on `profiles`. A Clerk payload can write four display fields and nothing else.
 - **What it does not do yet — and this matters:** **Supabase Auth is still the live session authority.** No user-visible behaviour changes; nothing reads `users` on a request path. Sessions are still minted and verified exactly as before. Phases 2–4 (Clerk sessions in `middleware.ts`, repointing the ~36 Supabase-auth files, backfill, then removal) are listed in the ADR and are not started.
-- **Verification status:** 59 tests across signature verification (signing with the real `svix` library in-process), the sync rules (`@/lib/db` mocked), and endpoint invariants that pin the middleware matcher and the frontend rewrite list. **Not verified end to end:** no Clerk account exists, `CLERK_WEBHOOK_SIGNING_SECRET` is unset, and no real delivery has ever reached the endpoint. Migration 081 is **not yet applied**.
+- **Verification status:** 59 tests across signature verification (signing with the real `svix` library in-process), the sync rules (`@/lib/db` mocked), and endpoint invariants that pin the middleware matcher and the frontend rewrite list. **Not verified end to end:** no Clerk account exists, `CLERK_WEBHOOK_SIGNING_SECRET` is unset, and no real delivery has ever reached the endpoint. Migration 081 is **verified applied to production 2026-09-23**.
 - **See:** [[Decisions#ADR-176|ADR-176]], [[Database]], [[APIs]], [[Business-Rules]], [[Changelog]]
 
 ### Clerk authentication — Phase 2: the sign-in surface in the SPA (2026-09-09)
@@ -1710,3 +1710,59 @@ The geographic graph is real and published: **Hyderabad → Ghatkesar → Yamnam
 Also added: a canonical consistency audit and frozen SEO snapshots in the pure suite, and reusable related-hostel generators (same area, same campus, similar price, same room types) that deduplicate across strategies so one hostel never appears under two headings.
 
 Related: [[Decisions#ADR-227|ADR-227]], [[APIs]], [[Database]], [[Changelog]]
+
+## Marketplace partner listings (2026-09-21)
+
+**What:** A hostel owner with no Stayo account receives real enquiries on their Stayo-authored listing, free up to a quota, then held-but-visible until they claim it. The point is to manufacture attributable proof of demand and then withhold the next piece of it — an owner will not join for a promise, but will for three named students who already asked about their building.
+
+**Status:** Backend and owner-facing pages built. Migration 091 **verified applied to production 2026-09-23** (`marketplace_partners` has 0 rows); nothing exercised against a database.
+
+**Flow:** enquiry on a `PLATFORM_LISTED` hostel → `partnerLeadDeliveryService.deliverEnquiry()` (hooked into `discovery-service`, after the existing sales-lead block) → under quota: `stayo_partner_new_enquiry` with a per-enquiry link; at quota: row held and `stayo_partner_enquiry_locked` sent → partner claims → hostels move to `OWNER_MANAGED`, held enquiries released.
+
+**Meta templates**, all approved 2026-09-21 except the last:
+
+| Key | Name | Category |
+|---|---|---|
+| `LISTING_LIVE` | `stayo_partner_listing_live` | MARKETING (submitted as UTILITY) |
+| `NEW_ENQUIRY` | `stayo_partner_new_enquiry` | UTILITY — the workhorse; never add promotional language, it would be recategorised and frequency-capped |
+| `ENQUIRY_LOCKED` | `stayo_partner_enquiry_locked` | MARKETING, with a `Stop promotions` quick reply |
+| `ACTIVATED` | `stayo_partner_activated_` | Submitted 2026-09-21, in review. **Trailing underscore is deliberate** — that is the name it was created with, and a Meta template name is fixed at creation |
+
+**Key files:** `src/services/marketing/{partner-quota,partner-consent,partner-delivery-state}.ts` (pure), `partner-lead-delivery-service.ts`, `partner-claim-service.ts`, `partner-portal-service.ts`, `partner-admin-service.ts`; `lib/services/notifications/providers/whatsapp/partner-template-contracts.ts`; `app/api/partner/**`, `app/api/platform-admin/partners/route.ts`, `app/api/platform-admin/platform-listings/[id]/partner/route.ts`; migration 091.
+
+**Verified:** 40 new pure tests; full `test:pure` suite green apart from 15 pre-existing failures on `dev` (`credential-service`, `subscription-admin`, `subscription-invoice-document`). **Not verified:** anything requiring a database or a real WhatsApp send.
+
+**Pages:** `/partner/:token` (portal — listings, quota counter, enquiries with locked rows shown as real), `/partner/enquiry/:token` (one enquiry, the student's number, a `wa.me` reply button), `/partner/activate/:token` (the claim, framed as an upgrade). All public, all reached only from the templates. Decision logic sits in `features/partner/model/partnerPortal.ts` with 13 node tests, since the frontend suite never renders a component.
+
+**The held-enquiry fallback is built:** `partner-fallback-policy.ts` (pure) + `partner-fallback-service.ts` + `GET /api/cron/partner-lead-fallback`, daily at `0 4 * * *`. Reaches the student in-app and by email — there is no approved WhatsApp template for it.
+
+**Open:** a separate WABA phone number for partner outreach ([[Decisions#ADR-231|ADR-231]] consequences); migration 091 application.
+
+## Manager invitations over WhatsApp (2026-09-21)
+
+`manager-invitation-service.sendInvitation()` now sends `stayo_admin_invitation` first and falls back to email only on failure; resend nudges a live token with `stayo_admin_invitation_reminder` instead of minting a new one. The approved templates point at `/admin/activate/:token`, which the SPA redirects to `/admin/manager-invitation/:token`. See [[Decisions#ADR-230|ADR-230]].
+
+**Not verified:** no invitation has been sent through the new path.
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
+
+A guardian is messaged on WhatsApp when their ward leaves the hostel and when they get back — and
+about nothing else. Built as [[Decisions#ADR-194|ADR-194]] says Stay follow-ups are built: a read
+model over `stay_events`, with no change to `applyStayEvent`.
+
+- **Consent is asked once**, on the tenant's first `Going home` / `Vacation`, after the return date
+  is picked. Every subsequent trip is unchanged — two taps. A declined answer is stored, so the
+  sheet never reappears.
+- **Two events notify:** `LEAVE_STARTED` and `RETURNED`. `RETURN_DATE_CHANGED`, `LEAVE_CANCELLED`
+  and `LATE` are silent — see [[Business-Rules]] for why `LATE` in particular is not sent.
+- **The guardian can stop it** by replying `STOP`, which pauses stay updates only and says so.
+- **The tenant is told it happened** — a toast naming the guardian on every leave that notifies.
+
+Files: `src/services/stay/stay-guardian-consent.ts`, `stay-guardian-consent-state.ts`,
+`stay-guardian-sweep.ts`; `lib/services/notifications/command-center/stay-guardian-policy.ts`,
+`stay-guardian-updates.ts`; `providers/whatsapp/stay-guardian-template-contracts.ts`;
+`apps/frontend/src/features/stay/components/GuardianConsentSheet.tsx`.
+
+**Not exercised:** no message has been sent, and both Meta templates are unsubmitted. See
+[[Changelog]].
+

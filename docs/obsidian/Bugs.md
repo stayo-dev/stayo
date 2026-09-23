@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
+
+**Symptom:** `POST /api/auth/login` returned 200, then Clerk's `sign_ins` returned `400 session_exists` ("You're already signed in"), and the modal blamed the server. Every retry failed the same way, so that browser could not sign in until its Clerk session was cleared.
+
+**Cause:** not the password, Google, Supabase or the ticket. [[Decisions#ADR-176|ADR-176]] Phase 2.6 keeps the Clerk SDK off the public page, so `AuthContext` there decides "signed out" without seeing Clerk's cookie session. The login modal opens, `redeemSignInTicket` loads Clerk — which revives the old session — and calls `signIn.create({ strategy: 'ticket' })` on top of it. The ticket flow ([[Decisions#ADR-204|ADR-204]]) had no branch for a session already existing.
+
+**Fix:** `redeemSignInTicket` now asks `decideExistingSession` first: no session → redeem; the session already belongs to the profile that just signed in → reuse it; anyone else's, or not provably the same person → end that session, then redeem. Adopting an unverified session was rejected: the UI would show the account just typed while API calls carried the other account's token. Related: [[Changelog]], [[Frontend]].
+
 ## A shared hostel link opened a read-only page (2026-09-21)
 
 Share a hostel from the app and the recipient got `/hostels/:slug` — the server-rendered SEO document: photos, facts, a mess menu, a footer, and one easily-missed "See live availability" link. Not the marketplace listing with the photo tour, bed chooser, map, host and Enquire button.
@@ -439,7 +447,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Fix.** One module, `src/services/tenants/kyc-status.ts`: `requiredKycDocTypes` / `isKycComplete` / `describeKycGap`, and `recomputeDocumentVerified(tx, tenantId)` as the **only** writer of the flag after invitation creation — `true` only when every required type has an **active, APPROVED** document. Every approve/reject/upload/`profile_type`-change path calls it inside its transaction. `bulk-verify` and `MARK_DOCUMENTS_VERIFIED` share `approveRequiredActiveKycDocs`: approve only required active types, `409 INCOMPLETE_KYC` when a required type has no active row. See [[Decisions#ADR-169|ADR-169]].
 
-**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (not yet applied).
+**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (**verified applied to production 2026-09-23**).
 
 **Follow-up (same day): the onboarding Documents UI was built into a dead file.** The first pass added the "Documents" upload section to `src/portal/pages/ActivateAccountPage.tsx` — which has been `@deprecated` and **not routed** since 2026-08-13 (the live wizard is `platforms/tenant/onboarding/ActivationPage.tsx` + `steps/`). So the KYC backend shipped but no real tenant ever saw a document-upload step during onboarding. Fixed by porting the section into the live `steps/WelcomeIdentityStep.tsx` (wiring the already-built `uploadActivationDocument` client + `activate/documents` route + `onboardingKyc.ts`) and reverting `ActivateAccountPage.tsx` to its committed state. Lesson: check `app/router/PublicRoutes.tsx` for which component a route actually mounts before editing a page under `src/portal/` — that tree is a mix of live-and-allowlisted and deprecated-but-kept files.
 
@@ -506,7 +514,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Bug 4 (race condition, not a normal-path bug) — `createInvitation`'s eligibility pre-check ran outside the write transaction.** Two concurrent invites for the same never-before-seen phone at two different hostels could both pass `tenancyEligibilityService.assertCanStartNewTenancyByContact`'s plain `SELECT` before either transaction committed its `tenants` insert (which writes `profile_id: null`, so the DB's `tenants_one_live_tenancy_per_profile` partial index — which only applies once `profile_id` is bound — cannot catch it). **Fix:** the transaction now opens with a phone-scoped `pg_advisory_xact_lock` (same pattern as `payment-service.ts`'s `pay_intent:` lock) and re-runs the eligibility check inside the lock before inserting.
 
-**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **not yet applied to any database**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
+**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **verified applied to production 2026-09-23**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
 
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 
@@ -3071,3 +3079,36 @@ Related: [[Decisions#ADR-223|ADR-223]], [[APIs]], [[Database]].
 **Lesson:** a bare `catch {}` around a call that can fail for more than one reason converts every failure into the single answer the author had in mind. On an indexable page the difference between 404 and 500 is the difference between "delete this from the index" and "try again".
 
 **See:** [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]].
+
+## `prisma` is exported as `any`, so a delegate that does not exist ships (2026-09-21)
+
+Three separate instances, all found in one sweep, all invisible for the same reason: `apps/backend/lib/db.ts` exports `prisma: any`, so a wrong accessor compiles, builds, deploys, and throws `Cannot read properties of undefined` the first time that line runs.
+
+| Broken | Correct | Blast radius |
+|---|---|---|
+| `prisma.leads` | `prisma.visitor_leads` | Admin Platform Listings 500'd — but only once a platform listing existed, because an `ids.length` guard skipped the call while there were none |
+| `prisma.Agreement` | `prisma.agreement` | Owner Alerts renewals query threw on every call. Prisma's client property is the model name with its first letter lowercased |
+| `tx.leadActivity`, `tx.visitorLead` | `tx.lead_activities`, `tx.visitor_leads` | **The whole Discover enquiry flow.** The `visitor_leads` row commits, then `recordActivity` throws, and the request 500s before the platform-lead evidence is raised or the owner notified |
+| `tx.paymentAttemptStatusEvent` (x3) | `tx.payment_attempt_status_events` | Payment status event writes |
+
+The transaction cases are the subtle ones. `lib/db.ts` patches ~52 camelCase aliases (`prisma.visitorLead` → `prisma.visitor_leads`) onto **its own `prisma` instance**. The interactive-transaction client Prisma hands to a `$transaction(async (tx) => ...)` callback is a different object and carries none of them — so the identical accessor works on one line and is `undefined` on the next.
+
+They also survived review three ways over: it compiles; the alias works immediately above; and a test that `vi.mock`s `@/lib/db` supplies whatever key the code asks for, so **the suite agreed with the bug**. Same shape as the phone-format lesson — fixtures sharing the code's wrong assumption.
+
+**Guard:** `tests/prisma-transaction-accessors.test.ts` fails on any unknown `prisma.<delegate>` and any `tx.<alias>` across `src`, `lib` and `app`, reading the model list from `schema.prisma` and the alias table from `lib/db.ts` so a new alias is covered the day it is added. Both checks skip comment lines, since the notes explaining these bugs quote the broken accessor by name.
+
+Earlier instance of the same class: `prisma.profiles` in the WhatsApp identity resolver, which took all inbound WhatsApp down. Related: [[Decisions#ADR-231|ADR-231]], [[Backend]], [[Changelog]]
+
+## Five tables were readable and writable with the public anon key (2026-09-21)
+
+Found while verifying migration 091 against production. `manager_profiles`, `manager_permission_grants`, `manager_hostel_assignments`, `coverage_requests` and `homepage_features` all had **Row Level Security disabled**.
+
+That is exploitable rather than theoretical, for two compounding reasons: `apps/frontend/src/lib/supabaseClient.ts` reads `VITE_SUPABASE_ANON_KEY`, a Vite variable, so the anon key is **compiled into the browser bundle**; and **no migration in this repo contains a `REVOKE`**, so PostgREST's default grants to `anon`/`authenticated` still apply. RLS was the only gate.
+
+The worst is `manager_permission_grants` — a **writable permissions table**. `requireManagerPermission` (`manager-authorization.ts`) gates admin-console access on rows in it, so inserting a grant against an existing `manager_profile_id` is privilege escalation. `homepage_features` is writable homepage defacement; `coverage_requests` holds visitor PII.
+
+Every other table in the schema already had RLS on — these five were the exception, from migrations 085/086/088, which simply omitted the `ENABLE ROW LEVEL SECURITY` that 083, 089 and 090 include.
+
+**Fixed by** migration 092, and prevented by `tests/migration-rls.test.ts`, which fails the build if a migration from 083 onward creates a table nothing enables RLS on.
+
+Related: [[Database]], [[Decisions#ADR-231|ADR-231]], [[Changelog]]

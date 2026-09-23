@@ -34,7 +34,8 @@ import {
   type CommandCenterPendingState,
 } from "../whatsapp-selection-state";
 import type { SenderIdentity } from "../routing/types";
-import { COMMANDS, CommandName, resolveCommand } from "./commands";
+import { COMMANDS, CommandName, resolveCommand, stayUpdatesStoppedMessage } from "./commands";
+import { stopGuardianConsent } from "@/src/services/stay/stay-guardian-consent";
 import {
   actionsFor,
   decodePayload,
@@ -198,6 +199,35 @@ export class CommandCenterService {
     // reintroducing the relay ADR-212 removed, at the last possible moment.
     if (command === COMMANDS.CONFIRM) {
       return this.completeGuardianWardConfirmation(phone, identity, tenantId);
+    }
+
+    // ADR-234. Ahead of the guardian gate, for the same reason CONFIRM is:
+    // answering "please stop messaging me" with "prove who you are first" is
+    // indefensible, and an OTP challenge is not a precondition for being left
+    // alone.
+    //
+    // Scoped to `guardianResidents`, NOT `tenantIds`. A phone can hold both
+    // relationships at once — a resident whose own number is also listed as
+    // their younger sibling's guardian contact — and only the guardian side
+    // receives these messages. Using `tenantIds` would let a resident's STOP
+    // silently switch off updates their own guardian consented to.
+    if (command === COMMANDS.STOP) {
+      const wards = identity.guardianResidents.filter(
+        (resident) => !tenantId || resident.tenantId === tenantId,
+      );
+      for (const ward of wards) {
+        await stopGuardianConsent(ward.tenantId);
+      }
+      await this.provider.sendTextMessage(
+        phone,
+        stayUpdatesStoppedMessage(wards.length === 1 ? (wards[0].name ?? "") : ""),
+      );
+      return {
+        handled: true,
+        command,
+        tenantId: wards.length === 1 ? wards[0].tenantId : null,
+        outcome: "STAY_UPDATES_STOPPED",
+      };
     }
 
     if (audience === "GUARDIAN") {

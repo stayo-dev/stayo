@@ -136,6 +136,15 @@ export default defineConfig({
       'tests/whatsapp-command-center-formatting.test.ts',
       'tests/whatsapp-guardian-reminders.test.ts',
       'tests/whatsapp-guardian-activation-template.test.ts',
+      // ADR-234 — guardian stay notifications. The template contracts and the
+      // notify policy are pure so they can be verified without a database.
+      'tests/stay-guardian-templates.test.ts',
+      'tests/stay-guardian-policy.test.ts',
+      'tests/stay-guardian-schema.test.ts',
+      'tests/stay-guardian-consent-service.test.ts',
+      'tests/stay-guardian-send.test.ts',
+      'tests/stay-guardian-sweep.test.ts',
+      'tests/stay-guardian-stop.test.ts',
       // Reads schema.prisma and the source as text — no client, no database.
       'tests/whatsapp-prisma-accessors.test.ts',
       // ADR-172 owner subscription billing — Phase 1 schema guard. Reads
@@ -283,6 +292,17 @@ export default defineConfig({
       'tests/seo-canonical-audit.test.ts',
       'tests/seo-snapshot.test.ts',
       'tests/seo-related.test.ts',
+      /**
+       * Marketplace partner listings + manager invitation delivery. The gate,
+       * the consent guard, the delivery state machine and every WhatsApp
+       * template contract are pure precisely so they can be verified here:
+       * the main suite cannot reach a database.
+       */
+      'tests/partner-templates.test.ts',
+      'tests/partner-lead-gate.test.ts',
+      'tests/prisma-transaction-accessors.test.ts',
+      'tests/partner-fallback.test.ts',
+      'tests/migration-rls.test.ts',
     ],
     alias: {
       // More specific than the catch-all `@` entry below, and must come

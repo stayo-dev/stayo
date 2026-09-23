@@ -28,6 +28,13 @@ const PUBLIC_ROUTES = [
   // /api/leads/invitation above. No session exists yet at this point in the
   // flow; every route under this prefix validates the token itself.
   "/api/managers/invitation",
+  // Marketplace partner surfaces — an off-platform hostel owner viewing the
+  // enquiries on their Stayo-authored listing. Bearer-token by design: they
+  // have no account, and requiring one would put the signup we are trying to
+  // earn in front of the value we are trying to prove. Every route under this
+  // prefix validates its own token. The claim POST is the one exception and
+  // is listed in public-route-exceptions.ts.
+  "/api/partner",
   "/api/auth/csrf",
   "/api/tenants/activate",
   "/api/visit",

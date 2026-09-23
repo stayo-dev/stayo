@@ -333,7 +333,7 @@ model hostels {
   history_disclosures            residency_history_disclosures[]
   marketing_revisions            hostel_marketing_revisions[]
   tenant_owner_attestations      tenant_owner_attestations[]
-  homepage_feature                  homepage_features?
+  homepage_feature               homepage_features?
 
   /// The curated locality this hostel sits in. ADR-226.
   ///
@@ -341,10 +341,10 @@ model hostels {
   /// information_schema — declaring a scalar before its column exists makes
   /// Prisma request it on every `include:`-only read of `hostels`, which is
   /// what took the public listing pages down on 2026-08-22 (`navigation`).
-  area_id                        String?                          @db.Uuid
-  area                           areas?                           @relation(fields: [area_id], references: [id], onDelete: SetNull)
-  colleges                       hostel_colleges[]
-  slug_history                   hostel_slug_history[]
+  area_id      String?               @db.Uuid
+  area         areas?                @relation(fields: [area_id], references: [id], onDelete: SetNull)
+  colleges     hostel_colleges[]
+  slug_history hostel_slug_history[]
 }
 
 model identity_tokens {
@@ -821,48 +821,48 @@ model payments {
 
 /// This model or at least one of its fields has comments in the database, and requires an additional setup for migrations: Read more: https://pris.ly/d/database-comments
 model profile {
-  email                                                             String                @unique
+  email                                                             String                          @unique
   name                                                              String
-  phone                                                             String?               @unique
+  phone                                                             String?                         @unique
   password_hash                                                     String?
   role                                                              Role
-  is_active                                                         Boolean               @default(true)
-  is_profile_completed                                              Boolean               @default(false)
+  is_active                                                         Boolean                         @default(true)
+  is_profile_completed                                              Boolean                         @default(false)
   address                                                           String?
   city                                                              String?
   state                                                             String?
   pincode                                                           String?
-  created_at                                                        DateTime              @default(now())
+  created_at                                                        DateTime                        @default(now())
   updated_at                                                        DateTime?
-  version                                                           Int                   @default(1)
-  invitation_token                                                  String?               @unique
+  version                                                           Int                             @default(1)
+  invitation_token                                                  String?                         @unique
   invitation_expires_at                                             DateTime?
-  id                                                                String                @id @db.Uuid
-  owner_id                                                          String?               @db.Uuid
+  id                                                                String                          @id @db.Uuid
+  owner_id                                                          String?                         @db.Uuid
   emergency_contact                                                 String?
-  password_reset_required                                           Boolean               @default(false)
-  password_reset_at                                                 DateTime?             @db.Timestamptz(6)
-  is_imported                                                       Boolean               @default(false)
-  import_batch_id                                                   String?               @db.Uuid
-  onboarding_expires_at                                             DateTime?             @db.Timestamptz(6)
-  mobile_verified                                                   Boolean               @default(false)
-  phone_verified                                                    Boolean               @default(false)
+  password_reset_required                                           Boolean                         @default(false)
+  password_reset_at                                                 DateTime?                       @db.Timestamptz(6)
+  is_imported                                                       Boolean                         @default(false)
+  import_batch_id                                                   String?                         @db.Uuid
+  onboarding_expires_at                                             DateTime?                       @db.Timestamptz(6)
+  mobile_verified                                                   Boolean                         @default(false)
+  phone_verified                                                    Boolean                         @default(false)
   /// Supabase Auth linkage (ADR-031). Null = not yet linked — see the
   /// just-in-time migration in lib/auth/supabase-identity.ts. Never assume
   /// this equals `id`; that was an unenforced intent of the old signup code,
   /// not a guarantee.
-  auth_user_id                                                      String?               @unique @db.Uuid
-  auth_linked_at                                                    DateTime?             @db.Timestamptz(6)
+  auth_user_id                                                      String?                         @unique @db.Uuid
+  auth_linked_at                                                    DateTime?                       @db.Timestamptz(6)
   owner_documents                                                   owner_documents[]
-  bulk_import_batches_bulk_import_batches_uploaded_byToprofiles     bulk_import_batches[] @relation("bulk_import_batches_uploaded_byToprofiles")
+  bulk_import_batches_bulk_import_batches_uploaded_byToprofiles     bulk_import_batches[]           @relation("bulk_import_batches_uploaded_byToprofiles")
   expenses                                                          expenses[]
   rule_versions                                                     RuleVersion[]
-  published_templates                                               AgreementTemplate[]   @relation("TemplatePublisher")
+  published_templates                                               AgreementTemplate[]             @relation("TemplatePublisher")
   hostels                                                           hostels[]
   notifications                                                     notifications[]
-  bulk_import_batches_profiles_import_batch_idTobulk_import_batches bulk_import_batches?  @relation("profiles_import_batch_idTobulk_import_batches", fields: [import_batch_id], references: [id])
-  profiles                                                          profile?              @relation("profilesToprofiles", fields: [owner_id], references: [id])
-  other_profiles                                                    profile[]             @relation("profilesToprofiles")
+  bulk_import_batches_profiles_import_batch_idTobulk_import_batches bulk_import_batches?            @relation("profiles_import_batch_idTobulk_import_batches", fields: [import_batch_id], references: [id])
+  profiles                                                          profile?                        @relation("profilesToprofiles", fields: [owner_id], references: [id])
+  other_profiles                                                    profile[]                       @relation("profilesToprofiles")
   refresh_tokens                                                    refresh_tokens[]
   // One row per tenancy, not per person. A profile accumulates one row per
   // hostel they have ever stayed in; at most one of them may be live
@@ -873,9 +873,9 @@ model profile {
   visitor_leads                                                     visitor_leads[]
   // Enquiries this person sent from Discover, as the seeker. Distinct from
   // `visitor_leads` above, which is the same table seen as the *owner*.
-  seeker_enquiries                                                  visitor_leads[]       @relation("SeekerEnquiries")
-  seeker_coverage_requests                                          coverage_requests[]   @relation("SeekerCoverageRequests")
-  curated_homepage_features                                         homepage_features[]   @relation("HomepageCurator")
+  seeker_enquiries                                                  visitor_leads[]                 @relation("SeekerEnquiries")
+  seeker_coverage_requests                                          coverage_requests[]             @relation("SeekerCoverageRequests")
+  curated_homepage_features                                         homepage_features[]             @relation("HomepageCurator")
   saved_hostels                                                     saved_hostels[]
   hostel_reviews                                                    hostel_reviews[]
   // Phase B: the portable half of this account. `identity` is the person's own
@@ -885,11 +885,11 @@ model profile {
   manager_profile                                                   manager_profiles?
   // Meet your host (ADR-200). Relation fields add no scalar columns to
   // `profiles`, so `getSession()`'s profile reads are unaffected.
-  host_profile                                                      owner_host_profile?   @relation("OwnerHostProfile")
-  host_profiles_edited                                              owner_host_profile[]  @relation("OwnerHostProfileUpdater")
-  identity_documents                                             identity_documents[]
-  verified_document_shares                                          identity_document_shares[] @relation("DocumentShareVerifier")
-  rejected_document_shares                                          identity_document_shares[] @relation("DocumentShareRejecter")
+  host_profile                                                      owner_host_profile?             @relation("OwnerHostProfile")
+  host_profiles_edited                                              owner_host_profile[]            @relation("OwnerHostProfileUpdater")
+  identity_documents                                                identity_documents[]
+  verified_document_shares                                          identity_document_shares[]      @relation("DocumentShareVerifier")
+  rejected_document_shares                                          identity_document_shares[]      @relation("DocumentShareRejecter")
   history_disclosures                                               residency_history_disclosures[] @relation("HistoryDisclosureSubject")
   marketing_submissions                                             hostel_marketing_revisions[]    @relation("MarketingSubmitter")
   marketing_reviews                                                 hostel_marketing_revisions[]    @relation("MarketingReviewer")
@@ -905,16 +905,16 @@ model profile {
   // Owner subscription billing (ADR-172). One subscription per owner; money
   // (`subscription_payments`) and the financial document (`subscription_invoices`)
   // are separate entities. Isolated from tenant-rent billing.
-  owner_subscription                                                owner_subscriptions?
-  subscription_payments                                             subscription_payments[]
-  subscription_invoices                                             subscription_invoices[]
-  owner_billing_profile                                             owner_billing_profiles?
+  owner_subscription    owner_subscriptions?
+  subscription_payments subscription_payments[]
+  subscription_invoices subscription_invoices[]
+  owner_billing_profile owner_billing_profiles?
 
   // Generic owner payments (not subscription payments) — arbitrary one-off
   // charges Stayo collects from the owner. Deliberately separate from the
   // subscription-billing relations above.
-  owner_payments                                                    owner_payments[]
-  owner_invoices                                                    owner_invoices[]
+  owner_payments owner_payments[]
+  owner_invoices owner_invoices[]
 
   /// Where this owner's settled rent is sent. Added to `profiles` by migration
   /// 070 but never declared here — so `/api/owner/payout-account` and the admin
@@ -923,11 +923,11 @@ model profile {
   /// 2026-08-22 `navigation` incident) precisely because 070 IS applied: the
   /// danger is declaring a field whose column does not exist yet, not one whose
   /// column already does.
-  payout_holder_name                                                String?
-  payout_account_no                                                 String?
-  payout_ifsc                                                       String?
-  payout_bank_name                                                  String?
-  payout_updated_at                                                 DateTime?             @db.Timestamptz(6)
+  payout_holder_name String?
+  payout_account_no  String?
+  payout_ifsc        String?
+  payout_bank_name   String?
+  payout_updated_at  DateTime? @db.Timestamptz(6)
 
   push_subscriptions push_subscriptions[]
 
@@ -935,7 +935,7 @@ model profile {
   /// yet (ADR-176). Nullable in both directions: a profile can exist with no
   /// login (owner-created tenant not yet signed up), and a login can exist with
   /// no profile (signed up, not yet provisioned a role).
-  login              users?    @relation("ProfileLogin")
+  login users? @relation("ProfileLogin")
 
   @@index([email])
   @@index([name])
@@ -958,35 +958,35 @@ model profile {
 /// tenancies and money live on `profile` and its relations. This model answers
 /// "who is this login?", never "what may they do?".
 model users {
-  id               String    @id @default(uuid()) @db.Uuid
+  id            String @id @default(uuid()) @db.Uuid
   /// Clerk's stable user id ("user_2abc..."). Never reused, never re-minted.
-  clerk_user_id    String    @unique
+  clerk_user_id String @unique
 
   /// The complete set of fields `user.created`/`user.updated` may write —
   /// mirrored from Clerk, asserted against ALLOWED_PROFILE_FIELDS in
   /// src/services/auth/clerk-user-sync-service.ts by tests/clerk-user-sync.test.ts.
-  email            String?
-  first_name       String?
-  last_name        String?
-  image_url        String?
+  email      String?
+  first_name String?
+  last_name  String?
+  image_url  String?
 
   /// Soft-deactivation. `user.deleted` sets these; nothing deletes the row.
-  is_active        Boolean   @default(true)
-  deactivated_at   DateTime? @db.Timestamptz(6)
+  is_active      Boolean   @default(true)
+  deactivated_at DateTime? @db.Timestamptz(6)
 
   /// The business identity, when one exists. Nullable by design: Clerk may know
   /// a person before we have provisioned them any role, and a webhook must never
   /// invent a profile (the no-auto-provisioning rule of ADR-031 / ADR-073).
-  profile_id       String?   @unique @db.Uuid
-  profile          profile?  @relation("ProfileLogin", fields: [profile_id], references: [id], onDelete: SetNull)
+  profile_id String?  @unique @db.Uuid
+  profile    profile? @relation("ProfileLogin", fields: [profile_id], references: [id], onDelete: SetNull)
 
   /// Clerk's own `updated_at` for the user object. Svix delivery is
   /// at-least-once and unordered; this rejects a stale replay from overwriting
   /// newer data.
   clerk_updated_at DateTime? @db.Timestamptz(6)
 
-  created_at       DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime  @default(now()) @db.Timestamptz(6)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
+  updated_at DateTime @default(now()) @db.Timestamptz(6)
 
   @@index([email])
   @@index([is_active])
@@ -1358,7 +1358,7 @@ model rooms {
   tenant_invitation_reservations tenant_invitation_reservations[]
   hostels                        hostels                          @relation(fields: [hostel_id], references: [id])
   floor_ref                      floors?                          @relation(fields: [floor_id], references: [id])
-  preferred_by_leads visitor_leads[] @relation("LeadPreferredRoom")
+  preferred_by_leads             visitor_leads[]                  @relation("LeadPreferredRoom")
 
   @@unique([hostel_id, room_no])
   @@index([hostel_id])
@@ -1367,14 +1367,14 @@ model rooms {
 }
 
 model floors {
-  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id  String   @db.Uuid
-  owner_id   String   @db.Uuid
-  name       String
-  sort_order Int      @default(0)
-  created_at DateTime @default(now()) @db.Timestamptz(6)
-  hostel     hostels  @relation(fields: [hostel_id], references: [id])
-  rooms      rooms[]
+  id                 String          @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id          String          @db.Uuid
+  owner_id           String          @db.Uuid
+  name               String
+  sort_order         Int             @default(0)
+  created_at         DateTime        @default(now()) @db.Timestamptz(6)
+  hostel             hostels         @relation(fields: [hostel_id], references: [id])
+  rooms              rooms[]
   preferred_by_leads visitor_leads[] @relation("LeadPreferredFloor")
 
   @@index([hostel_id])
@@ -1503,24 +1503,24 @@ model visitor_leads {
 /// `verification_status` decide whether a hostel is discoverable **at all**;
 /// this decides whether its *content* may be shown. A listing needs both.
 model hostel_marketing_revisions {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id    String    @db.Uuid
+  id        String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id String @db.Uuid
 
   /// Monotonic per hostel — human-facing ("v3 approved") and explicit about
   /// ordering rather than inferring it from timestamps.
-  version      Int
+  version Int
 
   /// DRAFT | PENDING_REVIEW | APPROVED | REJECTED | SUPERSEDED
   ///
   /// SUPERSEDED is what an APPROVED revision becomes when a newer one is
   /// approved. Kept, not deleted: it records what was advertised and when,
   /// which is what settles "but the listing said ₹4,500".
-  status       String    @default("DRAFT")
+  status String @default("DRAFT")
 
   /// Validated on the way in by `marketing-content.ts` — a checked payload,
   /// not a bag of anything. Child tables were rejected because a revision is
   /// an immutable snapshot and they would each need their own versioning.
-  content      Json      @default("{}")
+  content Json @default("{}")
 
   submitted_at DateTime? @db.Timestamptz(6)
   submitted_by String?   @db.Uuid
@@ -1537,14 +1537,14 @@ model hostel_marketing_revisions {
   /// Distinct from the automated `ReviewFlag`s in marketing-review-service.ts,
   /// which are computed advisories (price drift, sharing not in inventory) and
   /// are never stored.
-  review_flags Json      @default("[]")
+  review_flags Json @default("[]")
 
-  created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  submitter    profile?  @relation("MarketingSubmitter", fields: [submitted_by], references: [id])
-  reviewer     profile?  @relation("MarketingReviewer", fields: [reviewed_by], references: [id])
+  hostel    hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  submitter profile? @relation("MarketingSubmitter", fields: [submitted_by], references: [id])
+  reviewer  profile? @relation("MarketingReviewer", fields: [reviewed_by], references: [id])
 
   @@unique([hostel_id, version], map: "hostel_marketing_revisions_hostel_version_key")
   @@index([status, submitted_at], map: "idx_hostel_marketing_pending")
@@ -1563,8 +1563,8 @@ model hostel_marketing_revisions {
 /// `tenants` keeps its matching columns as the tenancy-time snapshot. This is
 /// the source of truth; that is what was true when a given tenancy began.
 model profile_identity {
-  id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id        String    @unique @db.Uuid
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String @unique @db.Uuid
 
   date_of_birth     DateTime? @db.Date
   gender            String?
@@ -1581,23 +1581,23 @@ model profile_identity {
   guardian_relation String?
 
   /// STUDENT | WORKING_PROFESSIONAL. Drives which documents are required.
-  profile_type      String    @default("STUDENT")
+  profile_type String @default("STUDENT")
 
-  college_name      String?
-  roll_number       String?
-  course            String?
-  year_of_study     Int?
-  branch            String?
-  section           String?
+  college_name  String?
+  roll_number   String?
+  course        String?
+  year_of_study Int?
+  branch        String?
+  section       String?
 
-  office_name       String?
-  office_location   String?
-  job_role          String?
+  office_name     String?
+  office_location String?
+  job_role        String?
 
-  created_at        DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at        DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  profile           profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  profile profile @relation(fields: [profile_id], references: [id], onDelete: Cascade)
 
   @@map("profile_identity")
 }
@@ -1618,8 +1618,8 @@ model owner_host_profile {
   created_at    DateTime  @default(now()) @db.Timestamptz(6)
   updated_at    DateTime? @db.Timestamptz(6)
 
-  profile       profile   @relation("OwnerHostProfile", fields: [profile_id], references: [id], onDelete: Cascade)
-  updater       profile?  @relation("OwnerHostProfileUpdater", fields: [updated_by], references: [id], onDelete: SetNull)
+  profile profile  @relation("OwnerHostProfile", fields: [profile_id], references: [id], onDelete: Cascade)
+  updater profile? @relation("OwnerHostProfileUpdater", fields: [updated_by], references: [id], onDelete: SetNull)
 
   @@map("owner_host_profiles")
 }
@@ -1628,8 +1628,8 @@ model owner_host_profile {
 /// hostel and no tenancy — those live on `identity_document_shares`, which is
 /// what makes the document portable without making it universally visible.
 model identity_documents {
-  id         String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id String                     @db.Uuid
+  id         String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String    @db.Uuid
   doc_type   String
   doc_number String?
   file_url   String
@@ -1637,12 +1637,12 @@ model identity_documents {
   file_id    String?
   mime_type  String
   file_size  Int
-  is_active  Boolean                    @default(true)
-  created_at DateTime                   @default(now()) @db.Timestamptz(6)
-  updated_at DateTime?                  @db.Timestamptz(6)
+  is_active  Boolean   @default(true)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  profile    profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
-  shares     identity_document_shares[]
+  profile profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  shares  identity_document_shares[]
 
   @@index([profile_id, doc_type, is_active], map: "idx_identity_documents_profile_type")
   @@map("identity_documents")
@@ -1654,33 +1654,33 @@ model identity_documents {
 /// verifying an ID must not silently make it verified for every other hostel
 /// the person applies to — the tenant re-uses the file, not the decision.
 model identity_document_shares {
-  id                   String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  identity_document_id String             @db.Uuid
-  hostel_id            String             @db.Uuid
+  id                   String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  identity_document_id String  @db.Uuid
+  hostel_id            String  @db.Uuid
   /// Null while the person is only an applicant; set once a tenancy exists.
-  tenant_id            String?            @db.Uuid
+  tenant_id            String? @db.Uuid
 
   /// PENDING | VERIFIED | REJECTED
-  status               String             @default("PENDING")
-  verified_by          String?            @db.Uuid
-  verified_at          DateTime?          @db.Timestamptz(6)
-  rejected_by          String?            @db.Uuid
-  rejected_at          DateTime?          @db.Timestamptz(6)
-  rejection_reason     String?
+  status           String    @default("PENDING")
+  verified_by      String?   @db.Uuid
+  verified_at      DateTime? @db.Timestamptz(6)
+  rejected_by      String?   @db.Uuid
+  rejected_at      DateTime? @db.Timestamptz(6)
+  rejection_reason String?
 
-  granted_at           DateTime           @default(now()) @db.Timestamptz(6)
+  granted_at DateTime  @default(now()) @db.Timestamptz(6)
   /// Set rather than deleting the row: an owner who verified a document must
   /// stay attributable after their access ends.
-  revoked_at           DateTime?          @db.Timestamptz(6)
+  revoked_at DateTime? @db.Timestamptz(6)
 
-  created_at           DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime?          @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  document             identity_documents @relation(fields: [identity_document_id], references: [id], onDelete: Cascade)
-  hostel               hostels            @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  tenant               tenants?           @relation(fields: [tenant_id], references: [id])
-  verifier             profile?           @relation("DocumentShareVerifier", fields: [verified_by], references: [id])
-  rejecter             profile?           @relation("DocumentShareRejecter", fields: [rejected_by], references: [id])
+  document identity_documents @relation(fields: [identity_document_id], references: [id], onDelete: Cascade)
+  hostel   hostels            @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  tenant   tenants?           @relation(fields: [tenant_id], references: [id])
+  verifier profile?           @relation("DocumentShareVerifier", fields: [verified_by], references: [id])
+  rejecter profile?           @relation("DocumentShareRejecter", fields: [rejected_by], references: [id])
 
   @@unique([identity_document_id, hostel_id], map: "identity_document_shares_doc_hostel_key")
   @@index([hostel_id, status], map: "idx_identity_document_shares_hostel_status")
@@ -1700,24 +1700,24 @@ model identity_document_shares {
 /// **A `REVOKED` or `DECLINED` row overrides engagement.** No row at all means
 /// "fall back to engagement".
 model residency_history_disclosures {
-  id           String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id   String    @db.Uuid
-  hostel_id    String    @db.Uuid
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id String @db.Uuid
+  hostel_id  String @db.Uuid
 
   /// REQUESTED | APPROVED | DECLINED | REVOKED
-  status       String    @default("REQUESTED")
+  status String @default("REQUESTED")
 
   /// Null when the tenant acted without being asked.
   requested_by String?   @db.Uuid
   requested_at DateTime? @db.Timestamptz(6)
   decided_at   DateTime? @db.Timestamptz(6)
 
-  created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  profile      profile   @relation("HistoryDisclosureSubject", fields: [profile_id], references: [id], onDelete: Cascade)
-  hostel       hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  requester    profile?  @relation("HistoryDisclosureRequester", fields: [requested_by], references: [id])
+  profile   profile  @relation("HistoryDisclosureSubject", fields: [profile_id], references: [id], onDelete: Cascade)
+  hostel    hostels  @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  requester profile? @relation("HistoryDisclosureRequester", fields: [requested_by], references: [id])
 
   @@unique([profile_id, hostel_id], map: "residency_history_disclosures_profile_hostel_key")
   @@index([profile_id, status], map: "idx_residency_disclosures_profile_status")
@@ -1750,44 +1750,44 @@ model saved_hostels {
 /// published straight to a public page would be an open text field on a
 /// stranger's business. See ADR-086.
 model hostel_reviews {
-  id              String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id       String    @db.Uuid
-  profile_id      String    @db.Uuid
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id  String @db.Uuid
+  profile_id String @db.Uuid
 
   /// 1–5, given directly by the resident as its own question (migration 076)
   /// — not derived from the categories below. Constrained in the database,
   /// not only in the service.
-  rating          Int       @db.SmallInt
+  rating Int @db.SmallInt
 
   /// Per-category scores, hostel-specific (migration 076 replaced Airbnb's
   /// six with these eight). All nullable: `food` does not apply to a hostel
   /// that serves no meals, and reviews written before their migration have
   /// none of the columns added after it. Averages skip what was not answered
   /// rather than counting it as zero.
-  rating_cleanliness  Int?   @db.SmallInt
-  rating_maintenance  Int?   @db.SmallInt
-  rating_food         Int?   @db.SmallInt
-  rating_room_comfort Int?   @db.SmallInt
-  rating_amenities    Int?   @db.SmallInt
+  rating_cleanliness  Int?    @db.SmallInt
+  rating_maintenance  Int?    @db.SmallInt
+  rating_food         Int?    @db.SmallInt
+  rating_room_comfort Int?    @db.SmallInt
+  rating_amenities    Int?    @db.SmallInt
   /// Labelled "Staff & Management" in the app; column name predates that copy.
-  rating_staff        Int?   @db.SmallInt
-  rating_safety       Int?   @db.SmallInt
-  rating_wifi         Int?   @db.SmallInt
-  body            String?
+  rating_staff        Int?    @db.SmallInt
+  rating_safety       Int?    @db.SmallInt
+  rating_wifi         Int?    @db.SmallInt
+  body                String?
 
   /// PENDING | PUBLISHED | REJECTED | CHANGES_REQUESTED — a plain string,
   /// like the rest of this schema's moderation columns.
-  status          String    @default("PENDING")
+  status String @default("PENDING")
 
   /// Whether this person has ever held a tenancy at this hostel, snapshotted
   /// when they wrote the review. A moderation signal for the admin and a badge
   /// on the published review — never a gate on who may write one.
-  stayed_here     Boolean   @default(false)
+  stayed_here Boolean @default(false)
 
   /// Stay duration in months, snapshotted at submit time (migration 076) —
   /// same reasoning as `stayed_here`: a live join against the tenancy would
   /// drift as the tenancy changes after the review is written.
-  stay_months     Int?      @db.SmallInt
+  stay_months Int? @db.SmallInt
 
   moderated_at    DateTime? @db.Timestamptz(6)
   moderated_by    String?   @db.Uuid
@@ -1795,12 +1795,12 @@ model hostel_reviews {
   /// so a "no" arrives with a reason.
   moderation_note String?
 
-  created_at      DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at      DateTime? @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
-  hostel          hostels   @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  profile         profile   @relation(fields: [profile_id], references: [id], onDelete: Cascade)
-  topics          hostel_review_topics[]
+  hostel  hostels                @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  profile profile                @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  topics  hostel_review_topics[]
 
   /// One review per person per hostel — an edit replaces it and returns to the
   /// queue, rather than stacking a second opinion from the same account.
@@ -1818,14 +1818,14 @@ model hostel_reviews {
 /// topics is three rows. Never read by the moderation decision path:
 /// sentiment here is an insight signal, not a publish/reject gate.
 model hostel_review_topics {
-  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  review_id   String   @db.Uuid
-  category    String
-  sentiment   String
-  confidence  Float    @default(0)
-  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  id         String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  review_id  String   @db.Uuid
+  category   String
+  sentiment  String
+  confidence Float    @default(0)
+  created_at DateTime @default(now()) @db.Timestamptz(6)
 
-  review      hostel_reviews @relation(fields: [review_id], references: [id], onDelete: Cascade)
+  review hostel_reviews @relation(fields: [review_id], references: [id], onDelete: Cascade)
 
   @@index([review_id], map: "idx_hostel_review_topics_review")
   @@index([category, sentiment], map: "idx_hostel_review_topics_category_sentiment")
@@ -1911,29 +1911,29 @@ model tenant_transfer_logs {
 }
 
 model tenants {
-  id                                String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id                        String?                             @db.Uuid
-  profile_type                      String                              @default("STUDENT")
-  version                           Int                                 @default(1)
-  monthly_rent                      Decimal?                            @db.Decimal(10, 2)
-  joined_on                         DateTime?                           @db.Date
-  status                            TenantStatus                        @default(INVITED)
-  owner_id                          String?                             @db.Uuid
-  payment_frequency                 PaymentFrequency                    @default(MONTHLY)
-  payment_frequency_effective_from  DateTime?                           @db.Date
-  payment_frequency_updated_at      DateTime?                           @db.Timestamptz(6)
-  profile_completed                 Boolean                             @default(false)
-  photo_url                         String?
-  phone_1                           String?
-  phone_2                           String?
-  phone_3                           String?
-  guardian_name                     String?
-  guardian_phone                    String?
-  guardian_relation                 String?
+  id                                    String                              @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id                            String?                             @db.Uuid
+  profile_type                          String                              @default("STUDENT")
+  version                               Int                                 @default(1)
+  monthly_rent                          Decimal?                            @db.Decimal(10, 2)
+  joined_on                             DateTime?                           @db.Date
+  status                                TenantStatus                        @default(INVITED)
+  owner_id                              String?                             @db.Uuid
+  payment_frequency                     PaymentFrequency                    @default(MONTHLY)
+  payment_frequency_effective_from      DateTime?                           @db.Date
+  payment_frequency_updated_at          DateTime?                           @db.Timestamptz(6)
+  profile_completed                     Boolean                             @default(false)
+  photo_url                             String?
+  phone_1                               String?
+  phone_2                               String?
+  phone_3                               String?
+  guardian_name                         String?
+  guardian_phone                        String?
+  guardian_relation                     String?
   /// ADR-212. When the tenant chose to verify their guardian later, which is
   /// what starts the 7-day grace clock in a MANDATORY hostel. NULL means never
   /// deferred — which is not the same as verified, and not the same as refused.
-  guardian_verification_deferred_at     DateTime? @db.Timestamptz(6)
+  guardian_verification_deferred_at     DateTime?                           @db.Timestamptz(6)
   /// ADR-212. NOT_REACHABLE_NOW | TRAVELLING | NO_WHATSAPP | PREFER_NOT_TO.
   /// A plain string rather than a Prisma enum, matching this schema's existing
   /// convention for descriptive statuses; the set is enforced by
@@ -1943,85 +1943,85 @@ model tenants {
   /// deferral and pushed forward 3 days by each "Not now", so the wall's
   /// back-off is a date rather than a counter — a counter incremented only on
   /// dismissal cannot gate the very prompt that produces dismissals.
-  guardian_verification_next_prompt_at  DateTime? @db.Timestamptz(6)
+  guardian_verification_next_prompt_at  DateTime?                           @db.Timestamptz(6)
   /// ADR-212. How many times the tenant has dismissed the overdue wall. Kept
   /// for reporting and for any future escalation rule; it does not gate the
   /// prompt itself.
-  guardian_verification_prompt_count    Int       @default(0)
-  personal_email                    String?
-  college_name                      String?
-  roll_number                       String?
-  course                            String?
-  year_of_study                     Int?
-  section                           String?
-  branch                            String?
-  office_name                       String?
-  office_location                   String?
-  job_role                          String?
-  gender                            String?
-  date_of_birth                     DateTime?                           @db.Date
-  nationality                       String?
-  pan_number                        String?
-  expected_completion_date          DateTime?                           @db.Date
-  security_deposit                  Decimal                             @default(0) @db.Decimal(10, 2)
-  maintenance_charge                Decimal                             @default(0) @db.Decimal(10, 2)
-  maintenance_type                  String                              @default("MONTHLY")
-  billing_start_date                DateTime?                           @db.Date
-  permanent_address                 String?
-  temporary_address                 String?
-  created_at                        DateTime                            @default(now()) @db.Timestamptz(6)
-  updated_at                        DateTime?                           @db.Timestamptz(6)
-  activation_started_at             DateTime?                           @db.Timestamptz(6)
-  activation_completed_at           DateTime?                           @db.Timestamptz(6)
-  onboarding_last_activity_at       DateTime?                           @db.Timestamptz(6)
-  exit_date                         DateTime?                           @db.Date
-  exit_notes                        String?
-  exit_reason                       String?
-  hostel_id                         String                              @db.Uuid
-  mobile_verified                   Boolean                             @default(false)
-  document_verified                 Boolean                             @default(false)
-  access_mode                       TenantAccessMode                    @default(SELF_SERVE)
-  acceptance_status                 TenantAcceptanceStatus              @default(NOT_REQUIRED)
-  tenant_accepted_at                DateTime?                           @db.Timestamptz(6)
-  display_name                      String?
-  complaints                        complaints[]
-  rule_acceptances                  TenantPolicyAcceptance[]
-  payment_attempts                  paymentAttempt[]
-  payments                          payments[]
-  payment_groups                    payment_groups[]
-  reactivation_requests             reactivation_requests[]
-  receipts                          receipts[]
-  reminder_logs                     reminder_logs[]
-  rent_obligations                  rent_obligations[]
-  room_allocations                  roomAllocation[]
-  tenant_financial_ledger           tenant_financial_ledger[]
-  tenant_behavior_scores            tenant_behavior_scores?
-  move_out_requests                 move_out_requests[]
+  guardian_verification_prompt_count    Int                                 @default(0)
+  personal_email                        String?
+  college_name                          String?
+  roll_number                           String?
+  course                                String?
+  year_of_study                         Int?
+  section                               String?
+  branch                                String?
+  office_name                           String?
+  office_location                       String?
+  job_role                              String?
+  gender                                String?
+  date_of_birth                         DateTime?                           @db.Date
+  nationality                           String?
+  pan_number                            String?
+  expected_completion_date              DateTime?                           @db.Date
+  security_deposit                      Decimal                             @default(0) @db.Decimal(10, 2)
+  maintenance_charge                    Decimal                             @default(0) @db.Decimal(10, 2)
+  maintenance_type                      String                              @default("MONTHLY")
+  billing_start_date                    DateTime?                           @db.Date
+  permanent_address                     String?
+  temporary_address                     String?
+  created_at                            DateTime                            @default(now()) @db.Timestamptz(6)
+  updated_at                            DateTime?                           @db.Timestamptz(6)
+  activation_started_at                 DateTime?                           @db.Timestamptz(6)
+  activation_completed_at               DateTime?                           @db.Timestamptz(6)
+  onboarding_last_activity_at           DateTime?                           @db.Timestamptz(6)
+  exit_date                             DateTime?                           @db.Date
+  exit_notes                            String?
+  exit_reason                           String?
+  hostel_id                             String                              @db.Uuid
+  mobile_verified                       Boolean                             @default(false)
+  document_verified                     Boolean                             @default(false)
+  access_mode                           TenantAccessMode                    @default(SELF_SERVE)
+  acceptance_status                     TenantAcceptanceStatus              @default(NOT_REQUIRED)
+  tenant_accepted_at                    DateTime?                           @db.Timestamptz(6)
+  display_name                          String?
+  complaints                            complaints[]
+  rule_acceptances                      TenantPolicyAcceptance[]
+  payment_attempts                      paymentAttempt[]
+  payments                              payments[]
+  payment_groups                        payment_groups[]
+  reactivation_requests                 reactivation_requests[]
+  receipts                              receipts[]
+  reminder_logs                         reminder_logs[]
+  rent_obligations                      rent_obligations[]
+  room_allocations                      roomAllocation[]
+  tenant_financial_ledger               tenant_financial_ledger[]
+  tenant_behavior_scores                tenant_behavior_scores?
+  move_out_requests                     move_out_requests[]
   // Per-tenancy documents (pre-phase-B). Superseded by the person-level vault
   // in `identity_documents` + `identity_document_shares`; kept because the
   // migration copies rather than moves, so no owner loses a verification.
-  identification_documents          identificationDocument[]
-  identity_document_shares          identity_document_shares[]
-  tenant_billing_plans              tenant_billing_plans[]
-  payment_frequency_change_requests payment_frequency_change_requests[]
-  hostels                           hostels                             @relation(fields: [hostel_id], references: [id])
-  profiles                          profile?                            @relation(fields: [profile_id], references: [id])
-  tenant_invitations                tenant_invitations[]
-  tenant_invitation_reservations    tenant_invitation_reservations[]
-  bulk_import_rows                  bulk_import_rows[]
-  visitor_leads                     visitor_leads[]
-  agreements                        Agreement[]
-  payment_link_tokens               payment_link_tokens[]
-  renewal_offers                    RenewalOffer[]
-  renewal_decisions                 RenewalDecision[]
-  tenant_notes                      tenant_notes[]
-  phone_verifications               PhoneVerificationOtp[]
-  owner_attestations                tenant_owner_attestations[]
-  change_requests                   change_requests[]
-  renewal_timeline_events           RenewalTimelineEvent[]
-  food_votes                        food_votes[]
-  food_poll_votes                   food_poll_votes[]
-  tenant_service_requests           tenant_service_requests[]
+  identification_documents              identificationDocument[]
+  identity_document_shares              identity_document_shares[]
+  tenant_billing_plans                  tenant_billing_plans[]
+  payment_frequency_change_requests     payment_frequency_change_requests[]
+  hostels                               hostels                             @relation(fields: [hostel_id], references: [id])
+  profiles                              profile?                            @relation(fields: [profile_id], references: [id])
+  tenant_invitations                    tenant_invitations[]
+  tenant_invitation_reservations        tenant_invitation_reservations[]
+  bulk_import_rows                      bulk_import_rows[]
+  visitor_leads                         visitor_leads[]
+  agreements                            Agreement[]
+  payment_link_tokens                   payment_link_tokens[]
+  renewal_offers                        RenewalOffer[]
+  renewal_decisions                     RenewalDecision[]
+  tenant_notes                          tenant_notes[]
+  phone_verifications                   PhoneVerificationOtp[]
+  owner_attestations                    tenant_owner_attestations[]
+  change_requests                       change_requests[]
+  renewal_timeline_events               RenewalTimelineEvent[]
+  food_votes                            food_votes[]
+  food_poll_votes                       food_poll_votes[]
+  tenant_service_requests               tenant_service_requests[]
 
   @@index([hostel_id])
   @@index([owner_id])
@@ -2371,29 +2371,29 @@ enum ManagerPermission {
 /// sidecar tables below so they can change over the manager's lifetime
 /// without touching this row.
 model manager_profiles {
-  id               String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  profile_id       String                     @unique @db.Uuid
-  status           ManagerStatus              @default(PENDING_INVITATION)
-  invited_by       String?                    @db.Uuid
-  phone_verified_at DateTime?                 @db.Timestamptz(6)
-  activated_at     DateTime?                  @db.Timestamptz(6)
-  suspended_at     DateTime?                  @db.Timestamptz(6)
-  suspended_by     String?                    @db.Uuid
-  suspended_reason String?
-  created_at       DateTime                   @default(now()) @db.Timestamptz(6)
-  updated_at       DateTime?                  @db.Timestamptz(6)
-  profile          profile                    @relation(fields: [profile_id], references: [id], onDelete: Cascade)
-  permissions      manager_permission_grants[]
+  id                 String                       @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  profile_id         String                       @unique @db.Uuid
+  status             ManagerStatus                @default(PENDING_INVITATION)
+  invited_by         String?                      @db.Uuid
+  phone_verified_at  DateTime?                    @db.Timestamptz(6)
+  activated_at       DateTime?                    @db.Timestamptz(6)
+  suspended_at       DateTime?                    @db.Timestamptz(6)
+  suspended_by       String?                      @db.Uuid
+  suspended_reason   String?
+  created_at         DateTime                     @default(now()) @db.Timestamptz(6)
+  updated_at         DateTime?                    @db.Timestamptz(6)
+  profile            profile                      @relation(fields: [profile_id], references: [id], onDelete: Cascade)
+  permissions        manager_permission_grants[]
   hostel_assignments manager_hostel_assignments[]
 }
 
 model manager_permission_grants {
-  id                String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  manager_profile_id String           @db.Uuid
-  permission        ManagerPermission
-  granted_by        String?           @db.Uuid
-  granted_at        DateTime          @default(now()) @db.Timestamptz(6)
-  manager           manager_profiles  @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+  id                 String            @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id String            @db.Uuid
+  permission         ManagerPermission
+  granted_by         String?           @db.Uuid
+  granted_at         DateTime          @default(now()) @db.Timestamptz(6)
+  manager            manager_profiles  @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
 
   @@unique([manager_profile_id, permission])
 }
@@ -2405,14 +2405,14 @@ model manager_permission_grants {
 /// the partial unique index added by migrations/0XX_manager_role.sql
 /// (Prisma cannot express a partial index directly here).
 model manager_hostel_assignments {
-  id                  String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  manager_profile_id  String           @db.Uuid
-  hostel_id           String           @db.Uuid
-  assigned_by         String?          @db.Uuid
-  assigned_at         DateTime         @default(now()) @db.Timestamptz(6)
-  unassigned_at       DateTime?        @db.Timestamptz(6)
-  unassigned_by       String?          @db.Uuid
-  manager             manager_profiles @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
+  id                 String           @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  manager_profile_id String           @db.Uuid
+  hostel_id          String           @db.Uuid
+  assigned_by        String?          @db.Uuid
+  assigned_at        DateTime         @default(now()) @db.Timestamptz(6)
+  unassigned_at      DateTime?        @db.Timestamptz(6)
+  unassigned_by      String?          @db.Uuid
+  manager            manager_profiles @relation(fields: [manager_profile_id], references: [id], onDelete: Cascade)
 
   @@index([manager_profile_id, unassigned_at])
   @@index([hostel_id, unassigned_at])
@@ -2859,8 +2859,8 @@ model Agreement {
   contract_maintenance_type  String?
   contract_payment_frequency PaymentFrequency?
 
-  generated_at           DateTime  @default(now()) @db.Timestamptz(6)
-  signed_at              DateTime? @db.Timestamptz(6)
+  generated_at DateTime  @default(now()) @db.Timestamptz(6)
+  signed_at    DateTime? @db.Timestamptz(6)
 
   // What the tenant actually read, and evidence that they read it. The
   // document a tenant signs used to be generated only *after* signing, and the
@@ -2871,12 +2871,12 @@ model Agreement {
   document_content_hash      String?
   document_opened_at         DateTime? @db.Timestamptz(6)
   document_read_completed_at DateTime? @db.Timestamptz(6)
-  voided_at              DateTime? @db.Timestamptz(6)
-  expiry_notified_30d_at DateTime? @db.Timestamptz(6)
-  expiry_notified_15d_at DateTime? @db.Timestamptz(6)
-  expired_notified_at    DateTime? @db.Timestamptz(6)
-  terminated_at          DateTime? @db.Timestamptz(6)
-  renewed_at             DateTime? @db.Timestamptz(6)
+  voided_at                  DateTime? @db.Timestamptz(6)
+  expiry_notified_30d_at     DateTime? @db.Timestamptz(6)
+  expiry_notified_15d_at     DateTime? @db.Timestamptz(6)
+  expired_notified_at        DateTime? @db.Timestamptz(6)
+  terminated_at              DateTime? @db.Timestamptz(6)
+  renewed_at                 DateTime? @db.Timestamptz(6)
 
   // Tenant / Student signature info
   tenant_signature_url  String? // Signature image PNG URL
@@ -3374,18 +3374,18 @@ enum FoodScheduleSource {
 /// maintains this over time; items are deactivated (never hard-deleted) once
 /// referenced by a schedule, so past months' schedules stay intact.
 model food_menu_items {
-  id                        String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  hostel_id                 String                      @db.Uuid
-  owner_id                  String                      @db.Uuid
-  meal_type                 FoodMealType
-  name                      String
-  is_active                 Boolean                     @default(true)
-  created_at                DateTime                    @default(now()) @db.Timestamptz(6)
-  updated_at                DateTime?                   @db.Timestamptz(6)
-  hostels                   hostels                     @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
-  food_votes                food_votes[]
-  food_schedule_meals       food_schedule_meals[]
-  food_schedule_meal_items  food_schedule_meal_items[]
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id                String                     @db.Uuid
+  owner_id                 String                     @db.Uuid
+  meal_type                FoodMealType
+  name                     String
+  is_active                Boolean                    @default(true)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                  @db.Timestamptz(6)
+  hostels                  hostels                    @relation(fields: [hostel_id], references: [id], onDelete: Cascade)
+  food_votes               food_votes[]
+  food_schedule_meals      food_schedule_meals[]
+  food_schedule_meal_items food_schedule_meal_items[]
 
   @@unique([hostel_id, meal_type, name])
   @@index([hostel_id, meal_type])
@@ -3461,16 +3461,16 @@ model food_schedules {
 /// without modification. The real, ordered, multi-item content lives in
 /// `food_schedule_meal_items`.
 model food_schedule_meals {
-  id                       String                      @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  schedule_id              String                      @db.Uuid
+  id                       String                     @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  schedule_id              String                     @db.Uuid
   day_of_week              FoodDayOfWeek
   meal_type                FoodMealType
-  menu_item_id             String?                     @db.Uuid
+  menu_item_id             String?                    @db.Uuid
   item_name                String
-  created_at               DateTime                    @default(now()) @db.Timestamptz(6)
-  updated_at               DateTime?                   @db.Timestamptz(6)
-  food_schedules           food_schedules              @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
-  food_menu_items          food_menu_items?            @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
+  created_at               DateTime                   @default(now()) @db.Timestamptz(6)
+  updated_at               DateTime?                  @db.Timestamptz(6)
+  food_schedules           food_schedules             @relation(fields: [schedule_id], references: [id], onDelete: Cascade)
+  food_menu_items          food_menu_items?           @relation(fields: [menu_item_id], references: [id], onDelete: SetNull)
   food_schedule_meal_items food_schedule_meal_items[]
 
   @@unique([schedule_id, day_of_week, meal_type])
@@ -3860,16 +3860,16 @@ model platform_leads {
 
   /// Why this lead was lost, and the detail behind it. Set only by
   /// POST /api/platform-admin/leads/[id]/lost.
-  lost_reason        PlatformLeadLostReason?
-  lost_note          String?
+  lost_reason PlatformLeadLostReason?
+  lost_note   String?
 
   /// Discovery answers captured on the call — "what's broken today", "why
   /// Stayo", "what they expect". These feed the console's insights tab and,
   /// more importantly, mean the next call starts from what the last one
   /// learned rather than from nothing.
-  discovery_problem  String?
-  discovery_why      String?
-  discovery_expect   String?
+  discovery_problem String?
+  discovery_why     String?
+  discovery_expect  String?
 
   /// Qualification captured while on the call. Nullable throughout: a lead
   /// nobody has spoken to yet legitimately has none of this, and a zero would
@@ -3886,25 +3886,25 @@ model platform_leads {
   /// "book_a_demo". Free-form and admin-facing (console filter/segmentation),
   /// not an enum: acquisition surfaces get added/renamed without a migration.
   /// NULL for leads captured before this column existed.
-  source             String?
+  source    String?
   /// `subscription_plans.code` the visitor clicked "Subscribe" on (landing
   /// page pricing section), e.g. "GROWTH". Not a foreign key — a lead is not
   /// a real subscription yet, and the plan may be renamed/retired by the time
   /// admin reviews the lead; this is intent, not commitment.
-  plan_code          String?
+  plan_code String?
 
-  created_at         DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at         DateTime?          @db.Timestamptz(6)
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
 
   /// Defaults every existing/website row to WEBSITE — zero behavior change
   /// for the public lead form. Set to DIRECT_ADMIN only by
   /// POST /api/platform-admin/owners (Admin -> Add Owner).
-  acquisition_source PlatformLeadAcquisitionSource @default(WEBSITE)
+  acquisition_source   PlatformLeadAcquisitionSource @default(WEBSITE)
   /// Admin's plan choice for a DIRECT_ADMIN lead, captured before the owner
   /// account (and therefore any owner_subscriptions row) exists. Applied by
   /// LeadInvitationService.activateInvitationForOwner once signup completes;
   /// never read for WEBSITE leads.
-  intended_plan_code String?
+  intended_plan_code   String?
   /// Admin profile id who set intended_plan_code, for SUBSCRIPTION_PLAN_CHANGED
   /// audit attribution when the plan is actually applied at signup completion.
   intended_plan_set_by String?
@@ -3967,48 +3967,48 @@ enum SubscriptionBillingCycle {
 /// is retained only for the deprecated per-hostel `hostel_subscriptions` admin
 /// routes and is NOT read by ADR-172 code.
 model subscription_plans {
-  id                   String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  id                          String                   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
   /// Stable identifier for the rare code path that must branch on tier
   /// (FOUNDING, STARTER, GROWTH, PROFESSIONAL, PORTFOLIO). Never encodes a price.
-  code                 String                   @unique
-  name                 String
+  code                        String                   @unique
+  name                        String
   /// Integer paise. e.g. ₹2,499 -> 249900. The authoritative price for ADR-172.
-  price_paise          Int                      @default(0)
-  currency             String                   @default("INR")
-  billing_cycle        SubscriptionBillingCycle @default(MONTHLY)
+  price_paise                 Int                      @default(0)
+  currency                    String                   @default("INR")
+  billing_cycle               SubscriptionBillingCycle @default(MONTHLY)
   /// Informational only — drives the "1–50 active tenants" label. Not enforced.
-  capacity_min         Int?
+  capacity_min                Int?
   /// The plan's hard active-tenant ceiling — `included_beds + max_extra_beds`
   /// (or NULL when `max_extra_beds` is NULL, i.e. unlimited/FOUNDING). Kept in
   /// sync by the seed script; informational/display only — the ENFORCED
   /// ceiling for a specific owner is `included_beds + owner_subscriptions.
   /// extra_beds` (plan-capacity-service.effectivePlanCapacity), since not
   /// every owner has bought every allowed extra bed.
-  capacity_max         Int?
+  capacity_max                Int?
   /// Beds included in `price_paise` with no extra charge (business rules,
   /// 2026-09-10). NULL only for a plan pre-dating this column.
-  included_beds        Int?
+  included_beds               Int?
   /// Maximum PAID extra beds beyond `included_beds`, at `extra_bed_price_paise`
   /// each. NULL = no ceiling (FOUNDING only). `0` = extra beds not offered on
   /// this plan — Portfolio ships with `0` because the business has not yet
   /// defined its extra-bed allowance; see docs/obsidian/Business-Rules.md.
-  max_extra_beds        Int?
+  max_extra_beds              Int?
   /// Integer paise per extra bed beyond `included_beds` (₹10 -> 1000). NULL
   /// when extra beds are not offered on this plan (Portfolio, currently).
-  extra_bed_price_paise Int?
+  extra_bed_price_paise       Int?
   /// Shown in the owner-facing plan picker. FOUNDING is false — admin-assigned only.
-  is_public            Boolean                  @default(true)
-  is_active            Boolean                  @default(true)
-  description          String?
+  is_public                   Boolean                  @default(true)
+  is_active                   Boolean                  @default(true)
+  description                 String?
   /// DEPRECATED (ADR-172): Decimal rupees, kept only for the legacy per-hostel
   /// admin routes (`/api/platform-admin/plans`). New code reads `price_paise`.
-  price_amount         Decimal?                 @db.Decimal(10, 2)
-  created_at           DateTime                 @default(now()) @db.Timestamptz(6)
-  updated_at           DateTime?                @db.Timestamptz(6)
-  hostel_subscriptions         hostel_subscriptions[]
-  owner_subscriptions          owner_subscriptions[]   @relation("OwnerSubscriptionCurrentPlan")
-  owner_subscriptions_pending  owner_subscriptions[]   @relation("OwnerSubscriptionPendingPlan")
-  subscription_payments        subscription_payments[]
+  price_amount                Decimal?                 @db.Decimal(10, 2)
+  created_at                  DateTime                 @default(now()) @db.Timestamptz(6)
+  updated_at                  DateTime?                @db.Timestamptz(6)
+  hostel_subscriptions        hostel_subscriptions[]
+  owner_subscriptions         owner_subscriptions[]    @relation("OwnerSubscriptionCurrentPlan")
+  owner_subscriptions_pending owner_subscriptions[]    @relation("OwnerSubscriptionPendingPlan")
+  subscription_payments       subscription_payments[]
 }
 
 enum HostelSubscriptionStatus {
@@ -4157,7 +4157,6 @@ model platform_support_tickets {
   @@index([status])
 }
 
-
 /// What kind of money the provider captured. Set at creation, never inferred:
 /// owners pay subscriptions into the SAME Razorpay account as tenant rent, and
 /// selecting on "money in the account" alone would hand Stayo's own revenue
@@ -4255,7 +4254,7 @@ model settlement_item_transactions {
   transaction_id String  @unique @db.Uuid
   amount         Decimal @db.Decimal(12, 2)
 
-  item        settlement_items    @relation(fields: [item_id], references: [id], onDelete: Cascade)
+  item        settlement_items     @relation(fields: [item_id], references: [id], onDelete: Cascade)
   transaction gateway_transactions @relation(fields: [transaction_id], references: [id])
 
   @@index([item_id])
@@ -4381,11 +4380,11 @@ model owner_subscriptions {
   created_at            DateTime                @default(now()) @db.Timestamptz(6)
   updated_at            DateTime?               @db.Timestamptz(6)
 
-  profile                     profile              @relation(fields: [owner_id], references: [id], onDelete: Cascade)
-  subscription_plans          subscription_plans   @relation("OwnerSubscriptionCurrentPlan", fields: [plan_id], references: [id])
-  pending_plan                subscription_plans?  @relation("OwnerSubscriptionPendingPlan", fields: [pending_plan_id], references: [id])
-  subscription_payments       subscription_payments[]
-  subscription_invoices       subscription_invoices[]
+  profile               profile                 @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  subscription_plans    subscription_plans      @relation("OwnerSubscriptionCurrentPlan", fields: [plan_id], references: [id])
+  pending_plan          subscription_plans?     @relation("OwnerSubscriptionPendingPlan", fields: [pending_plan_id], references: [id])
+  subscription_payments subscription_payments[]
+  subscription_invoices subscription_invoices[]
 
   @@index([status])
   @@index([plan_id])
@@ -4440,10 +4439,10 @@ model subscription_payments {
   created_at            DateTime                  @default(now()) @db.Timestamptz(6)
   updated_at            DateTime?                 @db.Timestamptz(6)
 
-  profile               profile                @relation(fields: [owner_id], references: [id], onDelete: Cascade)
-  owner_subscriptions   owner_subscriptions    @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
-  subscription_plans    subscription_plans     @relation(fields: [plan_id], references: [id])
-  subscription_invoices subscription_invoices?
+  profile                             profile                               @relation(fields: [owner_id], references: [id], onDelete: Cascade)
+  owner_subscriptions                 owner_subscriptions                   @relation(fields: [subscription_id], references: [id], onDelete: Cascade)
+  subscription_plans                  subscription_plans                    @relation(fields: [plan_id], references: [id])
+  subscription_invoices               subscription_invoices?
   subscription_payment_gateway_events subscription_payment_gateway_events[]
 
   @@index([owner_id, created_at(sort: Desc)])
@@ -4461,19 +4460,19 @@ model subscription_payments {
 /// duplicate delivery (Razorpay retries on anything but a 2xx) is detected
 /// before any side effect runs.
 model subscription_payment_gateway_events {
-  id                       String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  event_hash               String    @unique
-  payment_id               String?   @db.Uuid
-  gateway_order_id         String?
-  gateway_payment_id       String?
-  event_type               String?
-  signature_verified       Boolean   @default(false)
-  raw_payload              Json
+  id                 String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  event_hash         String    @unique
+  payment_id         String?   @db.Uuid
+  gateway_order_id   String?
+  gateway_payment_id String?
+  event_type         String?
+  signature_verified Boolean   @default(false)
+  raw_payload        Json
   /// RECEIVED → PROCESSED | IGNORED | FAILED
-  processing_status        String    @default("RECEIVED")
-  error_message            String?
-  received_at              DateTime  @default(now()) @db.Timestamptz(6)
-  processed_at             DateTime? @db.Timestamptz(6)
+  processing_status  String    @default("RECEIVED")
+  error_message      String?
+  received_at        DateTime  @default(now()) @db.Timestamptz(6)
+  processed_at       DateTime? @db.Timestamptz(6)
 
   subscription_payments subscription_payments? @relation(fields: [payment_id], references: [id])
 
@@ -4490,28 +4489,28 @@ model subscription_payment_gateway_events {
 /// phase. `tax_paise` exists only so a future registered-entity flow needs no
 /// schema migration; it is always 0 today.
 model subscription_invoices {
-  id                    String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id              String                    @db.Uuid
-  subscription_id       String                    @db.Uuid
-  payment_id            String                    @unique @db.Uuid
-  invoice_number        String                    @unique
-  billing_period_start  DateTime                  @db.Date
-  billing_period_end    DateTime                  @db.Date
+  id                         String                    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id                   String                    @db.Uuid
+  subscription_id            String                    @db.Uuid
+  payment_id                 String                    @unique @db.Uuid
+  invoice_number             String                    @unique
+  billing_period_start       DateTime                  @db.Date
+  billing_period_end         DateTime                  @db.Date
   /// Total charged (Phase 6.6: `plan_amount_paise + extra_bed_amount_paise +
   /// tax_paise`, enforced by `subscription-invoice-service.ts`, never by a DB
   /// constraint — matches how `tax_paise` was already handled).
-  amount_paise          Int
+  amount_paise               Int
   /// Reserved for a future GST-registered flow. Always 0 in this phase.
-  tax_paise             Int                       @default(0)
+  tax_paise                  Int                       @default(0)
   /// Extra beds this invoice covers (business rules, 2026-09-10) — the
   /// subscription's resulting extra-bed TOTAL after this payment (not the
   /// incremental delta bought on this occasion — see `extra_bed_amount_paise`
   /// for what was actually charged this time).
-  extra_beds            Int                       @default(0)
+  extra_beds                 Int                       @default(0)
   /// Portion of `amount_paise` attributable to the plan itself (full price or
   /// prorated upgrade delta, depending on payment kind) — Phase 6.6, so an
   /// invoice can show the plan amount separately from the extra-bed amount.
-  plan_amount_paise      Int                       @default(0)
+  plan_amount_paise          Int                       @default(0)
   /// Per-bed price (paise) actually used for this invoice's extra-bed charge,
   /// SNAPSHOTTED at invoice creation (Phase 6.6) — a later admin edit to the
   /// plan's `extra_bed_price_paise` must never change what an old invoice
@@ -4522,16 +4521,16 @@ model subscription_invoices {
   /// EXTRA_BEDS top-up this is priced on the INCREMENTAL beds only, even
   /// though `extra_beds` above stores the new total. `plan_amount_paise +
   /// extra_bed_amount_paise + tax_paise === amount_paise`, always.
-  extra_bed_amount_paise Int                       @default(0)
-  currency              String                    @default("INR")
-  payment_method        SubscriptionPaymentMethod
-  transaction_reference String?
+  extra_bed_amount_paise     Int                       @default(0)
+  currency                   String                    @default("INR")
+  payment_method             SubscriptionPaymentMethod
+  transaction_reference      String?
   /// URL / storage reference for the generated invoice document (later phase).
-  document_url          String?
-  notes                 String?
-  issued_at             DateTime                  @default(now()) @db.Timestamptz(6)
-  created_at            DateTime                  @default(now()) @db.Timestamptz(6)
-  updated_at            DateTime?                 @db.Timestamptz(6)
+  document_url               String?
+  notes                      String?
+  issued_at                  DateTime                  @default(now()) @db.Timestamptz(6)
+  created_at                 DateTime                  @default(now()) @db.Timestamptz(6)
+  updated_at                 DateTime?                 @db.Timestamptz(6)
 
   profile               profile               @relation(fields: [owner_id], references: [id])
   owner_subscriptions   owner_subscriptions   @relation(fields: [subscription_id], references: [id])
@@ -4600,31 +4599,31 @@ enum OwnerPaymentStatus {
 /// ADR — keeping the owner-billing UI to one generic action, not a menu of
 /// billing categories).
 model owner_payments {
-  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id               String             @db.Uuid
-  amount_paise           Int
-  currency               String             @default("INR")
-  payment_method         OwnerPaymentMethod
-  description            String
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String             @db.Uuid
+  amount_paise          Int
+  currency              String             @default("INR")
+  payment_method        OwnerPaymentMethod
+  description           String
   /// UPI UTR / bank reference / "CASH-xxxx" — optional, admin-entered.
-  transaction_reference  String?
+  transaction_reference String?
   /// URL or storage reference for an uploaded payment proof/screenshot.
-  proof_file             String?
-  notes                  String?
-  status                 OwnerPaymentStatus @default(RECORDED)
+  proof_file            String?
+  notes                 String?
+  status                OwnerPaymentStatus @default(RECORDED)
   /// Client-supplied dedup key (e.g. a UUID generated once per form-open) —
   /// lets a retried/double-clicked submit resolve to the same row instead of
   /// creating a second payment. Nullable: not every future caller (e.g. a
   /// later gateway webhook path) necessarily has one of these specifically.
-  idempotency_key        String?            @unique
+  idempotency_key       String?            @unique
   /// `profiles.id` of the admin/manager who recorded this. Plain uuid, no
   /// relation — same convention as `subscription_payments.reviewed_by`.
-  created_by             String             @db.Uuid
-  voided_at              DateTime?          @db.Timestamptz(6)
-  voided_by              String?            @db.Uuid
-  void_reason            String?
-  created_at             DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime?          @db.Timestamptz(6)
+  created_by            String             @db.Uuid
+  voided_at             DateTime?          @db.Timestamptz(6)
+  voided_by             String?            @db.Uuid
+  void_reason           String?
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?          @db.Timestamptz(6)
 
   profile        profile         @relation(fields: [owner_id], references: [id], onDelete: Cascade)
   owner_invoices owner_invoices?
@@ -4639,33 +4638,33 @@ model owner_payments {
 /// separate model because this document has no plan/billing-period/extra-bed
 /// concept to carry.
 model owner_invoices {
-  id                     String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
-  owner_id               String             @db.Uuid
-  payment_id             String             @unique @db.Uuid
-  invoice_number         String             @unique
+  id                    String             @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  owner_id              String             @db.Uuid
+  payment_id            String             @unique @db.Uuid
+  invoice_number        String             @unique
   /// Copied from the payment at issue time so the invoice reads correctly even
   /// if a much-later feature ever allowed editing a payment's own description.
-  description            String
-  amount_paise           Int
+  description           String
+  amount_paise          Int
   /// Reserved for a future GST-registered flow, same convention as
   /// `subscription_invoices.tax_paise`. Always 0 today.
-  tax_paise              Int                @default(0)
-  currency               String             @default("INR")
-  payment_method         OwnerPaymentMethod
-  transaction_reference  String?
+  tax_paise             Int                @default(0)
+  currency              String             @default("INR")
+  payment_method        OwnerPaymentMethod
+  transaction_reference String?
   /// URL / storage reference for the generated invoice PDF (ImageKit) — never
   /// handed to a client directly; downloads are proxied through an
   /// owner/admin API route.
-  document_url           String?
+  document_url          String?
   /// Set once `EmailService` reports the invoice email sent; left null (with
   /// `email_failed_at` set) when it couldn't be delivered — sending an
   /// invoice email is best-effort and retryable, never a condition for the
   /// payment/invoice themselves being valid.
-  emailed_at             DateTime?          @db.Timestamptz(6)
-  email_failed_at        DateTime?          @db.Timestamptz(6)
-  issued_at              DateTime           @default(now()) @db.Timestamptz(6)
-  created_at             DateTime           @default(now()) @db.Timestamptz(6)
-  updated_at             DateTime?          @db.Timestamptz(6)
+  emailed_at            DateTime?          @db.Timestamptz(6)
+  email_failed_at       DateTime?          @db.Timestamptz(6)
+  issued_at             DateTime           @default(now()) @db.Timestamptz(6)
+  created_at            DateTime           @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime?          @db.Timestamptz(6)
 
   profile        profile        @relation(fields: [owner_id], references: [id])
   owner_payments owner_payments @relation(fields: [payment_id], references: [id])
@@ -4737,6 +4736,27 @@ model stay_leaves {
   @@index([hostel_id, status, expected_return_date], map: "stay_leaves_hostel_status_return_idx")
 }
 
+/// ADR-234. Whether the tenant agreed to have their guardian told when they
+/// leave the hostel and when they return. A `granted = false` row is the
+/// memory of having asked — without it the consent sheet reappears on every
+/// trip, for exactly the tenants who said no.
+model stay_guardian_consent {
+  tenant_id      String    @id @db.Uuid
+  hostel_id      String    @db.Uuid
+  granted        Boolean
+  /// The number consented to, snapshotted. If `tenants.guardian_phone` later
+  /// differs, consent is about somebody else and lapses.
+  guardian_phone String
+  decided_at     DateTime  @default(now()) @db.Timestamptz(6)
+  /// The tenant switched it off.
+  revoked_at     DateTime? @db.Timestamptz(6)
+  /// The guardian replied STOP. Outranks a later re-grant.
+  stopped_at     DateTime? @db.Timestamptz(6)
+  /// APP | QR
+  source         String
+  updated_at     DateTime  @default(now()) @updatedAt @db.Timestamptz(6)
+}
+
 /// Demand for supply Stayo does not have yet. See migration 086 / ADR-223.
 model coverage_requests {
   id                String    @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
@@ -4803,19 +4823,19 @@ model hostel_slug_history {
 /// with no parent. One table, one route and one generator serve every level,
 /// and the hierarchy can deepen without a schema change. Migration 090.
 model areas {
-  id           String    @id @default(uuid()) @db.Uuid
-  slug         String    @unique
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
   name         String
   /// `CITY` | `LOCALITY`. Plain text, per this schema's convention.
-  kind         String    @default("LOCALITY")
-  parent_id    String?   @db.Uuid
+  kind         String   @default("LOCALITY")
+  parent_id    String?  @db.Uuid
   state        String?
   /// Admin-written editorial. Null renders nothing — it is what stops two
   /// locality pages reading like one template twice.
   intro        String?
-  is_published Boolean   @default(false)
-  created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  is_published Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
 
   parent   areas?     @relation("area_parent", fields: [parent_id], references: [id], onDelete: SetNull)
   children areas[]    @relation("area_parent")
@@ -4830,17 +4850,17 @@ model areas {
 /// before the locality, which makes these the highest-intent pages in the
 /// engine. Migration 090.
 model colleges {
-  id           String    @id @default(uuid()) @db.Uuid
-  slug         String    @unique
+  id           String   @id @default(uuid()) @db.Uuid
+  slug         String   @unique
   name         String
   /// "SNIST" — what a student types, and what `hostels.navigation` already
   /// records. Drives the slug in preference to the full name.
   short_name   String?
-  area_id      String?   @db.Uuid
+  area_id      String?  @db.Uuid
   intro        String?
-  is_published Boolean   @default(false)
-  created_at   DateTime  @default(now()) @db.Timestamptz(6)
-  updated_at   DateTime  @default(now()) @db.Timestamptz(6)
+  is_published Boolean  @default(false)
+  created_at   DateTime @default(now()) @db.Timestamptz(6)
+  updated_at   DateTime @default(now()) @db.Timestamptz(6)
 
   area    areas?            @relation(fields: [area_id], references: [id], onDelete: SetNull)
   hostels hostel_colleges[]
@@ -4866,4 +4886,128 @@ model hostel_colleges {
 
   @@unique([hostel_id, college_id])
   @@index([college_id, distance_rank])
+}
+
+/// How an off-platform hostel owner's consent to be messaged was captured.
+/// A closed set, and an enum rather than a string, because it is compliance
+/// evidence: Meta permits business-initiated messages on an offline opt-in,
+/// and this column is what that opt-in looks like if it is ever disputed.
+enum PartnerConsentChannel {
+  PHONE_CALL
+  IN_PERSON
+  WHATSAPP_REPLY
+  WRITTEN
+}
+
+/// A hostel owner who is NOT on Stayo, receiving enquiries on a
+/// Stayo-authored listing (`hostels.listing_source = PLATFORM_LISTED`).
+///
+/// Deliberately not `platform_leads`, which is the sales pipeline. Two
+/// concrete reasons reuse breaks: `platform_leads_one_active_lead_per_phone`
+/// (migration 078) allows one active lead per phone, so an owner with two
+/// hostels cannot be represented; and "has had 2 of 3 free enquiries" is not
+/// a point on a `NEW → CONTACTED → … → LIVE` sales funnel.
+///
+/// One row per person, not per hostel — see `partner_listings`.
+model marketplace_partners {
+  id    String  @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  name  String
+  phone String  @unique
+  email String?
+
+  consent_channel PartnerConsentChannel
+  consent_at      DateTime              @db.Timestamptz(6)
+  /// The admin profile who captured it. No relation: see the note on
+  /// `partner_listings.hostel_id`.
+  consent_by      String?               @db.Uuid
+  consent_note    String?
+
+  /// Set when they tap "Stop promotions" on a marketing template. Stops
+  /// every partner template, not only the marketing ones — see
+  /// `partner-consent.ts` for why.
+  opted_out_at DateTime? @db.Timestamptz(6)
+
+  /// Permanent bearer secret for `/partner/:token`. Never expires, unlike
+  /// the per-enquiry `partner_lead_deliveries.delivery_token`. Same
+  /// trade-off as `platform_leads.tracking_token`.
+  portal_token String @unique
+
+  converted_owner_id String?   @db.Uuid
+  converted_at       DateTime? @db.Timestamptz(6)
+
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
+
+  listings partner_listings[]
+}
+
+/// Joins a partner to one Stayo-authored hostel listing.
+model partner_listings {
+  id         String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_id String @db.Uuid
+  /// Unique: a listing has exactly one contact.
+  ///
+  /// No Prisma relation to `hostels`, on purpose. The foreign key exists in
+  /// the database (migration 091); leaving it out of the schema keeps this
+  /// change from touching the `hostels` model at all, which is the same
+  /// precaution `platform_lead_invitations.lead_id` takes. See
+  /// [[prisma-field-addition-blast-radius]] — the 2026-08-22 outage.
+  hostel_id  String @unique @db.Uuid
+
+  /// Per listing, not per partner: a partner's second hostel earns its own
+  /// free enquiries, because the proof of demand has to be about that
+  /// building to be worth anything.
+  free_quota Int @default(3)
+
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
+
+  partner    marketplace_partners      @relation(fields: [partner_id], references: [id], onDelete: Cascade)
+  deliveries partner_lead_deliveries[]
+
+  @@index([partner_id])
+}
+
+/// One enquiry, delivered to or withheld from a partner. The attribution
+/// ledger — the only thing that makes "we sent you three students" provable
+/// rather than a claim, and therefore the only thing the gate can count.
+model partner_lead_deliveries {
+  id                 String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  partner_listing_id String @db.Uuid
+  /// The tenant enquiry. No Prisma relation to `visitor_leads`, for the same
+  /// reason `partner_listings.hostel_id` has none.
+  visitor_lead_id    String @unique @db.Uuid
+
+  /// PENDING | SENT | HELD | RELEASED | FAILED | EXPIRED. A plain string,
+  /// matching this codebase's convention for status columns; the transitions
+  /// live in `src/services/marketing/partner-delivery-state.ts`.
+  state String @default("PENDING")
+
+  /// Bearer secret for `/partner/enquiry/:token`, the page that reveals the
+  /// student's number. Per delivery, so a forwarded link exposes one enquiry
+  /// rather than the whole listing.
+  delivery_token String  @unique
+  wa_message_id  String?
+
+  sent_at      DateTime? @db.Timestamptz(6)
+  /// Meta's `delivered` webhook. Only this consumes free quota — an accepted
+  /// but undelivered send must not, because partner templates carry a
+  /// 12-hour validity period and are dropped unseen after it.
+  delivered_at DateTime? @db.Timestamptz(6)
+  opened_at    DateTime? @db.Timestamptz(6)
+  responded_at DateTime? @db.Timestamptz(6)
+  released_at  DateTime? @db.Timestamptz(6)
+  /// When the student was contacted with alternatives because this enquiry
+  /// sat HELD past the fallback window. A held enquiry is a person waiting
+  /// to hear where they might live; the gate must never strand them to
+  /// pressure an owner.
+  fallback_at  DateTime? @db.Timestamptz(6)
+
+  created_at DateTime  @default(now()) @db.Timestamptz(6)
+  updated_at DateTime? @db.Timestamptz(6)
+
+  listing partner_listings @relation(fields: [partner_listing_id], references: [id], onDelete: Cascade)
+
+  @@index([partner_listing_id, state])
+  @@index([partner_listing_id, created_at(sort: Desc)])
 }
