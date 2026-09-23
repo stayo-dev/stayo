@@ -501,7 +501,7 @@ module under test (the frontend suite is node-only, so decision logic goes in
 | `app/providers/clerkSessionContext.ts` | The session context, in a module that imports **nothing** from Clerk. |
 | `app/providers/ClerkRuntime.tsx` | Everything touching `@clerk/clerk-react` at module scope — reached only by dynamic `import()`. |
 | `app/providers/ClerkAuthProvider.tsx` | Mounts Clerk when configured; renders children untouched when not. Mounted **per-route** — in `ClerkAuthScreen` and `ProtectedAppProviders` — never in `RootProviders`. |
-| `app/pages/auth/*` | `/sign-in` and `/sign-up`, sharing `ClerkAuthScreen` (which carries the unconfigured branch). |
+| `app/pages/auth/*` | `/sign-in` and `/sign-up`, sharing `ClerkAuthScreen` (which carries the unconfigured branch). `ClerkOAuthCallbackPage` (2026-09-23) is `/sign-in/sso-callback` specifically — see below, this is **not** part of `<SignIn>`. |
 | `app/components/ClerkUserButton.tsx` | `ClerkUserButton` (admin header) and `ClerkAccountSlot` (fixed, for the mobile owner/tenant shells). Both render `null` without a Clerk session. |
 
 **A Clerk session authorises nothing.** Roles come from `profiles` through `AuthContext`, which is still Supabase-backed. `ProtectedRoute` delegates to `decideRouteAccess`, and `sessionAuthority.test.ts` asserts across a 4×4 matrix that varying the Clerk state changes no decision — the mechanical proof that this phase changed nobody's access. Phase 3 rewrites that test deliberately.
@@ -514,7 +514,7 @@ module under test (the frontend suite is node-only, so decision logic goes in
 
 `clerkBundleIsolation.test.ts` walks the static import graph from `main.tsx` and fails if any of the three is broken. Entry-chunk cost is +1.3 KB over a no-Clerk build (`sessionAuthority` and the context module, which route guards need on every render).
 
-**Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, SSO callback, session tasks) as child paths, which 404 without it.
+**Routes are `/sign-in/*` and `/sign-up/*`.** The splat is required: `<SignIn routing="path">` renders its own sub-steps (email-code entry, session tasks) as child paths, which 404 without it. **`/sign-in/sso-callback` is carved out as its own route, ranked above the splat, and does not reach `<SignIn>` at all** (2026-09-23, [[Bugs]]) — it renders `<AuthenticateWithRedirectCallback>` instead. `<SignIn>`'s own sub-route handling only auto-completes an OAuth attempt it started itself; this app's Google button starts one imperatively (`ClerkGoogleButton.tsx`, next section), so `<SignIn>` mounting fresh at that URL had nothing to resume and just showed an empty sign-in prompt — confirmed live before the fix.
 
 **Env vars: `VITE_` prefix, and this app's own `.env`.** Vite exposes only `VITE_`-prefixed variables to browser code — a production build inlines `import.meta.env` as literally `{BASE_URL, DEV, MODE, PROD, SSR, VITE_*}` and nothing else. It also reads `apps/frontend/.env`, not the repo-root one (`loadEnv` runs from `process.cwd()`). So the Clerk keys in the root `.env` are backend-only: `CLERK_SECRET_KEY` must never reach this app, and the root's Next-style publishable key is invisible here. `clerkConfig.ts` briefly read that Next-style name to explain the mistake — **that check could never fire**, since the name is absent from `import.meta.env` by construction, and it has been removed.
 
@@ -532,7 +532,9 @@ Every `supabase.auth.signInWithOAuth({ provider: 'google' })` is gone — `AuthC
 
 `AuthCallbackPage` now lands both: it mounts Clerk (so the global exists on a cold load) and proceeds when *either* provider has a session.
 
-**Known gap:** Google *signup* for a brand-new person does not work yet — see the ADR. Existing users are unaffected.
+**The redirect completes at `ClerkOAuthCallbackPage` (`/sign-in/sso-callback`), not at `AuthCallbackPage` directly** (2026-09-23, [[Bugs]]). `authenticateWithRedirect`'s `redirectUrl` always points there; `<AuthenticateWithRedirectCallback>` finishes the attempt and *then* forwards to whatever `redirectUrlComplete` that specific caller passed — `/auth/callback` by default, `/lead-signup/callback` for `HostelLeadModal`. `AuthCallbackPage` itself never handles the raw OAuth return.
+
+**Known gap:** Google *signup* for a brand-new person does not work yet — see the ADR. Existing users are unaffected. Unknown / needs clarification: whether this gap still holds now that the callback route above actually completes the attempt — it was recorded against the earlier, broken callback wiring.
 
 Related: [[Decisions#ADR-176|ADR-176]], [[APIs]], [[Features]], [[Changelog]]
 

@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Google's OAuth trip completed but never actually signed anyone in (2026-09-23)
+
+**Symptom:** after the two hook-level fixes above shipped, "Continue with Google" finally reached Google and returned — confirmed live: real navigation to `accounts.google.com`, real account chooser, real redirect back to `yourstayo.com`. It then rendered Clerk's generic, empty "Sign in to Stayo" form (email/password + Google button again) instead of completing and landing the person in the app.
+
+**Cause:** `ClerkGoogleButton.tsx` starts Google imperatively (`clerk.client.signIn.authenticateWithRedirect()`), by design — the button needed to be this app's own, not Clerk's hosted `<SignIn>` UI (ADR-176). Its `redirectUrl: '/sign-in/sso-callback'` was served by `ClerkSignInPage`'s `<SignIn routing="path">`, whose sub-route auto-completion only resumes an attempt `<SignIn>` itself started — nothing here ever used `<SignIn>` to begin the flow, so it had nothing to resume and just showed its idle entry screen. A second, independent problem sat underneath even if that had somehow worked: `<SignIn fallbackRedirectUrl="/">` would have sent everyone to the home page, bypassing `AuthCallbackPage`'s rejection handling for an unlinked or disabled account.
+
+**Fix:** a dedicated `/sign-in/sso-callback` route renders `<AuthenticateWithRedirectCallback>` — Clerk's own component for completing an imperatively-started attempt, which reads the per-call `redirectUrlComplete` back off the attempt rather than using a single hardcoded fallback. Related: [[Frontend]], [[APIs]].
+
 ## The Google-sign-in fix itself shipped a silent hook-reactivity bug (2026-09-23)
 
 **Symptom:** after the `session_exists` fix ([[Changelog]], 2026-09-23) deployed, "Continue with Google" still stuck on "Please wait…" — but differently this time: zero network requests to Clerk for sign-in, zero console errors, across two separate live tests (one running ~5 minutes with nothing happening).
