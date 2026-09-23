@@ -62,8 +62,10 @@ tapped *I'm back* is indistinguishable, to this system, from one who did not com
 `LATE` template turns that ambiguity into "your child is not where they said they would be,"
 delivered to a parent, at scale, on the strength of a missed tap.
 
-As of this writing **no phone has ever scanned the Stay QR in production**, so the real-world
-missed-tap rate is not merely unmeasured — it is unobserved. Late returns stay on the owner's
+As of this writing **the Stay QR has been scanned in production exactly twice** — `stay_events`
+holds 5 rows, all from 14 Sep 2026, two of them `source=QR`. That is a smoke test, not a sample: it
+gives no missed-tap rate at all, which is the point. The rate is unmeasured, and on this evidence
+unmeasurable. Late returns stay on the owner's
 board, where a human reads them in context and can pick up a phone.
 
 `RETURN_DATE_CHANGED` and `LEAVE_CANCELLED` are silent for a smaller reason: they are amendments to
@@ -421,7 +423,7 @@ scanned the Stay QR in production.
    until they are `APPROVED` in `en`.
 2. Merge and deploy the code. It is inert: with no `stay_guardian_consent` table, no consent row can
    exist, so the policy returns `NO_CONSENT` and nothing sends.
-3. **Then** hand-apply the migration to `qgfyfbdccjnibdhhvnsr`, verified object by object with a raw
+3. ~~Then~~ hand-apply the migration to `qgfyfbdccjnibdhhvnsr`, verified object by object with a raw
    `pg` client over the 6543 pooler — `prisma db execute` fails from this machine because it dials
    `DIRECT_URL`.
 4. Add the sweep to `vercel.json` on a **daily** schedule at an hour no other cron occupies

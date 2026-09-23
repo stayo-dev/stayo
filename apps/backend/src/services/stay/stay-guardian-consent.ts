@@ -1,7 +1,10 @@
 import { prisma } from "@/lib/db";
+import { getLogger } from "@/lib/logger";
 import { isGuardianVerified } from "@/lib/services/notifications/command-center/guardian-access";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp";
 import { consentStateOf, type ConsentRecord, type ConsentState } from "./stay-guardian-consent-state";
+
+const logger = getLogger("stay.guardian-consent");
 
 /**
  * The tenant's decision about guardian stay updates (ADR-234).
@@ -88,7 +91,22 @@ function viewFrom(state: ConsentState): GuardianConsentView["consent"] {
   return state === "PHONE_CHANGED" ? "UNASKED" : state;
 }
 
-export async function guardianViewFor(tenantId: string): Promise<GuardianConsentView | null> {
+/**
+ * Never throws (ADR-234).
+ *
+ * This is awaited inside `getMyStay`, which backs `GET /api/tenant/stay` — the
+ * QR screen and Tenant Home. The original version let a failure here reject
+ * the whole request, which meant deploying ahead of `migrations/094` would
+ * have 500'd the stay screen for every tenant, not merely hidden the consent
+ * sheet. The ADR claimed the feature was "inert without the table"; for the
+ * read path that was false.
+ *
+ * Failing closed rather than open: an unreadable consent row means we cannot
+ * know whether this tenant has been asked, so we show no sheet and claim no
+ * eligibility rather than risk asking someone a second time. Same shape as the
+ * host-profile read degrading when migration 083 was missing.
+ */
+async function guardianViewOrThrow(tenantId: string): Promise<GuardianConsentView | null> {
   const tenant = await loadTenant(tenantId);
   if (!tenant) return null;
 
@@ -110,6 +128,18 @@ export async function guardianViewFor(tenantId: string): Promise<GuardianConsent
     name: (tenant.guardian_name || "").trim() || null,
     consent,
   };
+}
+
+export async function guardianViewFor(tenantId: string): Promise<GuardianConsentView | null> {
+  try {
+    return await guardianViewOrThrow(tenantId);
+  } catch (error: any) {
+    logger.warn("stay_guardian.view_failed", {
+      tenant_id: tenantId,
+      error: error?.message || String(error),
+    });
+    return null;
+  }
 }
 
 export async function recordGuardianConsent(input: {

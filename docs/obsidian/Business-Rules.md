@@ -386,7 +386,7 @@ Two guards on the `visitor_leads` → `tenant_invitations` path, distinct from t
 - **A phone that already holds a live (`INVITED`/`ACTIVE`) tenancy at a hostel cannot become a fresh lead for that same hostel.** `admissions-service.ts`'s `createDirectLead` (owner-authenticated) and `createLead` (public QR/admissions-link capture) both call `tenancyEligibilityService.hasLiveTenancyAtHostel(phone, hostelId)` before their existing lead-dedup lookup, and refuse with "This person is already a tenant at this hostel. They cannot be added as a new lead." if it matches. Mobile is the sole key — a different email on the resubmission does not change the answer, and a live tenancy at a *different* hostel does not block a lead here (that's the separate, unchanged, invitation-time cross-hostel eligibility check).
 - **An owner cannot invite themselves as a tenant.** `tenant-invitation-lifecycle-service.ts`'s `createInvitation` compares the invited contact's normalized phone/email directly against the authenticated owner's own registered phone/email, immediately after loading the owner's profile and before any further lookup or write. Matching either field refuses with a clean validation error, "You cannot invite yourself as a tenant" — replacing an earlier incidental block (an unrelated `ROLE_MISMATCH` that only ever caught the phone case) that surfaced as a raw `P2002` 500 for the same-email-different-phone case.
 
-Both guards, plus the hostel-scoped owner/tenant rule above and a concurrency fix for `createInvitation`'s eligibility check, came out of an audit of this flow — see [[Bugs]] and [[Decisions#ADR-162|ADR-162]] for the full rationale, and [[Database]] for the new `visitor_leads` partial unique index (migration 079, not yet applied to any database).
+Both guards, plus the hostel-scoped owner/tenant rule above and a concurrency fix for `createInvitation`'s eligibility check, came out of an audit of this flow — see [[Bugs]] and [[Decisions#ADR-162|ADR-162]] for the full rationale, and [[Database]] for the new `visitor_leads` partial unique index (migration 079, **verified applied to production 2026-09-23**).
 
 ## Tenant acceptance is mandatory and explicit — the tenancy runs while it is pending (2026-09-02, [[Decisions#ADR-165|ADR-165]])
 
@@ -1326,8 +1326,8 @@ from a log line:
 likely to be wrong. Silence = Present is trust-based and self-reported, so a resident who returned
 at 2am without tapping *I'm back* is indistinguishable, to this system, from one who did not return
 at all. A late template turns that ambiguity into "your child is not where they said they would be",
-delivered to a parent, at scale, on the strength of a missed tap — and no phone has ever scanned the
-Stay QR in production, so the real missed-tap rate is unobserved, not merely unmeasured. Late
+delivered to a parent, at scale, on the strength of a missed tap — and the Stay QR has been scanned in production exactly twice (a
+14 Sep smoke test), which yields no missed-tap rate at all. Late
 returns stay on the owner's board, where a human reads them in context.
 
 **Ordering matters inside the notifier.** The policy runs once assuming verification so the free

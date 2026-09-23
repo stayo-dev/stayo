@@ -378,7 +378,7 @@ Migration: `CREATE TYPE` + `ALTER TABLE ... ADD COLUMN acceptance_status TenantA
 
 `tenant_owner_attestations` — **no new rows are written** as of ADR-165 (both writers removed). The table + relation stay for grandfathered reads; scheduled for removal once no `NOT_REQUIRED` `OWNER_MANAGED` rows remain. See [[TODO]].
 
-## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **NOT applied to any database**)
+## Owner-managed tenants — `access_mode`, `display_name`, `tenant_owner_attestations` (2026-08-27, Phase 1, migration 20260827100000, **verified applied to production 2026-09-23**)
 
 Two additive columns on `tenants` plus one new table, from `prisma/migrations/20260827100000_owner_managed_tenants/`. **This migration exists only as a Prisma migration file in the repo — it has not been run against any database (dev, test, or production) as of this writing.** Given the 2026-08-14/2026-08-22 outage pattern documented above and below (a `schema.prisma` column with no matching database column 500s every unselected read of that table, and `tenants` is read on effectively every authenticated request via `getSession()`), the code declaring these fields must not reach a real environment ahead of the migration being applied there.
 
@@ -948,7 +948,7 @@ Shipped and applied *before* anything renamed, so the redirect existed before th
 
 Related: [[Decisions#ADR-227|ADR-227]], [[Decisions#ADR-226|ADR-226]], [[Features]]
 
-## Marketplace partners (migration 091 — **not applied**)
+## Marketplace partners (migration 091 — **verified applied to production 2026-09-23**)
 
 Three tables plus one enum, for hostel owners who receive enquiries on a Stayo-authored listing without having a Stayo account. See [[Decisions#ADR-231|ADR-231]].
 

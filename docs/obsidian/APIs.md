@@ -371,7 +371,7 @@ Added 2026-08-23 ([[Decisions#ADR-090|ADR-090]]). The owner's view of money Stay
 
 **No hostel filter is accepted, by design.** A payout is one bank transfer covering every hostel at once, so a filtered payout figure would match no line in the owner's passbook. Per-hostel attribution lives inside `/[itemId]`'s `byHostel` instead.
 
-`degraded: true` reports that the payout tables could not be read as expected (in practice: migration 075 not applied) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
+`degraded: true` reports that the payout tables could not be read as expected (migration 075 is applied as of 2026-09-23, so this should no longer fire) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
 
 `/[itemId]` always includes `fee: 0`. Stayo passes rent through in full and says so on every payout; an unstated zero reads as a fee somebody chose not to mention.
 
@@ -536,7 +536,7 @@ host: { platform_listed, name /* full name */, photo_url, bio, languages, hostin
         verified, listed_since, stats: { review_count, rating, residents } }
 ```
 
-It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (including migration 083 not applied), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
+It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (migration 083 is applied as of 2026-09-23), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
 
 | Route | Who | Notes |
 |---|---|---|

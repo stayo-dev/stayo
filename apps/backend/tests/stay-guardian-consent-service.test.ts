@@ -105,6 +105,20 @@ describe("guardianViewFor", () => {
     expect((await guardianViewFor("t1"))?.consent).toBe("STOPPED");
   });
 
+  it("returns null instead of throwing when the consent table cannot be read", async () => {
+    // getMyStay awaits this to serve GET /api/tenant/stay. Before this guard a
+    // missing migrations/094 would have 500'd the stay screen for every tenant,
+    // not merely hidden the consent sheet.
+    findTenant.mockResolvedValue(tenant());
+    findUnique.mockRejectedValue(new Error('relation "stay_guardian_consent" does not exist'));
+    await expect(guardianViewFor("t1")).resolves.toBeNull();
+  });
+
+  it("returns null rather than throwing when the tenant lookup itself fails", async () => {
+    findTenant.mockRejectedValue(new Error("connection terminated"));
+    await expect(guardianViewFor("t1")).resolves.toBeNull();
+  });
+
   it("falls back to phone_2 when guardian_phone is unset", async () => {
     // tenant-service keeps the two in step, but activation writes phone_2
     // first on some paths — guardian-activation.ts reads both for this reason.

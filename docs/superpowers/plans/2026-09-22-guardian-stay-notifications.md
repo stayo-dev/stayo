@@ -631,8 +631,8 @@ import type { ConsentState } from "@/src/services/stay/stay-guardian-consent-sta
  * and never tapped *I'm back* is indistinguishable from one who did not come
  * back at all. A late template turns that ambiguity into "your child is not
  * where they said they would be", sent to a parent, on the strength of a
- * missed tap — and no phone has ever scanned the Stay QR in production, so
- * the real missed-tap rate is not merely unmeasured, it is unobserved. Late
+ * missed tap — and the Stay QR has been scanned in production exactly twice
+ * (a 14 Sep smoke test), which yields no missed-tap rate at all. Late
  * returns stay on the owner's board, where a human reads them in context.
  */
 
@@ -2919,6 +2919,6 @@ Expected: no output.
 cd apps/frontend && npm run build
 ```
 
-- [ ] **Write the PR description stating plainly what is NOT verified:** the send path, the sweep, the STOP round trip, and both templates end to end. There is no test database, no server-side staging, and no phone has ever scanned the Stay QR in production. Do not describe this feature as working — describe it as built.
+- [ ] **Write the PR description stating plainly what is NOT verified:** the send path, the sweep, the STOP round trip, and both templates end to end. There is no test database and no server-side staging; the Stay QR has been scanned in production exactly twice (a 14 Sep smoke test). Do not describe this feature as working — describe it as built.
 
 - [ ] **Do not apply migration 093 as part of the merge.** Deploy the code first (it is inert without the table), then hand-apply 093 to `qgfyfbdccjnibdhhvnsr` with a raw `pg` client over the 6543 pooler — `prisma db execute` fails from this machine because it dials `DIRECT_URL` — and verify object by object: 9 columns, the partial index, RLS on, 0 policies, 0 rows.
