@@ -77,7 +77,7 @@ Both now carry `hostel_type`, validated on write against the same four codes. Th
 
 ## Disconnected: the payment gateway (2026-09-23)
 
-These return **`410 GATEWAY_DISCONNECTED`**. Handlers are self-contained and import no service or provider; every service file stays on disk. See [[Decisions#ADR-233|ADR-233]].
+These return **`410 GATEWAY_DISCONNECTED`**. Handlers are self-contained and import no service or provider; every service file stays on disk. See [[Decisions#ADR-234|ADR-234]].
 
 | Endpoint | Was |
 |---|---|

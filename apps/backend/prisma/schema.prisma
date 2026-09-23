@@ -5004,7 +5004,7 @@ model partner_lead_deliveries {
 ///
 /// Declared here — unlike migration 075's columns — because the table is new,
 /// so there is no existing unselected read that adding it could break.
-/// Migration 093.
+/// Migration 094.
 model tenant_payment_claims {
   id String @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
 

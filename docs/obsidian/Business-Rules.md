@@ -10,7 +10,7 @@ Everything below was extracted by reading the actual implementation (not types, 
 
 ## Rent collection is direct, and a tenant's claim is not payment (2026-09-23)
 
-Stayo does not take tenant money. Rent moves tenant → owner over UPI, and Stayo records it. See [[Decisions#ADR-233|ADR-233]].
+Stayo does not take tenant money. Rent moves tenant → owner over UPI, and Stayo records it. See [[Decisions#ADR-234|ADR-234]].
 
 - **A tenant's claim never marks an obligation paid.** It creates a `PENDING` row in `tenant_payment_claims`. The owner confirms, and only then is rent recorded — through the same settlement path every other payment uses, so FIFO allocation, receipts and the ledger keep one implementation.
 - **The UTR is the evidence; the screenshot is not.** A screenshot is trivially edited and endlessly reusable; a UTR either appears in the owner's bank statement or does not. The screenshot is accepted because owners find it reassuring, never because it proves anything.

@@ -672,9 +672,9 @@ Automatic topic + sentiment detection on a review's free-text `body`, distinct f
 
 **Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.
 
-## Migration 093 — `tenant_payment_claims` (NOT applied)
+## Migration 094 — `tenant_payment_claims` (NOT applied)
 
-A tenant's assertion that they paid over UPI, added when the payment gateway was disconnected ([[Decisions#ADR-233|ADR-233]]).
+A tenant's assertion that they paid over UPI, added when the payment gateway was disconnected ([[Decisions#ADR-234|ADR-234]]).
 
 **A row is evidence, never money.** It never alters an obligation; rent is recorded only when the owner confirms, through the same settlement path every other payment uses.
 

@@ -10,7 +10,7 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
-- **2026-09-23**: **The payment gateway is disconnected; rent collection moves to direct UPI** ([[Decisions#ADR-233|ADR-233]], [[Database]], [[APIs]]). **Partially implemented — see ADR-233 for what is not built.**
+- **2026-09-23**: **The payment gateway is disconnected; rent collection moves to direct UPI** ([[Decisions#ADR-234|ADR-234]], [[Database]], [[APIs]]). **Partially implemented — see ADR-234 for what is not built.**
   - **Why now:** the gateway never processed a rupee. Production has 0 `gateway_transactions` all time, 1 `payment_attempts` row with 0 successes, and all 40 real payments recorded directly by owners.
   - **Phase 1** — `create-intent`, `verify`, `test-intent` and the Razorpay webhook return `410 GATEWAY_DISCONNECTED`. Handlers are self-contained and import no provider; every service file stays on disk. The webhook mattered most: an unauthenticated internet-facing POST on a subsystem nobody would keep patching.
   - **`/pay/:token` is deliberately untouched** — it is the button in three approved rent-reminder templates and the command centre's `PAY` reply, and a Meta button URL is fixed at approval time. `tests/whatsapp-template-link-survival.test.ts` now enforces that: the vercel rewrite, the route file, both URL builders, and that no disconnected route is ever a template target. The SPA's own `templateLinkRoutes` test structurally cannot cover this one — there is no React route to find — which is exactly how it would have been missed. **The guard was verified by breaking the rewrite and watching it fail.**
