@@ -1,6 +1,7 @@
 import { AuthenticateWithRedirectCallback } from '@clerk/clerk-react';
 import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
 import { StayoLoadingScreen } from '@shared/ui/brand';
+import { readSsoCallbackDestination } from '@lib/auth/ssoCallbackDestination';
 
 /**
  * `/sign-in/sso-callback` — completes the Google round trip started by
@@ -24,20 +25,26 @@ import { StayoLoadingScreen } from '@shared/ui/brand';
  *
  * `<AuthenticateWithRedirectCallback>` is Clerk's own component for exactly
  * this pairing — completing an attempt started imperatively, regardless of
- * what UI started it. It reads `redirectUrlComplete` back off the attempt
- * itself (the value each caller already passed to `authenticateWithRedirect`
- * — `/auth/callback` by default, `/lead-signup/callback` for
- * `HostelLeadModal`), so every caller lands where it always meant to; the
- * `*FallbackRedirectUrl` props below are only the default for an attempt that
- * somehow didn't specify one.
+ * what UI started it.
+ *
+ * It does **not** read `redirectUrlComplete` back off the attempt (an earlier
+ * version of this comment said it did — it was wrong, 2026-09-24): clerk-js
+ * decides from this component's props alone. So the destination each caller
+ * wants — `/auth/callback?flow=discover_signup` for Discover's sign-up tab,
+ * `/lead-signup/callback` for `HostelLeadModal`, `/auth/callback` otherwise —
+ * travels on this page's own URL (`ssoCallbackDestination.ts`) and is passed
+ * as the *force* redirect for both outcomes, since a brand-new Google account
+ * finishes here as a sign-up and a returning one as a sign-in.
  */
 export function ClerkOAuthCallbackPage() {
+  const destination = readSsoCallbackDestination(window.location.search);
+
   return (
     <ClerkAuthProvider>
       <StayoLoadingScreen message="Finishing sign-in…" />
       <AuthenticateWithRedirectCallback
-        signInFallbackRedirectUrl="/auth/callback"
-        signUpFallbackRedirectUrl="/auth/callback"
+        signInForceRedirectUrl={destination}
+        signUpForceRedirectUrl={destination}
       />
     </ClerkAuthProvider>
   );
