@@ -151,3 +151,31 @@ export function divergenceNote(previewCount: number, onScreenCount: number | nul
   if (onScreenCount === null || previewCount <= onScreenCount) return null;
   return `more than the ${onScreenCount.toLocaleString('en-IN')} shown on screen`;
 }
+
+/**
+ * The one line the export sheet speaks with, in every state it can be in.
+ *
+ * Pulled out of the component and made total on purpose. The sheet used to
+ * render `queryError ?? previewLine(preview) ?? 'Checking…'`, which has no case
+ * for "the preview failed" — a failed preview is `null`, exactly like a pending
+ * one, so the sheet said "Checking…" forever. The owner reads that as work in
+ * progress and waits for a file that was never coming.
+ *
+ * The order is what he can act on first: a bad date range is his to fix, a
+ * failed preview is not. And a failed preview must not imply a failed export —
+ * the count is decorative, the spreadsheet is not, and the Download button
+ * stays enabled behind this line.
+ */
+export function exportStatusLine(state: {
+  /** Why no request could be built — a reversed range, say. */
+  queryError: string | null;
+  /** The preview request came back an error. */
+  failed: boolean;
+  preview: ExportPreviewData | null;
+}): string {
+  if (state.queryError) return state.queryError;
+  const line = previewLine(state.preview);
+  if (line) return line;
+  if (state.failed) return "Couldn't check what's in this file — you can still download it";
+  return 'Checking…';
+}

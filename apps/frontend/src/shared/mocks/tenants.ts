@@ -65,7 +65,15 @@ export interface MockTenant {
   status: TenantStatus;
   statusLabel: string;
   outstanding: number;
-  overdueMonths: number;
+  /**
+   * Days since the OLDEST unpaid obligation's due date — the API's
+   * `overdue_days`, unconverted.
+   *
+   * Named for its unit on purpose. It was `overdueMonths` while holding days,
+   * and the row rendering it multiplied by 30: a tenant 53 days late showed as
+   * "1590d overdue". Never turn this into months without converting.
+   */
+  overdueDays: number;
   joinedDate: string;
   guardian?: MockGuardian;
   agreementStatus: string;
@@ -106,7 +114,7 @@ export const mockTenants: MockTenant[] = [
     status: 'active',
     statusLabel: 'Active',
     outstanding: 90200,
-    overdueMonths: 0,
+    overdueDays: 0,
     joinedDate: '1 Aug 2026',
     guardian: { name: 'Chinthala Ravinder', relation: 'Father', phone: '+91 98669 12032' },
     agreementStatus: 'Signed',
@@ -145,7 +153,7 @@ export const mockTenants: MockTenant[] = [
     status: 'active',
     statusLabel: 'Paid',
     outstanding: 0,
-    overdueMonths: 0,
+    overdueDays: 0,
     joinedDate: '15 Jun 2026',
     agreementStatus: 'Signed',
     kycStatus: 'Verified',
@@ -177,7 +185,7 @@ export const mockTenants: MockTenant[] = [
     status: 'overdue',
     statusLabel: 'Overdue 3 mo',
     outstanding: 24000,
-    overdueMonths: 3,
+    overdueDays: 90,
     joinedDate: '1 May 2026',
     agreementStatus: 'Signed',
     kycStatus: 'Pending',
@@ -217,7 +225,7 @@ export const mockTenants: MockTenant[] = [
     status: 'overdue',
     statusLabel: 'Overdue 5 mo',
     outstanding: 40000,
-    overdueMonths: 5,
+    overdueDays: 150,
     joinedDate: '1 Mar 2026',
     agreementStatus: 'Signed',
     kycStatus: 'Verified',
@@ -255,7 +263,7 @@ export const mockTenants: MockTenant[] = [
     status: 'invited',
     statusLabel: 'Invited',
     outstanding: 21000,
-    overdueMonths: 0,
+    overdueDays: 0,
     joinedDate: '—',
     agreementStatus: 'Not signed',
     kycStatus: 'Not started',
@@ -284,7 +292,7 @@ export const mockTenants: MockTenant[] = [
     status: 'pending-docs',
     statusLabel: 'KYC pending',
     outstanding: 11000,
-    overdueMonths: 0,
+    overdueDays: 0,
     joinedDate: '20 Jul 2026',
     agreementStatus: 'Signed',
     kycStatus: 'Pending',

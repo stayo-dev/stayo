@@ -552,6 +552,47 @@ export class OwnerPayoutReadModel {
     const fromClause = period.from ? Prisma.sql`AND p.payment_date >= ${period.from}::date` : Prisma.empty;
     const gwFromClause = period.from ? Prisma.sql`AND g.captured_at >= ${period.from}::date` : Prisma.empty;
 
+    /**
+     * The gateway half, with the payer named.
+     *
+     * `g.tenant_id` arrives with migration 075, which is deliberately NOT in
+     * schema.prisma and may not have been applied — so this is written twice,
+     * exactly as `items()` is for that migration's other column. Falling back
+     * costs a name; not falling back costs the export. See the `catch` below.
+     */
+    const attributedGateway = () => sql`
+        SELECT g.captured_at AS date, g.amount AS amount, 'Online' AS method,
+               g.provider_payment_id AS reference,
+               COALESCE(pr.name, 'Unknown') AS tenant_name,
+               COALESCE(h.name, '') AS hostel_name
+        FROM gateway_transactions g
+        LEFT JOIN tenants t   ON t.id = g.tenant_id
+        LEFT JOIN profiles pr ON pr.id = t.profile_id
+        LEFT JOIN hostels h   ON h.id = g.hostel_id
+        WHERE g.owner_id = ${ownerId}::uuid
+          AND g.purpose = 'TENANT_RENT'
+          AND g.status = 'CAPTURED'
+          ${gwFromClause}
+          AND g.captured_at < (${period.to}::date + INTERVAL '1 day')
+          ${gwHostelClause}
+        ORDER BY g.captured_at ASC`;
+
+    /** The same money, unattributed — no `tenant_id`, so no tenant join. */
+    const unattributedGateway = () => sql`
+        SELECT g.captured_at AS date, g.amount AS amount, 'Online' AS method,
+               g.provider_payment_id AS reference,
+               'Unknown' AS tenant_name,
+               COALESCE(h.name, '') AS hostel_name
+        FROM gateway_transactions g
+        LEFT JOIN hostels h ON h.id = g.hostel_id
+        WHERE g.owner_id = ${ownerId}::uuid
+          AND g.purpose = 'TENANT_RENT'
+          AND g.status = 'CAPTURED'
+          ${gwFromClause}
+          AND g.captured_at < (${period.to}::date + INTERVAL '1 day')
+          ${gwHostelClause}
+        ORDER BY g.captured_at ASC`;
+
     const [direct, gateway] = await Promise.all([
       sql`
         SELECT p.payment_date AS date, p.amount_paid AS amount, p.payment_method AS method,
@@ -568,22 +609,24 @@ export class OwnerPayoutReadModel {
           AND p.payment_date <= ${period.to}::date
           ${hostelClause}
         ORDER BY p.payment_date ASC`,
-      sql`
-        SELECT g.captured_at AS date, g.amount AS amount, 'Online' AS method,
-               g.provider_payment_id AS reference,
-               COALESCE(pr.name, 'Unknown') AS tenant_name,
-               COALESCE(h.name, '') AS hostel_name
-        FROM gateway_transactions g
-        LEFT JOIN tenants t   ON t.id = g.tenant_id
-        LEFT JOIN profiles pr ON pr.id = t.profile_id
-        LEFT JOIN hostels h   ON h.id = g.hostel_id
-        WHERE g.owner_id = ${ownerId}::uuid
-          AND g.purpose = 'TENANT_RENT'
-          AND g.status = 'CAPTURED'
-          ${gwFromClause}
-          AND g.captured_at < (${period.to}::date + INTERVAL '1 day')
-          ${gwHostelClause}
-        ORDER BY g.captured_at ASC`,
+      /**
+       * A missing column must not cost the owner his export.
+       *
+       * Both money exports — Collections and Finance — are built on this one
+       * call. Letting 42703 out of here turned `/api/owner/exports` and its
+       * preview into a 500, which the export sheet could only render as
+       * "Checking…" forever: no file, no reason, nothing to act on. The
+       * Expenses export never touches this query, which is why it alone kept
+       * working and why the failure looked like a UI bug.
+       */
+      attributedGateway().catch((error: any) => {
+        logger.warn(
+          "rentReceived: gateway attribution unavailable, falling back to unattributed rows " +
+            "(migration 075 likely unapplied)",
+          { error: error?.message },
+        );
+        return unattributedGateway();
+      }),
     ]);
 
     const map = (rows: any[], source: RentReceivedRow["source"]): RentReceivedRow[] =>

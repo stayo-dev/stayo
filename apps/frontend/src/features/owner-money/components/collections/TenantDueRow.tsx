@@ -1,5 +1,6 @@
 import { useNavigate } from 'react-router-dom';
 import type { MockTenant } from '@shared/mocks/tenants';
+import { overdueBadgeLabel } from './overdueLabel';
 
 interface TenantDueRowProps {
   tenant: MockTenant;
@@ -9,7 +10,6 @@ interface TenantDueRowProps {
 /** Overdue-tenant row shared by the Pulse "Action queue" and the Collections list, per Stayo App.dc.html. */
 export function TenantDueRow({ tenant, onCollect }: TenantDueRowProps) {
   const navigate = useNavigate();
-  const daysOverdue = tenant.overdueMonths * 30;
 
   return (
     <div
@@ -20,7 +20,7 @@ export function TenantDueRow({ tenant, onCollect }: TenantDueRowProps) {
         <div className="text-[13px] font-semibold text-foreground">{tenant.name}</div>
         <div className="mt-0.5 flex items-center gap-1.5">
           <span className="text-[11.5px] text-muted-foreground">{tenant.hostelName}</span>
-          <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">{daysOverdue}d overdue</span>
+          <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">{overdueBadgeLabel(tenant.overdueDays)}</span>
         </div>
       </div>
       <div className="flex-none font-display text-[13.5px] font-bold tabular-nums text-destructive">₹{tenant.outstanding.toLocaleString('en-IN')}</div>

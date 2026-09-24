@@ -17,6 +17,7 @@ import { CollectionRateCard } from '../components/pulse/CollectionRateCard';
 import { ActionQueueCard } from '../components/pulse/ActionQueueCard';
 import { CashflowForecastCard } from '../components/pulse/CashflowForecastCard';
 import { CollectionsFilters, type CollectionsSort } from '../components/collections/CollectionsFilters';
+import { PaymentClaimsCard } from '../components/collections/PaymentClaimsCard';
 import { PayoutStrip } from '../components/payouts/PayoutStrip';
 import { TenantDueRow } from '../components/collections/TenantDueRow';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
@@ -159,7 +160,7 @@ export function MoneyPage() {
   const overdueTenants = useMemo(() => {
     let list = real.overdueTenants;
     if (effectiveHostelFilter !== 'all') list = list.filter((t) => t.hostelId === effectiveHostelFilter);
-    if (collectionsSort === 'Most overdue') list = [...list].sort((a, b) => b.overdueMonths - a.overdueMonths);
+    if (collectionsSort === 'Most overdue') list = [...list].sort((a, b) => b.overdueDays - a.overdueDays);
     if (collectionsSort === 'Highest amount') list = [...list].sort((a, b) => b.outstanding - a.outstanding);
     if (collectionsSort === 'Name') list = [...list].sort((a, b) => a.name.localeCompare(b.name));
     return list;
@@ -408,6 +409,11 @@ export function MoneyPage() {
               would match no line in his passbook. Per-hostel attribution lives
               inside a payout's own breakdown instead. */}
           <PayoutStrip />
+          {/* Tenants who say they have paid, waiting on the owner.
+              Above the chase list on purpose: with no gateway there is no
+              callback, so nothing enters the ledger until he acts here — and a
+              tenant he is about to chase may already have paid. */}
+          <PaymentClaimsCard hostelId={effectiveHostelFilter} />
           <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} onOpenExport={() => money.openExport('collections')} />
           <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
             {overdueTenants.length === 0 ? (

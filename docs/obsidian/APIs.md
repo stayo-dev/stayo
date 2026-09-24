@@ -75,6 +75,35 @@ The owner's most recent agreement signature across their hostels, so the Add Hos
 
 Both now carry `hostel_type`, validated on write against the same four codes. The portfolio summary returns it too, so the Hostels tab can prompt for a hostel that has none.
 
+## UPI collection (2026-09-23)
+
+The replacement for the gateway. See [[Decisions#ADR-235|ADR-235]].
+
+| Endpoint | Who | What |
+|---|---|---|
+| `GET /pay/:token` | anyone with the link | The tenant-facing UPI page — QR, tap-to-pay intent, per-app iOS links, and "I've already paid". Server-rendered, framework-free, **no login**. Reached from approved rent-reminder templates. |
+| `POST /pay/:token` `{action:"qr"}` | same | Rebuilds the QR for an edited amount, so the code and the amount box cannot disagree. |
+| `POST /pay/:token` `{action:"claim"}` | same | Records a tenant's claim: UTR (required), amount, optional screenshot. **Never touches the obligation.** A second submission on the same token returns success rather than a duplicate. |
+| `POST /pay/:token` (any other action) | — | `410 GATEWAY_DISCONNECTED`. |
+| `GET /api/owner/payment-claims?state=&hostelId=` | owner | Claims awaiting a verdict. Leads with the UTR, the one field the owner can match against a bank statement. |
+| `POST /api/owner/payment-claims/[id]` | owner | `{action:"confirm"\|"reject", reason?}`. Confirming records rent through the shared settlement path. Rate-limited 60/min; **deliberately not step-up gated** — see ADR-235. |
+
+## Disconnected: the payment gateway (2026-09-23)
+
+These return **`410 GATEWAY_DISCONNECTED`**. Handlers are self-contained and import no service or provider; every service file stays on disk. See [[Decisions#ADR-235|ADR-235]].
+
+| Endpoint | Was |
+|---|---|
+| `POST /api/payments/create-intent` | started a gateway checkout |
+| `POST /api/payments/verify` | verified a gateway payment |
+| `POST /api/payments/test-intent` | a gateway test intent |
+| `POST /api/webhooks/payments/razorpay` | Razorpay's webhook receiver |
+
+`POST /api/payments/confirm` and `/api/payments/manual-confirm` are **left in place but unreachable** — both finalise a payment *attempt*, and no attempt can be created any more. They were not modified, to avoid disturbing the manual path admins may still need for the one historical attempt row.
+
+**`GET /api/payments/pay/[token]` is NOT disconnected.** `apps/frontend/vercel.json` rewrites `/pay/:token` to it, and that URL is the button in three approved rent-reminder templates (`stayo_rent_due_reminder`, `_due_today`, `_overdue_reminder`) and in the command centre's `PAY` reply. A Meta button URL is fixed at approval time, so 410-ing it would strand every message already delivered. It becomes the UPI payment surface instead. `tests/whatsapp-template-link-survival.test.ts` enforces this.
+
+
 ## Auth (`/api/auth/*`)
 
 **Since [[Decisions#ADR-031\|ADR-031]] (2026-07-28), Supabase Auth is the single authentication provider** — see [[Backend#Auth/session model|Backend's Auth/session model]] for the full architecture (dual-accept JWT verification, JIT identity linking via `profiles.auth_user_id`, `resolveSupabaseSession`). Login stays backend-mediated (the frontend never calls `supabase.auth.signInWithPassword()` directly) so rate-limiting, tenant-status checks, and the JIT linking step can still run; the response body now additionally returns `access_token`/`refresh_token`/`expires_in` so the frontend can call `supabase.auth.setSession()`.
@@ -372,7 +401,7 @@ Added 2026-08-23 ([[Decisions#ADR-090|ADR-090]]). The owner's view of money Stay
 
 **No hostel filter is accepted, by design.** A payout is one bank transfer covering every hostel at once, so a filtered payout figure would match no line in the owner's passbook. Per-hostel attribution lives inside `/[itemId]`'s `byHostel` instead.
 
-`degraded: true` reports that the payout tables could not be read as expected (in practice: migration 075 not applied) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
+`degraded: true` reports that the payout tables could not be read as expected (migration 075 is applied as of 2026-09-23, so this should no longer fire) — surfaced rather than thrown, so the screen shows its honest empty state instead of a 500 an owner cannot act on.
 
 `/[itemId]` always includes `fee: 0`. Stayo passes rent through in full and says so on every payout; an unstated zero reads as a fee somebody chose not to mention.
 
@@ -537,7 +566,7 @@ host: { platform_listed, name /* full name */, photo_url, bio, languages, hostin
         verified, listed_since, stats: { review_count, rating, residents } }
 ```
 
-It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (including migration 083 not applied), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
+It is built by `hostProfileService.getPublicHost(ownerId)`, with hidden bio/photo already `null`. If that read fails for any reason (migration 083 is applied as of 2026-09-23), the listing still renders with `name` = the owner's full name and everything else empty/zero. A `PLATFORM_LISTED` hostel always gets `name: null` and no card. `name` was "Ravi K." before this change.
 
 | Route | Who | Notes |
 |---|---|---|
@@ -965,3 +994,24 @@ Admin, `ADMIN` role:
 **Changed:** `POST /api/platform-admin/managers/[id]/resend-invitation` now returns `{ invitation: { reminded: true, expiresAt } }` when a live token was nudged, instead of always minting a new token ([[Decisions#ADR-230|ADR-230]]).
 
 **Fixed:** `GET /api/platform-admin/platform-listings` counted enquiries via `prisma.leads`, which is not a model — see [[Bugs]].
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
+
+| Method | Path | Auth | Notes |
+|---|---|---|---|
+| POST | `/api/tenant/stay/guardian-consent` | TENANT | `{ granted: boolean, source: "QR" \| "APP" }` → `{ guardian }`. Tenant comes from the session, never the body. Turning a `GRANTED` consent off writes `revoked_at`, which is a different column from a guardian's `stopped_at`. 409 `STAY_INELIGIBLE` when the caller is not a current resident or has no guardian on file. |
+| GET | `/api/cron/stay-guardian-sweep` | `CRON_SECRET` bearer | Re-attempts the guardian message for `LEAVE_STARTED` / `RETURNED` events in the last 48h whose inline send was lost. Deduped on `whatsapp_logs.idempotency_key = stay_guardian:{eventId}`. **Daily** (`0 6 * * *`) — a sub-daily Vercel cron fails the deploy on this plan. Returns `{ considered, sent, skipped, stale }`. |
+
+**Changed:** `GET /api/tenant/stay` now also returns a `guardian` block:
+
+```ts
+guardian: { eligible: boolean; name: string | null;
+            consent: 'UNASKED' | 'GRANTED' | 'DECLINED' | 'REVOKED' | 'STOPPED' } | null
+```
+
+`null` means no guardian on file. `eligible` is computed server-side (present, OTP-verified, not the
+resident's own number) so the frontend never re-derives a rule the policy owns. A guardian number
+that changed since consent is reported as `UNASKED` — the stored decision was about someone else.
+
+See [[Business-Rules]], [[Database]], [[Features]].
+

@@ -8,6 +8,63 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Action queue said every overdue tenant was "1590d overdue" (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Overview. The Action queue showed Mohammed Afreed, Sayanisai and B Avinash Kumar each as **"1590d overdue"** — four and a half years — and the identical number on all three rows made it look like a hardcoded placeholder.
+
+**It was neither static nor a placeholder. It was real data multiplied by thirty.**
+
+`GET /api/tenants` returns `overdue_days` — days since the **oldest** unpaid obligation's `due_date` (`tenant-service.ts`). `useRealTenantList` mapped it as `overdueMonths: t.overdueDays`, renaming days to months without converting them. `TenantDueRow` then did the conversion the name implied: `const daysOverdue = tenant.overdueMonths * 30`. 53 real days became 1590.
+
+The three rows agreed because the tenants genuinely agree: verified against production, all three carry an oldest unpaid due date of **2026-08-01** — 52 days at the time of the fix, 53 when the screenshot was taken. 53 × 30 = 1590, exactly. A fourth tenant, Md Sezan Hussain, has an oldest due of 2026-09-05 → 17 days, matching the `days_overdue: 17` visible in the network panel. So the API was right throughout; only this one render path was wrong.
+
+**Why it survived.** Every other consumer of the same value treats it as days and says so — `CompactFinancialStrip` ("{overdueDays} days", "Since oldest due date"), `FinancialHealthBanner`, both tenant-facing pages. This path alone renamed it, and the rename *created* the bug: the ×30 is not a typo, it is a correct conversion applied to a field whose name lied about its unit. Nothing else read `overdueMonths`, so there was no second opinion to disagree.
+
+**Fix.** The unit is now in the name everywhere: `MockTenant.overdueMonths` → `overdueDays` (with a comment saying what it is and what went wrong), the mapper passes it through unconverted, and the badge renders through `overdueBadgeLabel()` — a pure, tested module that takes **days** and multiplies by nothing. `MoneyPage`'s "Most overdue" sort moves with it; the ordering was never wrong, since ×30 is monotonic.
+
+**Lesson.** A field name is a unit declaration. Rename a quantity across a boundary and the next reader will convert it to match the name — correctly, and disastrously. The dead mock fixtures that seeded the name (`overdueMonths: 3`) had genuinely been months; nothing re-checked the name when real data replaced them.
+
+**Verified** against production data (read-only) and by 6 new node tests. **Not verified in a browser** — the corrected badge has not been rendered on a screen.
+
+**See:** [[Frontend]] · [[APIs]] · [[Changelog]]
+
+## UPI ID validation guarded a path the settings screen never takes (2026-09-23)
+
+**Found while auditing what was left to build**, not by a failure — which is the point: it would not have failed loudly.
+
+`upi_id` was validated in `hostelPolicyService.validateHostelPolicyForWrite`, which is reached by `PATCH /hostels/:id/preferences`. But `MoreHostelIdentityPage` — the screen that actually has the UPI ID box — saves through `PATCH /hostels/:id`, whose handler spreads `...body` into `propertyService.updateHostel`, where `upi_id` was assigned with no check at all.
+
+So the validation existed, had tests, passed them, and let every real value through. That is the same shape as the five Money filters that never filtered ([[Bugs]], 2026-09-21): a control that looks applied and is not.
+
+**Why it mattered more than it looks.** While `upi_id` was decorative this was harmless. With the gateway disconnected ([[Decisions#ADR-235|ADR-235]]) it is the entire rent-collection mechanism, and a typo'd VPA becomes a QR that fails *inside the tenant's UPI app* — where nobody on Stayo's side can observe it, and where the tenant concludes Stayo lost their rent.
+
+**Fix.** `propertyService.updateHostel` trims and validates, sharing `isValidVpa` with the QR and intent builders so a value accepted on save cannot be rejected at payment time. Both paths are now covered, with a test per path.
+
+**Lesson.** Adding a validator is not the same as covering a field. The question to ask is not "is this validated?" but "which endpoint does the screen actually call?" — and answering it requires following the frontend's mutation to its route, not reading the service that looks responsible.
+
+**See:** [[Decisions#ADR-235|ADR-235]] · [[Business-Rules]] · [[Changelog]]
+
+## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Collections and Money → Overview. The export sheet opened, showed the period chips and the scope line, and its status line stayed on **"Checking…"** indefinitely. Download produced nothing. The Expenses export was fine — which made it look like a frontend bug in the two sheets that were broken.
+
+**Root cause — one missing column, two dead endpoints.** Both money exports are built on `ownerPayoutReadModel.rentReceived()`, and its gateway half joins `LEFT JOIN tenants t ON t.id = g.tenant_id`. `gateway_transactions.tenant_id` arrives with **migration 075, which is deliberately absent from `schema.prisma` and is not applied on the canonical production project** — so that statement raises `42703 / P2022` and the call rejects. `GET /api/owner/exports/preview` and `GET /api/owner/exports` both answer 500. The Expenses document never calls `rentReceived`, which is exactly why it alone kept working.
+
+Migration 075's own header claims "application code is correct whether or not this file has been applied yet". That was true of `items()` and of `getSummary()` — whose comment already says *"migration 075 pending, in practice"* and settles its four reads independently so one unreadable table cannot blank the strip. It was never true of `rentReceived`, added later by [[Decisions#ADR-229|ADR-229]] and hard-joining the same column with no guard.
+
+**Why it looked like a spinner rather than an error.** The export sheet rendered `queryError ?? previewLine(preview) ?? 'Checking…'`, and `previewLine(null)` is `null` — so a *failed* preview was indistinguishable from a *pending* one. The effect's `.catch(() => undefined)` swallowed the 500 outright. A permanently misleading "Checking…" is what turned a backend fault into "the export button is broken": the owner waits instead of tapping Download, which was enabled the whole time.
+
+**Fix.** Two independent faults, fixed at their own level:
+- `rentReceived` now writes the gateway query twice, the way `items()` already does for `expected_payout_date`: the attributed query first, and on failure an unattributed one that does not name `tenant_id`. The payer's name is lost; not one rupee, reference or date is. Losing the whole export over a decorative column was the actual defect.
+- The sheet's status line moved into a pure, tested function, `exportStatusLine()`. It distinguishes "checking" from "couldn't check", and says plainly that the file is still downloadable — because the preview is decorative and the spreadsheet is not.
+
+**Lesson.** A column held out of `schema.prisma` so that unapplied migrations cannot break reads only delivers that if **every** raw query that touches it is written twice. Two of the three call sites carried the guard and said so in comments; the third was added months later by someone reading the query, not the policy. And a loading state that is also the failure state will always be read as loading.
+
+**Still unguarded** (same column, same risk, not touched here): `getBreakdown()` and `itemIdsMatchingTenant()` on the payouts screens. `getSummary()` and `payoutsForPeriod()` are already safe. **The real cure is applying migration 075** — see [[Database]].
+
+**Not verified against a live database.** Production reads are blocked from the development machine, so the failure was reproduced with a mocked client that rejects any statement naming `g.tenant_id` (`tests/owner-export-missing-migration.test.ts` — 2 of its 3 cases fail against the old code). Nobody has opened the sheet in a browser since the fix.
+
+**See:** [[Decisions#ADR-229|ADR-229]] · [[Database]] · [[Backend]] · [[Changelog]] · [[APIs]]
 ## A new Google sign-up ran entirely on Clerk's hosted Account Portal, not this app (2026-09-23)
 
 **Symptom:** after the CSP fix above, a brand-new Google sign-up's CAPTCHA rendered correctly — but on `accounts.yourstayo.com`, not `yourstayo.com`. Solving it (or not) was moot: the entire remaining flow ran as Clerk's own default, generic sign-in/up UI, and the final redirect landed on bare `https://yourstayo.com/`, not `/auth/callback` — `AuthCallbackPage`'s account-linking logic never ran, so nothing in this app's database or session ever reflected what Clerk did.
@@ -489,7 +546,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Fix.** One module, `src/services/tenants/kyc-status.ts`: `requiredKycDocTypes` / `isKycComplete` / `describeKycGap`, and `recomputeDocumentVerified(tx, tenantId)` as the **only** writer of the flag after invitation creation — `true` only when every required type has an **active, APPROVED** document. Every approve/reject/upload/`profile_type`-change path calls it inside its transaction. `bulk-verify` and `MARK_DOCUMENTS_VERIFIED` share `approveRequiredActiveKycDocs`: approve only required active types, `409 INCOMPLETE_KYC` when a required type has no active row. See [[Decisions#ADR-169|ADR-169]].
 
-**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (not yet applied).
+**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (**verified applied to production 2026-09-23**).
 
 **Follow-up (same day): the onboarding Documents UI was built into a dead file.** The first pass added the "Documents" upload section to `src/portal/pages/ActivateAccountPage.tsx` — which has been `@deprecated` and **not routed** since 2026-08-13 (the live wizard is `platforms/tenant/onboarding/ActivationPage.tsx` + `steps/`). So the KYC backend shipped but no real tenant ever saw a document-upload step during onboarding. Fixed by porting the section into the live `steps/WelcomeIdentityStep.tsx` (wiring the already-built `uploadActivationDocument` client + `activate/documents` route + `onboardingKyc.ts`) and reverting `ActivateAccountPage.tsx` to its committed state. Lesson: check `app/router/PublicRoutes.tsx` for which component a route actually mounts before editing a page under `src/portal/` — that tree is a mix of live-and-allowlisted and deprecated-but-kept files.
 
@@ -556,7 +613,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Bug 4 (race condition, not a normal-path bug) — `createInvitation`'s eligibility pre-check ran outside the write transaction.** Two concurrent invites for the same never-before-seen phone at two different hostels could both pass `tenancyEligibilityService.assertCanStartNewTenancyByContact`'s plain `SELECT` before either transaction committed its `tenants` insert (which writes `profile_id: null`, so the DB's `tenants_one_live_tenancy_per_profile` partial index — which only applies once `profile_id` is bound — cannot catch it). **Fix:** the transaction now opens with a phone-scoped `pg_advisory_xact_lock` (same pattern as `payment-service.ts`'s `pay_intent:` lock) and re-runs the eligibility check inside the lock before inserting.
 
-**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **not yet applied to any database**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
+**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **verified applied to production 2026-09-23**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
 
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 

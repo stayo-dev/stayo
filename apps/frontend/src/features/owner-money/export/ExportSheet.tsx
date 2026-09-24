@@ -4,7 +4,7 @@ import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { downloadBlob, shareOrDownload, canShareFiles } from '@shared/lib/downloadBlob';
 import { ownerExportService, type ExportPreview } from '@features/owner-payouts/api/exports';
-import { exportById, periodOptions, previewLine, divergenceNote } from './exportDocuments';
+import { exportById, periodOptions, exportStatusLine, divergenceNote } from './exportDocuments';
 import type { ExportQuery, MoneyExportId, PeriodPresetId } from './exportRequest';
 
 /**
@@ -49,6 +49,12 @@ interface ExportSheetProps {
 
 export function ExportSheet({ open, onClose, target, query, scopeLine, period, onScreenCount = null }: ExportSheetProps) {
   const [preview, setPreview] = useState<ExportPreview | null>(null);
+  /**
+   * The preview asked and was refused. Tracked separately from `preview`,
+   * because `null` alone cannot tell "still waiting" from "gave up" — and the
+   * sheet rendered both as "Checking…", forever.
+   */
+  const [previewFailed, setPreviewFailed] = useState(false);
   const [busy, setBusy] = useState<null | 'download' | 'share'>(null);
   const doc = exportById(target);
   const periods = useMemo(() => periodOptions(), []);
@@ -66,15 +72,21 @@ export function ExportSheet({ open, onClose, target, query, scopeLine, period, o
   useEffect(() => {
     if (!open || !key) {
       setPreview(null);
+      setPreviewFailed(false);
       return;
     }
     const controller = new AbortController();
     setPreview(null);
+    setPreviewFailed(false);
     const timer = setTimeout(() => {
       ownerExportService
         .preview(Object.fromEntries(new URLSearchParams(key)), controller.signal)
         .then((p) => setPreview(p))
-        .catch(() => undefined);
+        // An aborted request is this effect superseding itself, not a failure:
+        // marking it failed would flash the error line on every keystroke.
+        .catch((error: any) => {
+          if (error?.name !== 'AbortError' && error?.code !== 'ERR_CANCELED') setPreviewFailed(true);
+        });
     }, 350);
     return () => {
       clearTimeout(timer);
@@ -106,7 +118,7 @@ export function ExportSheet({ open, onClose, target, query, scopeLine, period, o
     }
   };
 
-  const line = previewLine(preview);
+  const line = exportStatusLine({ queryError: query.error, failed: previewFailed, preview });
   const divergence = preview ? divergenceNote(preview.count, onScreenCount) : null;
   const blocked = !query.query || busy !== null;
 
@@ -201,7 +213,7 @@ export function ExportSheet({ open, onClose, target, query, scopeLine, period, o
 
         <div className="rounded-xl bg-muted/50 px-3 py-2.5 text-center">
           <span className="block text-[12.5px] font-semibold text-foreground">
-            {query.error ?? line ?? 'Checking…'}
+            {line}
           </span>
           {divergence && (
             <span className="mt-0.5 block text-[11px] text-muted-foreground">{divergence}</span>
