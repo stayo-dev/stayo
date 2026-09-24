@@ -128,3 +128,25 @@ export function decideCallbackAction(input: {
       return "no-session";
   }
 }
+
+/**
+ * Is this `/auth/callback` visit the one Google button in the app allowed to
+ * provision a brand-new Stayo account — Discover's sign-up tab (2026-09-23)?
+ *
+ * The flag lives on the URL (`?flow=discover_signup`, set only by that one
+ * `redirectUrlComplete`), not in sessionStorage. A URL query string can't
+ * suffer the earlier design's documented race (`AuthCallbackPage.tsx`'s own
+ * history: a mutable flag read by more than one effect pass, consumed by
+ * whichever pass got there first) — it's just present or absent on every
+ * read, nothing to consume.
+ *
+ * Not a privilege check, and doesn't need to be one: provisioning itself
+ * (`resolveClerkSession` first, id-only linking, never by email) is what
+ * keeps this safe, not the flag being unguessable. Worst case if someone set
+ * it by hand on an unrelated Clerk session is the same low-privilege
+ * marketplace-seeker account `POST /api/auth/tenant-signup` already lets
+ * anyone create with a password — never access to an existing account.
+ */
+export function isDiscoverSignupCallback(search: string): boolean {
+  return new URLSearchParams(search).get("flow") === "discover_signup";
+}

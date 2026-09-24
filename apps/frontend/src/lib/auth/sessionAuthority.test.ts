@@ -14,6 +14,7 @@ import {
   decideRouteAccess,
   clerkPresence,
   shouldExplainUnlinkedClerkSession,
+  isDiscoverSignupCallback,
   type ClerkSessionState,
 } from './sessionAuthority';
 
@@ -209,5 +210,28 @@ describe('decideCallbackAction — /auth/callback must not judge Clerk too early
     for (const clerk of [null, { isLoaded: true, isSignedIn: true }, { isLoaded: true, isSignedIn: false }]) {
       expect(decideCallbackAction({ hasSupabaseSession: false, clerk })).not.toBe('wait');
     }
+  });
+});
+
+describe('isDiscoverSignupCallback (2026-09-23 — Discover Google-signup provisioning)', () => {
+  it('is true only for the exact flag Discover\'s sign-up Google button sets', () => {
+    expect(isDiscoverSignupCallback('?flow=discover_signup')).toBe(true);
+  });
+
+  it('is false for every other landing — owner login, tenant login, no flag at all', () => {
+    expect(isDiscoverSignupCallback('')).toBe(false);
+    expect(isDiscoverSignupCallback('?')).toBe(false);
+    expect(isDiscoverSignupCallback('?flow=owner_login')).toBe(false);
+    expect(isDiscoverSignupCallback('?something=else')).toBe(false);
+  });
+
+  it('is not fooled by a near-miss value', () => {
+    expect(isDiscoverSignupCallback('?flow=discover_signup_extra')).toBe(false);
+    expect(isDiscoverSignupCallback('?flow=Discover_Signup')).toBe(false);
+  });
+
+  it('reads correctly alongside other query params, in either order', () => {
+    expect(isDiscoverSignupCallback('?other=1&flow=discover_signup')).toBe(true);
+    expect(isDiscoverSignupCallback('?flow=discover_signup&other=1')).toBe(true);
   });
 });

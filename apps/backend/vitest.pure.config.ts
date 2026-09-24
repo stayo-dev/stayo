@@ -239,6 +239,10 @@ export default defineConfig({
       'tests/credential-service.test.ts',
       'tests/password-flows-clerk.test.ts',
       'tests/clerk-session-resolver.test.ts',
+      // Discover's Google-signup provisioning (2026-09-23) — narrow exception
+      // to "authentication never creates a Stayo account", scoped to exactly
+      // one call site. Mocks @/lib/db and @/lib/auth/clerk-backend.
+      'tests/discover-google-provisioning.test.ts',
       'tests/tenant-self-signup.test.ts',
       // Bulk import: parse-stage failures must name the real cause. The
       // row-limit message used to be swallowed by parseFile's own catch.
