@@ -3,6 +3,7 @@ import { ClerkProvider, useClerk, useSignIn } from '@clerk/clerk-react';
 import { readClerkConfig } from '@lib/auth/clerkConfig';
 import { shouldSignOutBeforeGoogle } from '@lib/auth/existingClerkSession';
 import { toAbsoluteUrl } from '@lib/auth/absoluteRedirectUrl';
+import { buildSsoCallbackPath } from '@lib/auth/ssoCallbackDestination';
 
 /**
  * The half of `<ClerkGoogleSignIn>` that touches the Clerk SDK, kept in its own
@@ -86,7 +87,10 @@ function ClerkGoogleRedirect({
       const origin = window.location.origin;
       await clerk.client.signIn.authenticateWithRedirect({
         strategy: 'oauth_google',
-        redirectUrl: toAbsoluteUrl('/sign-in/sso-callback', origin),
+        // The destination rides on the callback URL too: the callback cannot
+        // read `redirectUrlComplete` back (see ssoCallbackDestination.ts), and a
+        // brand-new Google account always finishes there.
+        redirectUrl: toAbsoluteUrl(buildSsoCallbackPath(redirectUrlComplete), origin),
         redirectUrlComplete: toAbsoluteUrl(redirectUrlComplete, origin),
       });
     };
