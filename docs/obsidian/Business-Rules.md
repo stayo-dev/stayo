@@ -8,6 +8,17 @@ Related: [[Database]] · [[APIs]] · [[Backend]] · [[Features]]
 
 Everything below was extracted by reading the actual implementation (not types, not doc-comments alone) in `apps/backend/`. File:line references point at the evidence. Anything not verifiable in code is explicitly marked **Unknown**.
 
+## Rent collection is direct, and a tenant's claim is not payment (2026-09-23)
+
+Stayo does not take tenant money. Rent moves tenant → owner over UPI, and Stayo records it. See [[Decisions#ADR-235|ADR-235]].
+
+- **A tenant's claim never marks an obligation paid.** It creates a `PENDING` row in `tenant_payment_claims`. The owner confirms, and only then is rent recorded — through the same settlement path every other payment uses, so FIFO allocation, receipts and the ledger keep one implementation.
+- **The UTR is the evidence; the screenshot is not.** A screenshot is trivially edited and endlessly reusable; a UTR either appears in the owner's bank statement or does not. The screenshot is accepted because owners find it reassuring, never because it proves anything.
+- **A mismatched amount is routine, not suspicious.** Most UPI apps let the payer edit the amount on a person-to-person intent, so claimed ≠ requested is ordinary. Copy shown to the owner must not imply the tenant did anything wrong.
+- **Confirmation is not reversible as a claim operation.** Obligations are audit-first with no edit endpoint, so a wrongly confirmed payment is corrected through the existing correction path, never by rewinding the claim.
+- **A hostel's UPI ID must be a real VPA.** Validated on write, sharing one rule with the QR and intent builders, so a value accepted on save cannot be rejected at payment time. Absence stays valid — most hostels have none set.
+
+
 ## Marketing listing lifecycle — after approval (2026-08-22)
 
 An APPROVED listing is no longer the end of the line. Two admin actions exist, and the one thing

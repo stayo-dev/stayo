@@ -398,7 +398,15 @@ export function LoginModal({ open, mode, onClose, onSuccess, initialTab = 'login
                   <span className="font-display text-[11px] font-bold tracking-wider text-muted-foreground">OR</span>
                   <span className="h-px flex-1 bg-border" />
                 </div>
-                <GoogleButton onBusy={dog.submit} />
+                {/* Discover's own callback query param, not the shared default:
+                    this is the one Google button in the app allowed to
+                    provision a brand-new Stayo account (a self-serve
+                    marketplace seeker, the same shape the password form above
+                    already creates with no invitation needed). The owner and
+                    tenant *login* Google button below keeps the plain default
+                    — AuthCallbackPage.tsx only attempts provisioning when this
+                    exact flag is present. */}
+                <GoogleButton onBusy={dog.submit} redirectUrlComplete="/auth/callback?flow=discover_signup" />
 
                 {/* Said once, here, because it's the question this form raises:
                     there's no phone field, and an enquiry obviously needs one. */}
@@ -522,9 +530,16 @@ function FieldError({ message }: { message?: string }) {
  * "Continue with Google" via Clerk. The dog thinks for as long as the button
  * says "Please wait…" — from the click until the browser leaves for Google.
  */
-function GoogleButton({ onBusy }: { onBusy: () => void }) {
+function GoogleButton({
+  onBusy,
+  redirectUrlComplete,
+}: {
+  onBusy: () => void;
+  /** Passed straight through to `<ClerkGoogleSignIn>`; its own default applies when omitted. */
+  redirectUrlComplete?: string;
+}) {
   return (
-    <ClerkGoogleSignIn>
+    <ClerkGoogleSignIn redirectUrlComplete={redirectUrlComplete}>
       {({ disabled, onClick, busy }) => (
         <>
           <WhenBusy busy={busy} onBusy={onBusy} />

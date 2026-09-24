@@ -53,7 +53,9 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     status,
     statusLabel,
     outstanding: t.outstandingAmount,
-    overdueMonths: t.overdueDays,
+    // Days in, days out. This line used to rename the API's `overdue_days`
+    // to `overdueMonths`, and the row downstream multiplied it by 30.
+    overdueDays: t.overdueDays,
     joinedDate: t.joinDate ?? '',
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',

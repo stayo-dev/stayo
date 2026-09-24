@@ -8,6 +8,105 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The Action queue said every overdue tenant was "1590d overdue" (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Overview. The Action queue showed Mohammed Afreed, Sayanisai and B Avinash Kumar each as **"1590d overdue"** — four and a half years — and the identical number on all three rows made it look like a hardcoded placeholder.
+
+**It was neither static nor a placeholder. It was real data multiplied by thirty.**
+
+`GET /api/tenants` returns `overdue_days` — days since the **oldest** unpaid obligation's `due_date` (`tenant-service.ts`). `useRealTenantList` mapped it as `overdueMonths: t.overdueDays`, renaming days to months without converting them. `TenantDueRow` then did the conversion the name implied: `const daysOverdue = tenant.overdueMonths * 30`. 53 real days became 1590.
+
+The three rows agreed because the tenants genuinely agree: verified against production, all three carry an oldest unpaid due date of **2026-08-01** — 52 days at the time of the fix, 53 when the screenshot was taken. 53 × 30 = 1590, exactly. A fourth tenant, Md Sezan Hussain, has an oldest due of 2026-09-05 → 17 days, matching the `days_overdue: 17` visible in the network panel. So the API was right throughout; only this one render path was wrong.
+
+**Why it survived.** Every other consumer of the same value treats it as days and says so — `CompactFinancialStrip` ("{overdueDays} days", "Since oldest due date"), `FinancialHealthBanner`, both tenant-facing pages. This path alone renamed it, and the rename *created* the bug: the ×30 is not a typo, it is a correct conversion applied to a field whose name lied about its unit. Nothing else read `overdueMonths`, so there was no second opinion to disagree.
+
+**Fix.** The unit is now in the name everywhere: `MockTenant.overdueMonths` → `overdueDays` (with a comment saying what it is and what went wrong), the mapper passes it through unconverted, and the badge renders through `overdueBadgeLabel()` — a pure, tested module that takes **days** and multiplies by nothing. `MoneyPage`'s "Most overdue" sort moves with it; the ordering was never wrong, since ×30 is monotonic.
+
+**Lesson.** A field name is a unit declaration. Rename a quantity across a boundary and the next reader will convert it to match the name — correctly, and disastrously. The dead mock fixtures that seeded the name (`overdueMonths: 3`) had genuinely been months; nothing re-checked the name when real data replaced them.
+
+**Verified** against production data (read-only) and by 6 new node tests. **Not verified in a browser** — the corrected badge has not been rendered on a screen.
+
+**See:** [[Frontend]] · [[APIs]] · [[Changelog]]
+
+## UPI ID validation guarded a path the settings screen never takes (2026-09-23)
+
+**Found while auditing what was left to build**, not by a failure — which is the point: it would not have failed loudly.
+
+`upi_id` was validated in `hostelPolicyService.validateHostelPolicyForWrite`, which is reached by `PATCH /hostels/:id/preferences`. But `MoreHostelIdentityPage` — the screen that actually has the UPI ID box — saves through `PATCH /hostels/:id`, whose handler spreads `...body` into `propertyService.updateHostel`, where `upi_id` was assigned with no check at all.
+
+So the validation existed, had tests, passed them, and let every real value through. That is the same shape as the five Money filters that never filtered ([[Bugs]], 2026-09-21): a control that looks applied and is not.
+
+**Why it mattered more than it looks.** While `upi_id` was decorative this was harmless. With the gateway disconnected ([[Decisions#ADR-235|ADR-235]]) it is the entire rent-collection mechanism, and a typo'd VPA becomes a QR that fails *inside the tenant's UPI app* — where nobody on Stayo's side can observe it, and where the tenant concludes Stayo lost their rent.
+
+**Fix.** `propertyService.updateHostel` trims and validates, sharing `isValidVpa` with the QR and intent builders so a value accepted on save cannot be rejected at payment time. Both paths are now covered, with a test per path.
+
+**Lesson.** Adding a validator is not the same as covering a field. The question to ask is not "is this validated?" but "which endpoint does the screen actually call?" — and answering it requires following the frontend's mutation to its route, not reading the service that looks responsible.
+
+**See:** [[Decisions#ADR-235|ADR-235]] · [[Business-Rules]] · [[Changelog]]
+
+## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
+
+**Symptom.** Reported by the owner from Money → Collections and Money → Overview. The export sheet opened, showed the period chips and the scope line, and its status line stayed on **"Checking…"** indefinitely. Download produced nothing. The Expenses export was fine — which made it look like a frontend bug in the two sheets that were broken.
+
+**Root cause — one missing column, two dead endpoints.** Both money exports are built on `ownerPayoutReadModel.rentReceived()`, and its gateway half joins `LEFT JOIN tenants t ON t.id = g.tenant_id`. `gateway_transactions.tenant_id` arrives with **migration 075, which is deliberately absent from `schema.prisma` and is not applied on the canonical production project** — so that statement raises `42703 / P2022` and the call rejects. `GET /api/owner/exports/preview` and `GET /api/owner/exports` both answer 500. The Expenses document never calls `rentReceived`, which is exactly why it alone kept working.
+
+Migration 075's own header claims "application code is correct whether or not this file has been applied yet". That was true of `items()` and of `getSummary()` — whose comment already says *"migration 075 pending, in practice"* and settles its four reads independently so one unreadable table cannot blank the strip. It was never true of `rentReceived`, added later by [[Decisions#ADR-229|ADR-229]] and hard-joining the same column with no guard.
+
+**Why it looked like a spinner rather than an error.** The export sheet rendered `queryError ?? previewLine(preview) ?? 'Checking…'`, and `previewLine(null)` is `null` — so a *failed* preview was indistinguishable from a *pending* one. The effect's `.catch(() => undefined)` swallowed the 500 outright. A permanently misleading "Checking…" is what turned a backend fault into "the export button is broken": the owner waits instead of tapping Download, which was enabled the whole time.
+
+**Fix.** Two independent faults, fixed at their own level:
+- `rentReceived` now writes the gateway query twice, the way `items()` already does for `expected_payout_date`: the attributed query first, and on failure an unattributed one that does not name `tenant_id`. The payer's name is lost; not one rupee, reference or date is. Losing the whole export over a decorative column was the actual defect.
+- The sheet's status line moved into a pure, tested function, `exportStatusLine()`. It distinguishes "checking" from "couldn't check", and says plainly that the file is still downloadable — because the preview is decorative and the spreadsheet is not.
+
+**Lesson.** A column held out of `schema.prisma` so that unapplied migrations cannot break reads only delivers that if **every** raw query that touches it is written twice. Two of the three call sites carried the guard and said so in comments; the third was added months later by someone reading the query, not the policy. And a loading state that is also the failure state will always be read as loading.
+
+**Still unguarded** (same column, same risk, not touched here): `getBreakdown()` and `itemIdsMatchingTenant()` on the payouts screens. `getSummary()` and `payoutsForPeriod()` are already safe. **The real cure is applying migration 075** — see [[Database]].
+
+**Not verified against a live database.** Production reads are blocked from the development machine, so the failure was reproduced with a mocked client that rejects any statement naming `g.tenant_id` (`tests/owner-export-missing-migration.test.ts` — 2 of its 3 cases fail against the old code). Nobody has opened the sheet in a browser since the fix.
+
+**See:** [[Decisions#ADR-229|ADR-229]] · [[Database]] · [[Backend]] · [[Changelog]] · [[APIs]]
+## A new Google sign-up ran entirely on Clerk's hosted Account Portal, not this app (2026-09-23)
+
+**Symptom:** after the CSP fix above, a brand-new Google sign-up's CAPTCHA rendered correctly — but on `accounts.yourstayo.com`, not `yourstayo.com`. Solving it (or not) was moot: the entire remaining flow ran as Clerk's own default, generic sign-in/up UI, and the final redirect landed on bare `https://yourstayo.com/`, not `/auth/callback` — `AuthCallbackPage`'s account-linking logic never ran, so nothing in this app's database or session ever reflected what Clerk did.
+
+**Cause:** `ClerkGoogleButton.tsx` passed relative paths to `authenticateWithRedirect` — `redirectUrl: '/sign-in/sso-callback'`, `redirectUrlComplete` (`/auth/callback` or `/lead-signup/callback` depending on the caller). Google doesn't redirect back into the browser tab that started the flow; it redirects to **Clerk's own server**, which is what resolves these URLs into the final destination. A relative path has no origin for a server-side resolver to anchor to, so Clerk used its own default — this instance's Account Portal — and everything downstream ran there instead, using the Account Portal's own defaults rather than anything this app configured.
+
+**Fix:** both URLs are resolved to fully-qualified absolute URLs (`lib/auth/absoluteRedirectUrl.ts`) before being handed to Clerk, removing the ambiguity. **Not yet verified against a real completed sign-up** — the Account Portal detour itself was confirmed live; whether this fix actually keeps the flow on `yourstayo.com` end to end has not been. Related: [[Frontend]].
+
+## Google's OAuth trip completed but never actually signed anyone in (2026-09-23)
+
+**Symptom:** after the two hook-level fixes above shipped, "Continue with Google" finally reached Google and returned — confirmed live: real navigation to `accounts.google.com`, real account chooser, real redirect back to `yourstayo.com`. It then rendered Clerk's generic, empty "Sign in to Stayo" form (email/password + Google button again) instead of completing and landing the person in the app.
+
+**Cause:** `ClerkGoogleButton.tsx` starts Google imperatively (`clerk.client.signIn.authenticateWithRedirect()`), by design — the button needed to be this app's own, not Clerk's hosted `<SignIn>` UI (ADR-176). Its `redirectUrl: '/sign-in/sso-callback'` was served by `ClerkSignInPage`'s `<SignIn routing="path">`, whose sub-route auto-completion only resumes an attempt `<SignIn>` itself started — nothing here ever used `<SignIn>` to begin the flow, so it had nothing to resume and just showed its idle entry screen. A second, independent problem sat underneath even if that had somehow worked: `<SignIn fallbackRedirectUrl="/">` would have sent everyone to the home page, bypassing `AuthCallbackPage`'s rejection handling for an unlinked or disabled account.
+
+**Fix:** a dedicated `/sign-in/sso-callback` route renders `<AuthenticateWithRedirectCallback>` — Clerk's own component for completing an imperatively-started attempt, which reads the per-call `redirectUrlComplete` back off the attempt rather than using a single hardcoded fallback. Related: [[Frontend]], [[APIs]].
+
+## Google sign-up blocked by our own CSP silently blocking Clerk's CAPTCHA (2026-09-23)
+
+**Symptom:** after the routing fix above, a Google account new to Clerk reached `/sign-in/sso-callback`'s "Finishing sign-in…" screen and stalled there for 28+ seconds before Clerk answered a `sign_ups` request with `400 captcha_invalid` — "The CAPTCHA failed to load." Network tab showed several blocked `api.js?render=explicit` requests and a CSP violation.
+
+**Cause:** Clerk v5's default bot-protection widget for new sign-ups is Cloudflare Turnstile, served from `challenges.cloudflare.com`. This app's CSP (`apps/frontend/vercel.json`, the only place it's defined) never allowlisted that origin in any directive — because nothing had ever driven a real user through to a new Clerk sign-up before this point in testing. The browser silently blocked Turnstile's script; with no widget to solve, Clerk's server-side CAPTCHA check had nothing valid to verify and refused the sign-up.
+
+**Fix:** `challenges.cloudflare.com` added to `script-src`, `script-src-elem`, `connect-src`, and `frame-src`, matching the same per-provider pattern already used for Clerk, Google and Razorpay in this file (each addition documented and guarded by a no-wildcard test, per the CSP's own bug history — see the two `2026-09-09` CSP entries below). **Not confirmed against the literal blocked-domain string** — inferred from Clerk's documented default provider and the script's URL shape; needs a live retest. Related: [[Frontend]].
+
+## The Google-sign-in fix itself shipped a silent hook-reactivity bug (2026-09-23)
+
+**Symptom:** after the `session_exists` fix ([[Changelog]], 2026-09-23) deployed, "Continue with Google" still stuck on "Please wait…" — but differently this time: zero network requests to Clerk for sign-in, zero console errors, across two separate live tests (one running ~5 minutes with nothing happening).
+
+**Cause:** the fix itself. `ClerkGoogleButton.tsx` moved from `useSignIn()` to `useClerk()` to read a fresh Clerk instance for calls made after an awaited `signOut()` (avoiding a real staleness risk). But `useClerk()` is not reactive the way `useSignIn()` is — its `.loaded` property is mutated in place on Clerk's singleton, and reading it inside a `useEffect` only reflects the value at the moment the effect runs. Since Clerk's SDK loads asynchronously (confirmed via Network-tab evidence: `environment`/`client` resolve *after* this component mounts), the effect's first run saw `loaded: false` and returned — and because the `clerk` object's identity never changes, nothing ever re-triggered the effect once loading actually finished. Compounded by `clerk.client?.signIn...` — an optional chain that would have silently no-op'd rather than failed loudly even if that guess had been wrong.
+
+**Fix:** kept both hooks for what each gets right — `useSignIn()`'s reactive `isLoaded` for the effect's gate, `useClerk()`'s live instance for the actual calls. Replaced the optional chain with an explicit throw, and added logging so a failure like this is never silent again. **Not covered by an automated test** — a React hook-timing bug is outside what this repo's node-only, no-component-rendering test suite can exercise (see `CLAUDE.md`); verification requires a live retest. Related: [[Frontend]].
+
+## "Continue with Google" stuck forever on "Please wait…" (2026-09-23)
+
+**Symptom:** clicking Google while the browser already held a Clerk session (from an earlier sign-in as a different account, or a leftover session the public shell never saw) left the button disabled and busy permanently. No error, no retry, until a full page reload.
+
+**Cause — two bugs in one file, [[Decisions#ADR-176|ADR-176]]'s `ClerkGoogleButton.tsx`:**
+1. Same class as the [[Decisions#ADR-204|ADR-204]] ticket-login bug three days earlier ([[Changelog]], 2026-09-21): Clerk refuses `authenticateWithRedirect` outright while a session exists (`session_exists`), and nothing checked for one first.
+2. Independent of (1): `ClerkGoogleRedirect` rendered `busy: true` unconditionally for as long as it stayed mounted, and a failed redirect never unmounted it. A code comment claimed "the button returns to its idle state and the person can retry" — the render never implemented that, so every failure of this kind (or any other) looked identical: a silently broken button.
+
+**Fix:** before redirecting, an existing session is signed out unconditionally (no `expectedProfileId` is available for Google the way there is for a password ticket — identity isn't known until Google's own account chooser decides it). A new `onFailed` callback lets a failed attempt un-arm the button back to its clickable idle state instead of staying stuck. Related: [[Frontend]].
+
 ## Password login failed with "server configuration problem" while a Clerk session already existed (2026-09-21)
 
 **Symptom:** `POST /api/auth/login` returned 200, then Clerk's `sign_ins` returned `400 session_exists` ("You're already signed in"), and the modal blamed the server. Every retry failed the same way, so that browser could not sign in until its Clerk session was cleared.

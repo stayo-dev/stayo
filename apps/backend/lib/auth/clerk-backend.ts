@@ -23,6 +23,18 @@ export interface ClerkBackend {
     verifyPassword(params: { userId: string; password: string }): Promise<{ verified: true }>;
     getUserList(params: Record<string, unknown>): Promise<{ data: Array<{ id: string; externalId: string | null }> }>;
     deleteUser(userId: string): Promise<unknown>;
+    /**
+     * Added for Discover's Google-signup provisioning
+     * (`lib/auth/discover-google-provisioning.ts`): the authoritative source
+     * for a Clerk user's verified email, read synchronously at provisioning
+     * time rather than depending on the `user.created` webhook's delivery
+     * timing (Svix is at-least-once but not immediate).
+     */
+    getUser(userId: string): Promise<{
+      id: string;
+      primaryEmailAddressId: string | null;
+      emailAddresses: Array<{ id: string; emailAddress: string; verification: { status: string } | null }>;
+    }>;
   };
   sessions: {
     getSessionList(params: { userId: string; status?: string; limit?: number }): Promise<{ data: Array<{ id: string }> }>;

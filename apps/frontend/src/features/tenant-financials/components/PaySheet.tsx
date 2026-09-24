@@ -13,11 +13,14 @@ interface PaySheetProps {
 
 /**
  * 3-stage pay sheet (form → paying → paid), shared by Home's "Pay Rent" quick
- * action and Money's own Pay buttons. Real flow: `POST /payments/create-intent`
- * then redirect to the payment provider's hosted checkout URL, which handles
- * method selection on its own page. The provider is deliberately not named in
- * the UI: trust copy stays provider-neutral (see src/content/company.ts,
- * PAYMENT_PARTNER), and naming it would go stale the next time it changes.
+ * action and Money's own Pay buttons. Real flow: `POST /payments/pay-link`,
+ * then redirect to `/pay/{token}` — the tenant's own UPI page, with the QR,
+ * the tap-to-pay intent and the "I've already paid" form.
+ *
+ * There is no payment provider any more (ADR-235). Rent goes straight from the
+ * tenant to the hostel's UPI ID and the owner confirms it; Stayo never holds
+ * the money. This is the SAME page the WhatsApp rent reminders link to, so
+ * there is one payment surface rather than two that can drift.
  *
  * There is deliberately NO method picker here. Stayo collects by UPI only, and
  * the old picker was cosmetic — it was never sent anywhere, because this API

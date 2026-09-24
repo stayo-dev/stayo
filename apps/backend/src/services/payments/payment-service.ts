@@ -502,6 +502,33 @@ export class PaymentService {
       return this._settleTenantRentPaymentInTx(tx, data, groupId);
     });
 
+    await this._afterTenantRentSettled(res, data);
+
+    await eventLog.log("OFFLINE_TENANT_RENT_PAYMENT_RECORDED", data.userId, {
+      tenant_id: data.tenantId,
+      payment_group_id: res.groupId,
+      amount: data.amountPaid,
+      method: data.paymentMethod,
+      future_credit: 0, // ADR-036: retained field, always zero
+      jti,
+      ip: data.offlineRecordedIp || null,
+      note: data.offlineNote || null,
+    });
+
+    return res;
+  }
+
+  /**
+   * Events and the receipt, once rent has actually settled.
+   *
+   * Shared by the owner's offline recording and by confirming a tenant's UPI
+   * claim, so the two cannot drift — a confirmed claim must produce exactly
+   * the same downstream effects as any other recorded payment.
+   */
+  private async _afterTenantRentSettled(
+    res: any,
+    data: { tenantId: string; hostelId: string; paymentMethod: string },
+  ) {
     for (const alloc of res.allocations) {
       await eventSystem.trigger("payment_recorded", {
         payment_id: alloc.payment_id,
@@ -518,22 +545,122 @@ export class PaymentService {
     const firstPaymentId = res.allocations[0]?.payment_id;
     if (firstPaymentId) {
       receiptService.createReceipt(firstPaymentId).catch((err: any) =>
-        logger.error("recordTenantRentPaymentWithToken.receipt_failed", { err })
+        logger.error("tenantRentSettled.receipt_failed", { err })
       );
     }
+  }
 
-    await eventLog.log("OFFLINE_TENANT_RENT_PAYMENT_RECORDED", data.userId, {
-      tenant_id: data.tenantId,
+  /**
+   * The owner confirms a tenant's UPI payment claim.
+   *
+   * **This is where a claim becomes money.** Until now the row was evidence:
+   * the tenant asserting they paid. Confirming records the rent through
+   * `_settleTenantRentPaymentInTx` — the same function the owner's own offline
+   * recording uses — so FIFO allocation, receipts and the ledger keep exactly
+   * one implementation (ADR-235).
+   *
+   * **No step-up identity confirmation**, unlike `record-offline`. Step-up
+   * guards owner-asserted money with no counterparty; a tenant-initiated claim
+   * already carries a second party, a UTR and an audit trail, and a 2-minute
+   * ceremony per claim would make the feature unusable at volume.
+   *
+   * The claim flips state inside the same transaction as the settlement, so a
+   * crash between the two cannot leave rent recorded against a claim that
+   * still reads PENDING — which is how the same money gets confirmed twice.
+   */
+  async confirmTenantPaymentClaim(params: {
+    claimId: string;
+    ownerId: string;
+    actorId: string;
+  }) {
+    const claim = await prisma.tenant_payment_claims.findUnique({
+      where: { id: params.claimId },
+    });
+    if (!claim) throw new Error("NOT_FOUND: Payment claim not found");
+    if (claim.owner_id !== params.ownerId) throw new Error("FORBIDDEN: Not your claim");
+    if (claim.state !== "PENDING") {
+      throw new Error(`VALIDATION: This payment was already ${String(claim.state).toLowerCase()}`);
+    }
+
+    const amountRupees = Number(claim.claimed_amount) / 100;
+    const data = {
+      hostelId: claim.hostel_id,
+      tenantId: claim.tenant_id,
+      amountPaid: amountRupees,
+      paymentMethod: "UPI",
+      referenceNumber: claim.utr,
+      paymentDate: new Date(),
+      userId: params.actorId,
+      ownerId: params.ownerId,
+      offlineRecordedBy: params.actorId,
+      offlineRecordedAt: new Date(),
+      offlineNote: `Tenant UPI claim ${claim.id}`,
+      allowedObligationIds: claim.obligation_id ? [claim.obligation_id] : undefined,
+    };
+
+    const groupId = crypto.randomUUID();
+    const res = await prisma.$transaction(async (tx: any) => {
+      const settled = await this._settleTenantRentPaymentInTx(tx, data, groupId);
+      await tx.tenant_payment_claims.update({
+        where: { id: claim.id },
+        data: {
+          state: "CONFIRMED",
+          confirmed_by: params.actorId,
+          confirmed_at: new Date(),
+          payment_group_id: settled.groupId,
+          updated_at: new Date(),
+        },
+      });
+      return settled;
+    });
+
+    await this._afterTenantRentSettled(res, data);
+
+    await eventLog.log("TENANT_UPI_CLAIM_CONFIRMED", params.actorId, {
+      claim_id: claim.id,
+      tenant_id: claim.tenant_id,
       payment_group_id: res.groupId,
-      amount: data.amountPaid,
-      method: data.paymentMethod,
-      future_credit: 0, // ADR-036: retained field, always zero
-      jti,
-      ip: data.offlineRecordedIp || null,
-      note: data.offlineNote || null,
+      amount: amountRupees,
+      utr: claim.utr,
     });
 
     return res;
+  }
+
+  /** The owner rejects a claim. The obligation is never touched. */
+  async rejectTenantPaymentClaim(params: {
+    claimId: string;
+    ownerId: string;
+    actorId: string;
+    reason?: string;
+  }) {
+    const claim = await prisma.tenant_payment_claims.findUnique({
+      where: { id: params.claimId },
+    });
+    if (!claim) throw new Error("NOT_FOUND: Payment claim not found");
+    if (claim.owner_id !== params.ownerId) throw new Error("FORBIDDEN: Not your claim");
+    if (claim.state !== "PENDING") {
+      throw new Error(`VALIDATION: This payment was already ${String(claim.state).toLowerCase()}`);
+    }
+
+    await prisma.tenant_payment_claims.update({
+      where: { id: claim.id },
+      data: {
+        state: "REJECTED",
+        rejection_reason: params.reason?.slice(0, 500) || null,
+        confirmed_by: params.actorId,
+        confirmed_at: new Date(),
+        updated_at: new Date(),
+      },
+    });
+
+    await eventLog.log("TENANT_UPI_CLAIM_REJECTED", params.actorId, {
+      claim_id: claim.id,
+      tenant_id: claim.tenant_id,
+      reason: params.reason || null,
+    });
+
+    return { id: claim.id, state: "REJECTED" as const };
   }
 
   async recordPayment(data: {

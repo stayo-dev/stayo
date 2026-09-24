@@ -672,6 +672,26 @@ Automatic topic + sentiment detection on a review's free-text `body`, distinct f
 
 **Migration 073 (applied 2026-08-20)** adds six nullable columns to `rooms` — `length_ft`, `width_ft` (numeric 5,1), `cupboard_per_bed` (bool), `under_bed_storage` (`NONE`|`CABIN_BAG`|`LARGE_SUITCASE`), `study_desk` (`NONE`|`SHARED`|`PER_BED`), `windows` — under one `rooms_space_check`. **Two dimensions, not one area**: a 6×20 room and an 11×11 room are the same area and completely different to live in. Nothing is backfilled; an unmeasured room shows nothing on the listing rather than a default. Derived reads live in `room-space.ts`.
 
+## Migration 095 — `tenant_payment_claims` (applied 2026-09-23)
+
+A tenant's assertion that they paid over UPI, added when the payment gateway was disconnected ([[Decisions#ADR-235|ADR-235]]).
+
+**A row is evidence, never money.** It never alters an obligation; rent is recorded only when the owner confirms, through the same settlement path every other payment uses.
+
+**Why a new table and not columns on `payment_attempts`:** adding a scalar to an existing Prisma model makes every read of that table *without* an explicit `select` demand the column — the mechanism behind the 2026-08-22 hostel-listings outage. A new table has no such blast radius. A tenant-initiated claim is also genuinely not a gateway attempt: modelling it as one means carrying provider, order-id and capture state that can never be filled.
+
+Unlike migration 075's columns, this table **is** declared in `schema.prisma` — it is new, so no existing unselected read can break. Nothing queries it yet, so code may deploy ahead of the migration.
+
+Two constraints carry the design:
+- A **partial unique index** allows one `PENDING` claim per token, so a tenant tapping "I've paid" twice on a slow connection cannot show the owner the same rent twice.
+- A **CHECK** forbids a resolved claim with no resolver, so a half-written confirmation cannot read as confirmed.
+
+RLS is enabled with no policies, per the convention migration 092 established.
+
+**Applied to production 2026-09-23** and verified object by object (table, the partial unique index, both CHECKs, RLS on). Every FK target had been checked against production's catalog first, which caught a real defect: `payment_link_tokens` has no surrogate id — `token` is its primary key — so the original FK would have failed.
+
+**Numbered 095, not 094**: [[Decisions#ADR-234|ADR-234]]'s `stay_guardian_consent` took 094 while this branch was in flight, and 093 before that. Numbers are claimed on unmerged branches, so the highest on `main` is never the next free one.
+
 ## Migration 075 — two columns that are NOT in `schema.prisma`
 
 Applied via `migrations/075_owner_payout_visibility.sql` ([[Decisions#ADR-092|ADR-092]]).
@@ -681,7 +701,7 @@ Applied via `migrations/075_owner_payout_visibility.sql` ([[Decisions#ADR-092|AD
 | `settlement_items.expected_payout_date DATE NULL` | The working day Stayo committed the payout would land. Written once at run creation, never recomputed — see [[Decisions#ADR-091|ADR-091]]. `NULL` means *no promise was made*, which the on-time counter skips rather than scoring. |
 | `gateway_transactions.tenant_id UUID NULL` | Who paid. Attribution only, **never a settleability input**. `NULL` for `OWNER_SUBSCRIPTION`, which has no tenant. |
 
-**Both are deliberately absent from `prisma/schema.prisma` and accessed only through parameterised raw SQL.** Declaring a scalar on a Prisma model makes every read of that table *without* an explicit `select` demand the column — the mechanism behind the 2026-08-22 hostel-listings outage (see [[Bugs]]). Keeping them off the model means application code is correct whether or not 075 has been applied.
+**Both are deliberately absent from `prisma/schema.prisma` and accessed only through parameterised raw SQL.** Declaring a scalar on a Prisma model makes every read of that table *without* an explicit `select` demand the column — the mechanism behind the 2026-08-22 hostel-listings outage (see [[Bugs]]). Keeping them off the model means application code is correct whether or not 075 has been applied — **but only where each raw query is written twice.** That is a discipline, not a guarantee the schema provides: on 2026-09-22 `rentReceived()` was found hard-joining `g.tenant_id` with no fallback, which made both money exports answer 500 on production (see [[Bugs]]). `items()` and `getSummary()` carry the guard; `getBreakdown()` and `itemIdsMatchingTenant()` still do not.
 
 `gateway_transactions.tenant_id` rather than joining through `payments`: one captured payment FIFO-allocates into N obligation rows, so `payments` is many-per-transaction. Joining through it to name the payer would either duplicate the amount or pick an arbitrary row — and the figure shown to an owner must be the amount the gateway captured, which is the whole point of migration 070.
 
@@ -746,7 +766,7 @@ Related: [[Decisions#ADR-176|ADR-176]], [[Decisions#ADR-031|ADR-031]], [[APIs]],
 - **New table `email_verification_otps`** (migration `20260911120000_email_verification_otps`), sibling of `phone_verification_otps`: `invitation_id`, `email`, `otp_hash` (bcrypt), `purpose`, `status` (`PENDING → VERIFIED → CONSUMED`, or `EXPIRED`/`LOCKED`/`FAILED`), `attempts`/`max_attempts`, `expires_at`, `verified_at`, `consumed_at`, `failure_reason`, `request_ip`. Prisma model `EmailVerificationOtp`. See [[Decisions#ADR-183|ADR-183]].
 - **⚠️ Shipped world-accessible; locked down 2026-09-14 by [[Decisions#ADR-201|ADR-201]] (audit C3).** Unlike its `phone_verification_otps` sibling, this table shipped with **RLS OFF and `anon`+`authenticated` holding full SELECT/INSERT/UPDATE/DELETE** — the `20260911120000` migration never enabled RLS. `_prisma_migrations` was in the same state. Both are PostgREST-exposed, so with the public anon key anyone could forge a `VERIFIED` row (defeating the ADR-183 email proof), reset `attempts`, read every pending onboarding email/IP, or delete migration bookkeeping. Migration `20260916000000_otp_tables_rls_lockdown` enables RLS **and** revokes both public roles on both tables (deny-all — no policy, since only the RLS-bypassing backend connection touches them). Verified non-destructively against production (anon denied all four ops); **not yet applied to any database** — awaiting the normal deploy. Post-deploy check: `scripts/verify-otp-rls.sql`; regression guards: `tests/otp-rls-lockdown.test.ts` (source, pure) + `tests/otp-rls-db.test.ts` (runtime).
 - **Applied to production (`qgfyfbdccjnibdhhvnsr`) on 2026-09-11**, together with `20260825090000_invitation_whatsapp_delivery` (`tenant_invitations.whatsapp_delivered_at`). That column had been hand-applied to the *previous* production project and never to this one; the code reading and writing it swallows errors, so WhatsApp-delivery phone trust was silently inert.
-- **A drift check found production matching `schema.prisma` exactly** (129 models, every column). Of the columns only raw-SQL migrations add, **still absent and deliberately left alone**: 074 `hostels.navigation` and 075 `settlement_items.expected_payout_date` / `gateway_transactions.tenant_id` (pending features whose owners have not released them — 075 touches settlement money); 072 `hostel_reviews.rating_value` / `rating_location` (**dropped on purpose by 076** — do not re-apply 072); and legacy columns superseded by later ones (`tenants.advance_deposit`, `payment_attempts.invoice_id`, `tenants.aadhaar_number`, `tenants.blood_group`, `exit_settlement_transactions.advance_balance`, `whatsapp_owner_sessions.connected_hostel_id`) that no code reads. **Unknown / needs clarification:** whether 074 and 075 should now be applied to this project.
+- **A drift check found production matching `schema.prisma` exactly** (129 models, every column). Of the columns only raw-SQL migrations add, **still absent and deliberately left alone**: 074 `hostels.navigation` and 075 `settlement_items.expected_payout_date` / `gateway_transactions.tenant_id` (pending features whose owners have not released them — 075 touches settlement money); 072 `hostel_reviews.rating_value` / `rating_location` (**dropped on purpose by 076** — do not re-apply 072); and legacy columns superseded by later ones (`tenants.advance_deposit`, `payment_attempts.invoice_id`, `tenants.aadhaar_number`, `tenants.blood_group`, `exit_settlement_transactions.advance_balance`, `whatsapp_owner_sessions.connected_hostel_id`) that no code reads. **075 should be applied.** Answered 2026-09-22: leaving it off is not free. It took out the owner's Collections and Finance exports entirely (500 from `/api/owner/exports` and its preview) until a fallback was added, and even with that fallback the gateway rows in every export are stripped of the payer's name. It touches settlement money, so apply it deliberately — both columns are additive and nullable, and nothing backfills. **Unknown / needs clarification:** whether 074 (`hostels.navigation`) should now be applied.
 
 ## Stay Status tables (ADR-194, migration `20260914100000_stay_status_events`)
 
@@ -845,7 +865,7 @@ Measured against production (`qgfyfbdccjnibdhhvnsr`, confirmed via `/api/health`
 | `visitor_leads_one_active_lead_per_hostel_phone` | 079 | duplicate enquiries per hostel |
 | `hostel_marketing_one_draft_per_hostel`, `…_one_approved_per_hostel` | 066 | two drafts / two live listings |
 
-Also missing: migrations **075** (payout promise date + payer attribution — code degrades gracefully without it) and **082** (activity-feed indexes), plus CHECK constraints from 073 (`rooms_space_check`) and 076 (`hostel_reviews_category_range_v2`, `hostel_reviews_status_check`), and dozens of plain performance indexes.
+Also missing: migrations **075** (payout promise date + payer attribution — the payouts *strip* degrades gracefully, but the money **exports did not**: they returned 500 until the 2026-09-22 fallback, and still lose payer names without it — see [[Bugs]]) and **082** (activity-feed indexes), plus CHECK constraints from 073 (`rooms_space_check`) and 076 (`hostel_reviews_category_range_v2`, `hostel_reviews_status_check`), and dozens of plain performance indexes.
 
 **Do not "apply everything missing".** Many objects in the early migrations (046–061, May 2026 prisma dirs) were **deliberately decommissioned** later — `plans`, `owner_invoices`, `tenant_advance_ledger`, the overflow-billing tables, and the `*_new` enum-swap temporaries — so their absence is correct.
 
