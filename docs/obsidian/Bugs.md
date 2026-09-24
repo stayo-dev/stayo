@@ -36,13 +36,13 @@ The three rows agreed because the tenants genuinely agree: verified against prod
 
 So the validation existed, had tests, passed them, and let every real value through. That is the same shape as the five Money filters that never filtered ([[Bugs]], 2026-09-21): a control that looks applied and is not.
 
-**Why it mattered more than it looks.** While `upi_id` was decorative this was harmless. With the gateway disconnected ([[Decisions#ADR-234|ADR-234]]) it is the entire rent-collection mechanism, and a typo'd VPA becomes a QR that fails *inside the tenant's UPI app* — where nobody on Stayo's side can observe it, and where the tenant concludes Stayo lost their rent.
+**Why it mattered more than it looks.** While `upi_id` was decorative this was harmless. With the gateway disconnected ([[Decisions#ADR-235|ADR-235]]) it is the entire rent-collection mechanism, and a typo'd VPA becomes a QR that fails *inside the tenant's UPI app* — where nobody on Stayo's side can observe it, and where the tenant concludes Stayo lost their rent.
 
 **Fix.** `propertyService.updateHostel` trims and validates, sharing `isValidVpa` with the QR and intent builders so a value accepted on save cannot be rejected at payment time. Both paths are now covered, with a test per path.
 
 **Lesson.** Adding a validator is not the same as covering a field. The question to ask is not "is this validated?" but "which endpoint does the screen actually call?" — and answering it requires following the frontend's mutation to its route, not reading the service that looks responsible.
 
-**See:** [[Decisions#ADR-234|ADR-234]] · [[Business-Rules]] · [[Changelog]]
+**See:** [[Decisions#ADR-235|ADR-235]] · [[Business-Rules]] · [[Changelog]]
 
 ## The Collections and Finance exports sat on "Checking…" forever and produced no file (2026-09-22)
 
@@ -546,7 +546,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Fix.** One module, `src/services/tenants/kyc-status.ts`: `requiredKycDocTypes` / `isKycComplete` / `describeKycGap`, and `recomputeDocumentVerified(tx, tenantId)` as the **only** writer of the flag after invitation creation — `true` only when every required type has an **active, APPROVED** document. Every approve/reject/upload/`profile_type`-change path calls it inside its transaction. `bulk-verify` and `MARK_DOCUMENTS_VERIFIED` share `approveRequiredActiveKycDocs`: approve only required active types, `409 INCOMPLETE_KYC` when a required type has no active row. See [[Decisions#ADR-169|ADR-169]].
 
-**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (not yet applied).
+**Also fixed alongside:** two owner tabs could Approve + Reject the same PENDING document (last write won, including `APPROVED → REJECTED`); the review endpoints are now conditional writes on `document_status = "PENDING"` and return `409` on a lost race. And `identification_documents` had only a non-unique `(tenant_id, doc_type, is_active)` index, so concurrent uploads of one type could leave two active rows — migration 080 adds the partial unique index (**verified applied to production 2026-09-23**).
 
 **Follow-up (same day): the onboarding Documents UI was built into a dead file.** The first pass added the "Documents" upload section to `src/portal/pages/ActivateAccountPage.tsx` — which has been `@deprecated` and **not routed** since 2026-08-13 (the live wizard is `platforms/tenant/onboarding/ActivationPage.tsx` + `steps/`). So the KYC backend shipped but no real tenant ever saw a document-upload step during onboarding. Fixed by porting the section into the live `steps/WelcomeIdentityStep.tsx` (wiring the already-built `uploadActivationDocument` client + `activate/documents` route + `onboardingKyc.ts`) and reverting `ActivateAccountPage.tsx` to its committed state. Lesson: check `app/router/PublicRoutes.tsx` for which component a route actually mounts before editing a page under `src/portal/` — that tree is a mix of live-and-allowlisted and deprecated-but-kept files.
 
@@ -613,7 +613,7 @@ so the allocation keeps `is_active: true` and `end_date: null`, the tenant keeps
 
 **Bug 4 (race condition, not a normal-path bug) — `createInvitation`'s eligibility pre-check ran outside the write transaction.** Two concurrent invites for the same never-before-seen phone at two different hostels could both pass `tenancyEligibilityService.assertCanStartNewTenancyByContact`'s plain `SELECT` before either transaction committed its `tenants` insert (which writes `profile_id: null`, so the DB's `tenants_one_live_tenancy_per_profile` partial index — which only applies once `profile_id` is bound — cannot catch it). **Fix:** the transaction now opens with a phone-scoped `pg_advisory_xact_lock` (same pattern as `payment-service.ts`'s `pay_intent:` lock) and re-runs the eligibility check inside the lock before inserting.
 
-**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **not yet applied to any database**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
+**Also closed, application-level race only:** two concurrent lead submissions for the same `(hostel_id, student_phone)` could both pass the `visitor_leads` dedup `findFirst` before either inserted. New partial unique index `visitor_leads_one_active_lead_per_hostel_phone` (migration 079, **verified applied to production 2026-09-23**), same pattern as [[Decisions#ADR-161|ADR-161]]'s `platform_leads` fix; a lost race is caught (`P2002`) and merged into the winning row instead of a 500.
 
 **Verification:** 90 backend tests (new + updated) passing under `vitest.pure.config.ts`; `tsc --noEmit` shows zero new errors introduced (pre-existing unrelated errors unchanged). Not verified against a live database (no `DATABASE_URL_TEST` in this environment) and no real-concurrency integration test was run — the advisory lock and partial index are verified by code review and by mirroring already-shipped patterns, not by a live race test.
 

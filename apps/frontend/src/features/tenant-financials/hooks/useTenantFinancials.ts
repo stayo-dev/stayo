@@ -53,7 +53,7 @@ export function useTenantFinancials() {
    *
    * It is the same `/pay/{token}` page the WhatsApp rent reminders link to, so
    * there is one payment surface rather than two that can drift — and the
-   * tenant sees the same QR whichever way they arrived (ADR-234).
+   * tenant sees the same QR whichever way they arrived (ADR-235).
    */
   const payMutation = useMutation({
     mutationFn: () => tenantFinancialsService.generatePayLink(),

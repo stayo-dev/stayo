@@ -13,7 +13,7 @@ import { amountMismatchNote } from "@/src/services/payments/upi/tenant-payment-c
  * The tenants who say they have paid, waiting on the owner.
  *
  * This list is the whole reconciliation surface now that the gateway is gone
- * (ADR-234): there is no webhook, so nothing enters the ledger until the owner
+ * (ADR-235): there is no webhook, so nothing enters the ledger until the owner
  * acts on a row here. It therefore leads with what he actually needs to check —
  * the UTR, which is the one part he can match against his own bank statement.
  */

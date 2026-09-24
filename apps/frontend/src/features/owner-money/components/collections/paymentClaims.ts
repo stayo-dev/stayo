@@ -5,7 +5,7 @@
  * copy on a screen that moves real money. Confirming a claim records rent; the
  * wording has to make clear what the owner is being asked to vouch for, and
  * has to stop short of implying Stayo verified anything. It did not: with the
- * gateway gone there is no callback and no third party (ADR-234).
+ * gateway gone there is no callback and no third party (ADR-235).
  */
 
 export type PaymentClaim = {

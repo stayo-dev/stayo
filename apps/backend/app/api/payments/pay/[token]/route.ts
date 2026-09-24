@@ -944,7 +944,7 @@ export async function POST(
      * "I've already paid" — a claim, which is EVIDENCE and never money.
      *
      * It does not touch the obligation. The owner confirms it, and only then
-     * is rent recorded, through the shared settlement path (ADR-234).
+     * is rent recorded, through the shared settlement path (ADR-235).
      */
     if (body.action === "claim") {
       const amountPaise = Math.round(Number(body.amount) * 100);

@@ -5,7 +5,7 @@
  * lines of server-rendered HTML, and this replaces the single most delicate
  * part of it — the bit tenants actually tap. Keeping it here means the swap
  * from gateway checkout to UPI is a readable diff and the markup rules can be
- * tested without a database (ADR-234).
+ * tested without a database (ADR-235).
  *
  * The page is deliberately framework-free: no React, no bundler, one request.
  * Everything below is strings.

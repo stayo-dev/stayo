@@ -17,7 +17,7 @@ interface PaySheetProps {
  * then redirect to `/pay/{token}` — the tenant's own UPI page, with the QR,
  * the tap-to-pay intent and the "I've already paid" form.
  *
- * There is no payment provider any more (ADR-234). Rent goes straight from the
+ * There is no payment provider any more (ADR-235). Rent goes straight from the
  * tenant to the hostel's UPI ID and the owner confirms it; Stayo never holds
  * the money. This is the SAME page the WhatsApp rent reminders link to, so
  * there is one payment surface rather than two that can drift.

@@ -5,7 +5,7 @@ import type { PaymentClaim } from '../components/collections/paymentClaims';
  * Tenant UPI payment claims. The only layer that knows these endpoint shapes.
  *
  * With the gateway disconnected this is the whole reconciliation path: nothing
- * enters the ledger until an owner confirms a claim here (ADR-234).
+ * enters the ledger until an owner confirms a claim here (ADR-235).
  */
 export const paymentClaimsService = {
   async list(params: { state?: string; hostelId?: string | null }): Promise<PaymentClaim[]> {

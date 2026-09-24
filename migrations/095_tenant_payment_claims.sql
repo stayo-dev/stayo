@@ -1,4 +1,4 @@
--- 094_tenant_payment_claims.sql
+-- 095_tenant_payment_claims.sql
 --
 -- A tenant's assertion that they have paid — and nothing more than that.
 --

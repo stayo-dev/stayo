@@ -17,7 +17,7 @@ import {
  *
  * This is the whole reconciliation surface now that the gateway is gone: with
  * no webhook, nothing enters the ledger until the owner acts on a row here
- * (ADR-234). So the card leads with the UPI reference — the one field he can
+ * (ADR-235). So the card leads with the UPI reference — the one field he can
  * match against his own bank statement — rather than with the screenshot,
  * which proves nothing and would invite a glance-and-confirm.
  *

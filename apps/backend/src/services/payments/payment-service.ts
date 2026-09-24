@@ -557,7 +557,7 @@ export class PaymentService {
    * the tenant asserting they paid. Confirming records the rent through
    * `_settleTenantRentPaymentInTx` — the same function the owner's own offline
    * recording uses — so FIFO allocation, receipts and the ledger keep exactly
-   * one implementation (ADR-234).
+   * one implementation (ADR-235).
    *
    * **No step-up identity confirmation**, unlike `record-offline`. Step-up
    * guards owner-asserted money with no counterparty; a tenant-initiated claim

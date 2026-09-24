@@ -10,7 +10,7 @@ Everything below was extracted by reading the actual implementation (not types, 
 
 ## Rent collection is direct, and a tenant's claim is not payment (2026-09-23)
 
-Stayo does not take tenant money. Rent moves tenant → owner over UPI, and Stayo records it. See [[Decisions#ADR-234|ADR-234]].
+Stayo does not take tenant money. Rent moves tenant → owner over UPI, and Stayo records it. See [[Decisions#ADR-235|ADR-235]].
 
 - **A tenant's claim never marks an obligation paid.** It creates a `PENDING` row in `tenant_payment_claims`. The owner confirms, and only then is rent recorded — through the same settlement path every other payment uses, so FIFO allocation, receipts and the ledger keep one implementation.
 - **The UTR is the evidence; the screenshot is not.** A screenshot is trivially edited and endlessly reusable; a UTR either appears in the owner's bank statement or does not. The screenshot is accepted because owners find it reassuring, never because it proves anything.
@@ -397,7 +397,7 @@ Two guards on the `visitor_leads` → `tenant_invitations` path, distinct from t
 - **A phone that already holds a live (`INVITED`/`ACTIVE`) tenancy at a hostel cannot become a fresh lead for that same hostel.** `admissions-service.ts`'s `createDirectLead` (owner-authenticated) and `createLead` (public QR/admissions-link capture) both call `tenancyEligibilityService.hasLiveTenancyAtHostel(phone, hostelId)` before their existing lead-dedup lookup, and refuse with "This person is already a tenant at this hostel. They cannot be added as a new lead." if it matches. Mobile is the sole key — a different email on the resubmission does not change the answer, and a live tenancy at a *different* hostel does not block a lead here (that's the separate, unchanged, invitation-time cross-hostel eligibility check).
 - **An owner cannot invite themselves as a tenant.** `tenant-invitation-lifecycle-service.ts`'s `createInvitation` compares the invited contact's normalized phone/email directly against the authenticated owner's own registered phone/email, immediately after loading the owner's profile and before any further lookup or write. Matching either field refuses with a clean validation error, "You cannot invite yourself as a tenant" — replacing an earlier incidental block (an unrelated `ROLE_MISMATCH` that only ever caught the phone case) that surfaced as a raw `P2002` 500 for the same-email-different-phone case.
 
-Both guards, plus the hostel-scoped owner/tenant rule above and a concurrency fix for `createInvitation`'s eligibility check, came out of an audit of this flow — see [[Bugs]] and [[Decisions#ADR-162|ADR-162]] for the full rationale, and [[Database]] for the new `visitor_leads` partial unique index (migration 079, not yet applied to any database).
+Both guards, plus the hostel-scoped owner/tenant rule above and a concurrency fix for `createInvitation`'s eligibility check, came out of an audit of this flow — see [[Bugs]] and [[Decisions#ADR-162|ADR-162]] for the full rationale, and [[Database]] for the new `visitor_leads` partial unique index (migration 079, **verified applied to production 2026-09-23**).
 
 ## Tenant acceptance is mandatory and explicit — the tenancy runs while it is pending (2026-09-02, [[Decisions#ADR-165|ADR-165]])
 
@@ -1309,3 +1309,55 @@ Rules for delivering tenant enquiries to a hostel owner who is not on Stayo. See
 - **No pricing claim in partner copy.** The commercial model is undecided and these messages go out at scale in writing.
 
 Related: [[Database]], [[APIs]], [[Features]]
+
+## Guardian stay updates (2026-09-22, [[Decisions#ADR-234|ADR-234]])
+
+Sits beside the guardian **rent** reminder escalation above; the two share an audience and nothing
+else. **Files:** `lib/services/notifications/command-center/stay-guardian-policy.ts` (pure),
+`stay-guardian-updates.ts` (I/O, never throws), `src/services/stay/stay-guardian-consent-state.ts`
+(pure), `stay-guardian-sweep.ts`.
+
+`decideStayGuardianNotice` returns its own reason, so "why did / didn't they get this" is answerable
+from a log line:
+
+| `reason` | Notifies | Meaning |
+|---|---|---|
+| `LEAVE` / `RETURN` | yes | `LEAVE_STARTED` / `RETURNED`, everything satisfied |
+| `NOT_NOTIFIABLE` | no | any other event type — checked **first**, so an unrelated event never becomes a consent question |
+| `NO_GUARDIAN_PHONE` | no | field empty (reads `guardian_phone`, falling back to `phone_2`) |
+| `SAME_AS_RESIDENT` | no | one handset in both fields, compared on normalised digits |
+| `NO_CONSENT` | no | never asked |
+| `DECLINED` | no | asked, said no |
+| `REVOKED` | no | tenant switched it off |
+| `STOPPED_BY_GUARDIAN` | no | guardian replied STOP — outranks a later re-grant |
+| `PHONE_CHANGED_SINCE_CONSENT` | no | `guardian_phone` ≠ the snapshot; a different person |
+| `GUARDIAN_UNVERIFIED` | no | no OTP proof inside the 90-day window |
+
+**Why `LATE` is not in this table.** It is the event a parent would most want and the one most
+likely to be wrong. Silence = Present is trust-based and self-reported, so a resident who returned
+at 2am without tapping *I'm back* is indistinguishable, to this system, from one who did not return
+at all. A late template turns that ambiguity into "your child is not where they said they would be",
+delivered to a parent, at scale, on the strength of a missed tap — and the Stay QR has been scanned in production exactly twice (a
+14 Sep smoke test), which yields no missed-tap rate at all. Late
+returns stay on the owner's board, where a human reads them in context.
+
+**Ordering matters inside the notifier.** The policy runs once assuming verification so the free
+refusals answer first; `isGuardianVerified` is a database round trip and there is no point paying
+for it to learn the tenant never consented.
+
+**STOP is scoped, and ungated — but undisclosed.** It is resolved ahead of the guardian OTP
+challenge — answering "stop messaging me" with "prove who you are first" is indefensible — and it
+stops *stay updates only*, with the reply stating that rent reminders and receipts continue.
+**⚠️ As submitted on 2026-09-22 neither template mentions STOP:** both carry the house footer
+`Stayo Property Management` rather than the designed opt-out line. The vocabulary entry works and
+is tested; nobody is told it exists. Expect blocks instead of replies until a template edit restores
+the disclosure. It applies to
+`identity.guardianResidents`, never `tenantIds`: one phone can be both a resident and a sibling's
+guardian contact, and a resident's STOP must not switch off their own guardian's updates.
+
+**Staleness.** A departure notice expires; a return notice does not. The sweep drops a
+`LEAVE_STARTED` whose leave is no longer `ACTIVE` or whose expected return date has passed —
+"expected back on Sunday" must not reach a parent on Monday, or one whose child is already home.
+
+See [[Features]], [[Database]], [[APIs]].
+

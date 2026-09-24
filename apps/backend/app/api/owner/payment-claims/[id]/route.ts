@@ -14,7 +14,7 @@ import { paymentService } from "@/src/services/payments/payment-service";
  *
  * **Confirming is where a claim becomes money.** It records rent through the
  * same settlement path the owner's own offline recording uses, so allocation,
- * receipts and the ledger keep one implementation (ADR-234).
+ * receipts and the ledger keep one implementation (ADR-235).
  *
  * Deliberately NOT behind step-up identity confirmation, unlike
  * `/api/payments/record-offline`. Step-up guards owner-asserted money with no

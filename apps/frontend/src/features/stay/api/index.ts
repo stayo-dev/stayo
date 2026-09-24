@@ -1,5 +1,5 @@
 import api from '@lib/api-client';
-import type { MyStay, StayBoard, StayEventInput, StaySummary, TenantStay, TenantStayEventInput } from '../types';
+import type { GuardianConsent, MyStay, StayBoard, StayEventInput, StaySummary, TenantStay, TenantStayEventInput } from '../types';
 
 /** `apiResponse` spreads object payloads at the top level; drop the envelope flag. */
 function body<T>(response: { data: any }): T {
@@ -12,6 +12,12 @@ export const stayApi = {
 
   record: async (input: TenantStayEventInput): Promise<TenantStay> =>
     body<{ stay: TenantStay }>(await api.post('/tenant/stay/events', input)).stay,
+
+  /** ADR-234. Posted separately from the event, so a declined consent survives a failed leave. */
+  setGuardianConsent: async (granted: boolean, source: 'QR' | 'APP'): Promise<GuardianConsent | null> =>
+    body<{ guardian: GuardianConsent | null }>(
+      await api.post('/tenant/stay/guardian-consent', { granted, source }),
+    ).guardian,
 
   getBoard: async (hostelId: string): Promise<StayBoard> => body<StayBoard>(await api.get(`/hostels/${hostelId}/stay`)),
 

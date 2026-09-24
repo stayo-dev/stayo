@@ -32,7 +32,7 @@ export const tenantFinancialsService = {
    * A link to the tenant's own UPI payment page.
    *
    * Replaces `POST /payments/create-intent`, which is `410 GATEWAY_DISCONNECTED`
-   * (ADR-234). The endpoint fills in the tenant id from the session and refuses
+   * (ADR-235). The endpoint fills in the tenant id from the session and refuses
    * an obligation id from a tenant, so there is nothing to pass.
    */
   generatePayLink: async () => {
