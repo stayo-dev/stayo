@@ -60,7 +60,17 @@ export function TenantsPage({ selectedTenantId }: { selectedTenantId?: string | 
     }
   };
 
-  const goToTenant = (tenant: MockTenant) => navigate(tenant.id);
+  // Carry the list filter along: on desktop the list stays mounted beside the
+  // profile and reads its filter from the URL, so dropping it reset to All.
+  const goToTenant = (tenant: MockTenant) => {
+    const keep = new URLSearchParams();
+    for (const key of ['view', 'show']) {
+      const value = searchParams.get(key);
+      if (value) keep.set(key, value);
+    }
+    const search = keep.toString();
+    navigate({ pathname: tenant.id, search: search ? `?${search}` : '' });
+  };
 
   if (filters.isLoading) return <TenantsLoadingSkeleton />;
 
