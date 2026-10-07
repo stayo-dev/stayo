@@ -705,6 +705,50 @@ describe('Tenant Onboarding Integration Flow', () => {
       ).rejects.toThrow(/Cannot edit or resend invitation after payments have been recorded/);
     });
 
+    it('should still re-issue an expired link, without touching terms, after a payment has been recorded', async () => {
+      sendInvitationSpy.mockResolvedValue({ providerMessageId: 'wamid.link_refresh_test', attempts: 1 });
+
+      const initial: any = await tenantInvitationLifecycleService.createInvitation({
+        name: 'Paid Expired Tenant',
+        phone: '9876543272',
+        room_id: room.id,
+        monthly_rent: 10000,
+        security_deposit: 20000,
+      }, owner.id);
+
+      const dbObligation = await prisma.rent_obligations.findFirst({ where: { tenant_id: initial.tenant_id } });
+      await prisma.payments.create({
+        data: {
+          id: crypto.randomUUID(),
+          tenant_id: initial.tenant_id,
+          hostel_id: hostel.id,
+          obligation_id: dbObligation!.id,
+          amount_paid: 5000,
+          payment_method: 'CASH',
+          payment_date: new Date(),
+          reference_number: 'ref-expired',
+        },
+      });
+      await prisma.tenant_invitations.update({
+        where: { id: initial.invitation_id },
+        data: { status: 'EXPIRED', expires_at: new Date(Date.now() - 86400000) },
+      });
+
+      const result: any = await tenantInvitationLifecycleService.resendInvitation(
+        initial.invitation_id,
+        { id: owner.id, role: 'OWNER' },
+        { identifier: '9876543272' }
+      );
+      expect(result.action).toBe('RESENT');
+
+      const refreshed = await prisma.tenant_invitations.findUnique({ where: { id: initial.invitation_id } });
+      expect(refreshed?.status).toBe('PENDING');
+      expect(refreshed!.expires_at.getTime()).toBeGreaterThan(Date.now());
+      expect(refreshed?.token).not.toBe(initial.token);
+      const obligationAfter = await prisma.rent_obligations.findUnique({ where: { id: dbObligation!.id } });
+      expect(obligationAfter).not.toBeNull();
+    });
+
     it('should prevent resending after 10 versions have been created', async () => {
       sendInvitationSpy.mockResolvedValue({
         providerMessageId: 'wamid.version_limit_test',
