@@ -3,7 +3,13 @@ import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
-import { hasClerkSession, subscribeToClerkSession, pickSessionSource } from '@lib/auth/clerkBrowser';
+import {
+  hasClerkSession,
+  isClerkLoaded,
+  subscribeToClerkSession,
+  pickSessionSource,
+  shouldAwaitClerk,
+} from '@lib/auth/clerkBrowser';
 import { establishSession, clearLocalSessions, SessionEstablishmentError } from '@lib/auth/establishSession';
 import { queryClient } from '@lib/queryClient';
 import { useIdleSessionTimeout } from '@shared/hooks/useIdleSessionTimeout';
@@ -165,7 +171,27 @@ function buildAuthUser(data: any): AuthUser {
   };
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+/**
+ * How long to wait for Clerk's SDK before giving up and treating the browser
+ * as signed out. Only reached when Clerk fails to load at all (network, CSP) —
+ * normally its load event ends the wait well before this.
+ */
+const CLERK_LOAD_TIMEOUT_MS = 10_000;
+
+export function AuthProvider({
+  children,
+  awaitClerk = false,
+}: {
+  children: React.ReactNode;
+  /**
+   * Set by shells that mount `ClerkAuthProvider` below this provider. Holds
+   * `loading` until Clerk has loaded, so a cold load (refresh, or the
+   * homepage's full-page handoff into the owner app) doesn't decide
+   * "signed out" before Clerk has restored the session — see
+   * `shouldAwaitClerk`.
+   */
+  awaitClerk?: boolean;
+}) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [expiredMessage, setExpiredMessage] = useState<string | null>(null);
@@ -248,11 +274,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
      * `AuthProvider` sits above `ClerkAuthProvider` on every shell; inverting
      * that would drag the SDK onto the public landing page (Phase 2.6).
      */
+    let clerkTimedOut = false;
+
     const resolve = (hasSupabaseSession: boolean) => {
       const source = pickSessionSource({
         hasSupabaseSession,
         hasClerkSession: hasClerkSession(),
       });
+
+      // Keep `loading` on: the Clerk load event (subscribed below) calls
+      // this again once there is an answer.
+      if (shouldAwaitClerk({ source, awaitClerk: awaitClerk && !clerkTimedOut, clerkLoaded: isClerkLoaded() })) {
+        return;
+      }
 
       if (source === 'none') {
         setUser(null);
@@ -285,18 +319,31 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
     // Clerk's session can appear after this effect runs (its SDK loads
     // asynchronously, and a Google redirect lands with the session already
-    // established). A no-op when Clerk was never mounted.
+    // established). Fires on Clerk's first load too, even though Clerk did
+    // not exist yet when this subscribed. Silent when Clerk is never mounted.
     const unsubscribeClerk = subscribeToClerkSession(async () => {
       if (!mounted) return;
       const { data } = await supabase.auth.getSession();
       resolve(Boolean(data.session));
     });
 
+    const clerkTimeout = awaitClerk
+      ? window.setTimeout(async () => {
+          if (!mounted || isClerkLoaded()) return;
+          clerkTimedOut = true;
+          const { data } = await supabase.auth.getSession();
+          resolve(Boolean(data.session));
+        }, CLERK_LOAD_TIMEOUT_MS)
+      : undefined;
+
     return () => {
       mounted = false;
+      window.clearTimeout(clerkTimeout);
       subscription.subscription.unsubscribe();
       unsubscribeClerk();
     };
+    // `awaitClerk` is fixed per shell; it never changes on a mounted provider.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string): Promise<AuthUser> => {

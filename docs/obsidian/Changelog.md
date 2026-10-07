@@ -10,6 +10,9 @@ All notable changes to this project are documented in this file, in [Keep a Chan
 
 ## [Unreleased]
 
+- **2026-10-06**: **Fixed: an owner signing in from the homepage modal was redirected to `/login` and asked to sign in again** ([[Bugs]], [[Frontend]]).
+  - The owner app's `AuthProvider` decided "signed out" on a cold load before Clerk's SDK had loaded, and never re-checked. It now waits for Clerk (`awaitClerk`, set by `ProtectedAppProviders` only) with a 10 s fallback. `ClerkRuntime` announces Clerk's load with a `stayo:clerk-session` window event, which `subscribeToClerkSession` now listens for.
+  - Files: `lib/auth/clerkBrowser.ts` (+ test, 4 new cases), `context/AuthContext.tsx`, `app/providers/ClerkRuntime.tsx`, `app/providers/ProtectedAppProviders.tsx`. **Not verified with a live sign-in.**
 - **2026-09-24**: **Fixed: Discover's Google sign-up dropped its `?flow=discover_signup` flag for brand-new users, so [[Decisions#ADR-233|ADR-233]] provisioning was unreachable** ([[Bugs]]).
   - `<AuthenticateWithRedirectCallback>` picks its destination from its own props, not from `redirectUrlComplete` (confirmed in `@clerk/clerk-js@5.128.0`'s `handleRedirectCallback`). Every brand-new Google account finishes on `/sign-in/sso-callback`, so it landed on `/auth/callback` without the flag and was rejected with `NO_STAYO_ACCOUNT`.
   - The destination now also rides on the callback URL (`?after=`, same-origin paths only) and is passed as the force redirect for both sign-in and sign-up. **Corrects** the 2026-09-23 (3) entry and `ClerkOAuthCallbackPage.tsx`'s comment, which both said the component reads `redirectUrlComplete` back off the attempt.

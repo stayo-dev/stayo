@@ -1,6 +1,7 @@
-import { useMemo, type PropsWithChildren } from 'react';
+import { useEffect, useMemo, type PropsWithChildren } from 'react';
 import { ClerkProvider, useAuth as useClerkAuth } from '@clerk/clerk-react';
 import type { ClerkSessionState } from '@lib/auth/sessionAuthority';
+import { announceClerkSession } from '@lib/auth/clerkBrowser';
 import { ClerkSessionContext } from './clerkSessionContext';
 
 /**
@@ -24,6 +25,12 @@ import { ClerkSessionContext } from './clerkSessionContext';
  */
 function ClerkSessionBridge({ children }: PropsWithChildren) {
   const { isLoaded, isSignedIn } = useClerkAuth();
+
+  // `AuthProvider` sits above this and resolved its session before Clerk had
+  // loaded; tell it to look again now that Clerk has an answer.
+  useEffect(() => {
+    if (isLoaded) announceClerkSession();
+  }, [isLoaded, isSignedIn]);
 
   const value = useMemo<ClerkSessionState>(
     () => ({ isLoaded, isSignedIn: Boolean(isSignedIn) }),

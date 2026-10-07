@@ -10,7 +10,7 @@
  */
 
 import { describe, expect, it } from 'vitest';
-import { pickSessionSource } from './clerkBrowser';
+import { pickSessionSource, shouldAwaitClerk } from './clerkBrowser';
 
 describe('pickSessionSource', () => {
   it('uses Clerk when it has a session', () => {
@@ -27,5 +27,29 @@ describe('pickSessionSource', () => {
 
   it('reports none when neither does', () => {
     expect(pickSessionSource({ hasSupabaseSession: false, hasClerkSession: false })).toBe('none');
+  });
+});
+
+/**
+ * A cold load of the owner app (refresh, or the homepage sign-in's full-page
+ * handoff) used to resolve "signed out" before Clerk's SDK had loaded, and
+ * ProtectedRoute bounced a signed-in owner to /login.
+ */
+describe('shouldAwaitClerk', () => {
+  it('waits when nothing is found yet and a mounted Clerk has not loaded', () => {
+    expect(shouldAwaitClerk({ source: 'none', awaitClerk: true, clerkLoaded: false })).toBe(true);
+  });
+
+  it('stops waiting once Clerk has loaded — its answer is final', () => {
+    expect(shouldAwaitClerk({ source: 'none', awaitClerk: true, clerkLoaded: true })).toBe(false);
+  });
+
+  it('never waits on a shell that does not mount Clerk — nothing is coming', () => {
+    expect(shouldAwaitClerk({ source: 'none', awaitClerk: false, clerkLoaded: false })).toBe(false);
+  });
+
+  it('never waits when a session is already in hand', () => {
+    expect(shouldAwaitClerk({ source: 'supabase', awaitClerk: true, clerkLoaded: false })).toBe(false);
+    expect(shouldAwaitClerk({ source: 'clerk', awaitClerk: true, clerkLoaded: false })).toBe(false);
   });
 });

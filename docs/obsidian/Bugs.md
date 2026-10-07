@@ -8,6 +8,16 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## An owner signing in from the homepage was bounced to `/login` and asked to sign in again (2026-10-06)
+
+**Symptom (reported live):** an owner signs in with email + password in the homepage's sign-in modal (`HomePage.tsx`, `mode="tenant"`). The password is accepted and the "taking you to your owner dashboard" handoff shows, then the owner lands on `/login` and is asked to sign in again.
+
+**Cause:** the handoff is a full page load (`window.location.assign('/owner/home')`), so the owner app starts cold. `AuthProvider` sits *above* `ClerkAuthProvider` in `ProtectedAppProviders`, and its session effect ran before Clerk's SDK had loaded: `window.Clerk` did not exist yet, so `hasClerkSession()` was false, `loading` finished as signed-out, and `ProtectedRoute` redirected to `/login`. It never re-checked afterwards, because `subscribeToClerkSession` was a no-op when `window.Clerk` was absent (`addListener` only exists once Clerk has loaded). From the code, any cold load of the owner/admin app (a refresh too) goes the same way. It is the same "Clerk loads asynchronously" gap that `decideCallbackAction` already handles for `/auth/callback` (see `sessionAuthority.ts`), but the general auth bootstrap had never handled it.
+
+**Fix:** `ProtectedAppProviders` passes `awaitClerk` to `AuthProvider` when Clerk is configured. `AuthProvider` then keeps `loading` on, rather than deciding "signed out", until Clerk has loaded (`shouldAwaitClerk` in `lib/auth/clerkBrowser.ts`, 4 node tests), with a 10 s fallback in case Clerk never loads. `ClerkRuntime` dispatches a `stayo:clerk-session` window event when Clerk's loaded/signed-in state changes, and `subscribeToClerkSession` listens for it, so a subscriber that arrived before Clerk still hears about it. Shells that don't mount Clerk (public, seeker, auth, owner-journey) keep the old behaviour, because nothing is coming for them to wait on.
+
+**Not verified:** not yet exercised with a live sign-in. The React wiring isn't covered by the node-only suite (`CLAUDE.md`). Related: [[Frontend]], [[Changelog]].
+
 ## Discover's Google sign-up lost its `?flow=discover_signup` flag for every brand-new user, so ADR-233 provisioning never ran (2026-09-24)
 
 **Symptom (established from code, not yet observed live):** a person Clerk has never seen clicks "Continue with Google" on Discover's sign-up tab, completes Google, and is shown *"No Stayo account exists for this email"* and signed out — the exact case [[Decisions#ADR-233|ADR-233]] was built to provision. Their Clerk user is created regardless.

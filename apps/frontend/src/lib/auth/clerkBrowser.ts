@@ -39,8 +39,31 @@ export function pickSessionSource(input: {
   return "none";
 }
 
+/**
+ * Whether `AuthContext` must hold off deciding "signed out" because Clerk has
+ * not finished loading yet.
+ *
+ * Clerk's SDK loads asynchronously, and `AuthProvider` resolves its session
+ * before `ClerkProvider` (mounted below it) has published `window.Clerk`. On a
+ * cold load of the owner app — every full-page handoff from the homepage
+ * sign-in, every refresh — that first check saw no session, finished loading
+ * as signed-out, and `ProtectedRoute` bounced a perfectly signed-in owner to
+ * `/login` before Clerk ever reported the session.
+ *
+ * Only shells that actually mount Clerk set `awaitClerk`; elsewhere nothing is
+ * coming and waiting would hang the page.
+ */
+export function shouldAwaitClerk(input: {
+  source: SessionSource;
+  awaitClerk: boolean;
+  clerkLoaded: boolean;
+}): boolean {
+  return input.source === "none" && input.awaitClerk && !input.clerkLoaded;
+}
+
 /** The bits of `window.Clerk` this app touches. */
 interface ClerkGlobal {
+  loaded?: boolean;
   session?: { getToken: () => Promise<string | null> } | null;
   addListener?: (cb: (resources: { session?: unknown | null }) => void) => () => void;
 }
@@ -53,6 +76,24 @@ function clerkGlobal(): ClerkGlobal | null {
 /** True when Clerk is loaded *and* holds a session. Never throws. */
 export function hasClerkSession(): boolean {
   return Boolean(clerkGlobal()?.session);
+}
+
+/** True once Clerk's SDK has finished loading in this tab. Never throws. */
+export function isClerkLoaded(): boolean {
+  return clerkGlobal()?.loaded === true;
+}
+
+/**
+ * Dispatched on `window` by `ClerkRuntime` whenever Clerk's loaded/signed-in
+ * state changes. `window.Clerk.addListener` only exists once the SDK has
+ * loaded, so a subscriber that arrived first — `AuthProvider`, always — would
+ * otherwise never hear about it.
+ */
+export const CLERK_SESSION_EVENT = "stayo:clerk-session";
+
+export function announceClerkSession(): void {
+  if (typeof window === "undefined") return;
+  window.dispatchEvent(new Event(CLERK_SESSION_EVENT));
 }
 
 /**
@@ -75,17 +116,29 @@ export async function getClerkToken(): Promise<string | null> {
 /**
  * Call `onChange` whenever Clerk's session appears or disappears.
  *
- * Returns an unsubscribe function; a no-op when Clerk is not present, so
- * callers need no branch of their own.
+ * Returns an unsubscribe function. Safe to call before Clerk has loaded, or
+ * when it is never mounted at all — callers need no branch of their own.
  */
 export function subscribeToClerkSession(onChange: () => void): () => void {
+  if (typeof window === "undefined") return () => {};
+  // Covers Clerk loading *after* this call, which `addListener` cannot.
+  const handler = () => onChange();
+  window.addEventListener(CLERK_SESSION_EVENT, handler);
+
+  let unsubscribeClerk: () => void = () => {};
   const clerk = clerkGlobal();
-  if (!clerk?.addListener) return () => {};
-  try {
-    return clerk.addListener(() => onChange());
-  } catch {
-    return () => {};
+  if (clerk?.addListener) {
+    try {
+      unsubscribeClerk = clerk.addListener(() => onChange());
+    } catch {
+      /* fall back to the window event alone */
+    }
   }
+
+  return () => {
+    window.removeEventListener(CLERK_SESSION_EVENT, handler);
+    unsubscribeClerk();
+  };
 }
 
 /**
