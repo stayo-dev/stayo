@@ -42,6 +42,13 @@ export interface InviteWizardData {
   paymentMethod: PaymentMode | '';
   paymentReference: string;
   /**
+   * When the tenant actually handed the money over (YYYY-MM-DD). Blank = today.
+   * A tenant who paid a year up front in January, added to Stayo in June,
+   * should show that payment on its real date. It never changes which months
+   * the money covers: that is decided from the joining date (ADR-236).
+   */
+  paidOn: string;
+  /**
    * The room/floor the tenant named as a preference on their enquiry, carried
    * through so the Stay step can preselect it (when still available) and
    * explain itself (when not) — never carries any weight beyond that. The
@@ -78,6 +85,7 @@ export const EMPTY_INVITE_WIZARD_DATA: InviteWizardData = {
   paidIncludesDeposit: true,
   paymentMethod: '',
   paymentReference: '',
+  paidOn: '',
 };
 
 export type QuickCollectStep = 'select' | 'amount' | 'preview' | 'password' | 'success';

@@ -54,6 +54,10 @@ export const InvitationSchema = z.object({
   paid_includes_deposit: z.boolean().optional(),
   payment_method: z.string().max(40).optional(),
   payment_reference: z.string().max(120).optional(),
+  // When the money actually changed hands (YYYY-MM-DD) — e.g. a year paid in
+  // January, entered in June. Defaults to now. Never decides which months the
+  // money covers; that is counted from the joining date (ADR-236).
+  payment_date: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "Payment date must be YYYY-MM-DD").optional(),
 });
 
 export const InvitationUpdateSchema = z.object({

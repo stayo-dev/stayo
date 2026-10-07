@@ -8,6 +8,38 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Tapping "12 mo" on the agreement ring could save 10 or 7 months (2026-10-08)
+
+**Symptom (found during live end-to-end verification):** in the invite wizard's Stay step, tapping the "12 mo" preset showed 12, then a moment later the ring settled on 10 (another run: 7) and the preset un-highlighted — with no further input. The invite then carried the wrong agreement term, which also caps how much prepaid rent can be recorded ([[Decisions#ADR-236|ADR-236]]): ₹75,000 at ₹7,500 from January was refused as "₹22,500 more than the whole agreement's rent" because the term had silently become 7 months.
+
+**Cause:** `DurationRing` smooth-scrolls to a chosen preset and ignored its own scroll events behind a flag cleared by a fixed 300 ms timer. Scrolling from 1 to 12 takes longer than that (more so while the page re-renders), so the guard lapsed mid-flight and the first ≥90 ms pause in scroll events committed whichever month was under the marker.
+
+**Fix:** the guard now holds until the strip actually reaches its target (1.5 s fallback that ends the guard without reading the position, so the chosen value stands); a real pointer/touch/wheel gesture hands control back immediately. Verified live: the preset holds at 12, dragging still changes the value. Not covered by the node-only test suite (component behaviour). Related: [[Frontend]], [[Changelog]].
+
+## The invite preview said "Due now ₹0" when the deposit was still owed (2026-10-08)
+
+**Symptom (found during live verification):** with a ₹15,000 deposit and "Does this include the security deposit? — No", the coverage card showed *Due now ₹0*; after sending, the tenancy correctly owed ₹15,000 (`tenant-dues`: `security_deposit_due 15000`).
+
+**Cause:** the preview drops the deposit from the allocation set when the money excludes it — right for *where the money goes* — so nothing counted it as still owed.
+
+**Fix:** `buildInviteSettlementPreview` adds the untouched deposit to `coverage.current_due`. Allocation and coverage unchanged. Verified against the live endpoint and the saved tenancy. Related: [[Decisions#ADR-236|ADR-236]], [[Changelog]].
+
+## Converting an enquiry into an invitation dropped the "already paid" amount (2026-10-07)
+
+**Symptom (found reading the code, not reported):** the invite wizard sends `paid_amount`, `paid_includes_deposit`, `payment_method` and `payment_reference` on both of its paths. On the enquiry path (`POST /api/leads/:id/convert-to-invitation`), `admissionsService.convertToInvitation` rebuilt the invite payload field by field and left all four out. The invitation was created, and the money the owner had entered was never recorded, with no error.
+
+**Fix:** the four fields, plus the new `payment_date`, are forwarded. Admissions suites still pass (38). Related: [[Decisions#ADR-236|ADR-236]], [[Changelog]].
+
+## An owner could not record rent a tenant had paid ahead when inviting them (2026-10-07)
+
+**Symptom (reported live, screenshot):** inviting a tenant at ₹8,200/month who had already paid ₹98,400 (a year), the Verify step said *"Cannot record ₹98400.00 — only ₹41000.00 is owed"*; the preview panel said *"₹73,800 is more than what's owed and won't be recorded"*.
+
+**Cause:** the invite treated "what is owed today" as the ceiling for money received. Onboarding creates the deposit plus one RENT row per elapsed month (Aug–Oct = ₹24,600, plus a ₹16,400 deposit = ₹41,000), `createInvitation` refused anything above that, and the preview and Money-step guidance repeated the same limit. [[Decisions#ADR-036|ADR-036]]'s answer for paying ahead — generate the next installments — never reached the invite, because its generator requires a signed-or-active `Agreement`, which an invited tenant does not have yet. The design gap: the invite's "already paid" was modelled as *settle arrears*, not *receive a payment*.
+
+**Fix:** [[Decisions#ADR-236|ADR-236]] — the invite creates the agreement's next RENT periods for the excess (capped at the term) and settles across them with the normal engine. Prepaid months are real PAID obligations, which the monthly cron and the agreement schedule already skip.
+
+**Still open (pre-existing, not introduced here):** a tenant who prepaid and leaves early keeps PAID obligations for months after their exit — move-out settlement does not refund prepaid rent periods (the same is true of ADR-036's pay-ahead link). A per-payment Reverse correction exists but there is no "refund unused prepaid months" step. **Needs a product decision.** Related: [[Business-Rules]], [[Changelog]].
+
 ## "Send new link" failed for any tenant with a recorded payment (2026-10-07)
 
 **Symptom.** An owner added a tenant with the "rent paid" toggle, the 7-day invite link expired, and resending returned `VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded`. The invitation could never be re-issued.

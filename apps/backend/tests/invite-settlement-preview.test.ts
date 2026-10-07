@@ -109,7 +109,7 @@ describe("buildInviteSettlementPreview", () => {
     expect(march!.result).toBe("PAID");
   });
 
-  it("an amount exceeding everything owed reports the excess rather than over-allocating", () => {
+  it("an amount beyond what is owed today reaches into the agreement's future months (ADR-236)", () => {
     const preview = buildInviteSettlementPreview({
       monthlyRent: 8000,
       securityDeposit: 16000,
@@ -118,18 +118,46 @@ describe("buildInviteSettlementPreview", () => {
       agreementStartDate: START,
       durationMonths: 12,
       dueDay: 5,
-      amountPaid: 100000, // total owed = 16000 + 1500 + 5*8000 = 57500
+      amountPaid: 100000, // owed today = 16000 + 1500 + 5*8000 = 57500
       amountIncludesDeposit: true,
       today: TODAY_5_MONTHS_IN,
     });
 
-    const totalOwed = 16000 + 1500 + 5 * 8000;
-    expect(preview.total_outstanding).toBe(totalOwed);
-    expect(preview.total_to_settle).toBe(totalOwed);
-    expect(preview.remaining_outstanding).toBe(0);
-    expect(preview.unallocated).toBe(100000 - totalOwed);
+    // 42,500 left over = Aug–Dec (5 × 8000) + 2,500 toward Jan 2027.
+    expect(preview.owed_today).toBe(57500);
+    expect(preview.advance_rent_months).toEqual([
+      utcMonth(2026, 7), utcMonth(2026, 8), utcMonth(2026, 9), utcMonth(2026, 10), utcMonth(2026, 11), utcMonth(2027, 0),
+    ]);
+    expect(preview.unallocated).toBe(0);
+    expect(preview.total_to_settle).toBe(100000);
+    expect(preview.coverage.months_covered).toBe(10);
+    expect(preview.coverage.partial?.allocated).toBe(2500);
+    expect(preview.coverage.current_due).toBe(0);
 
     // No allocation exceeds what was actually due on that obligation.
+    for (const alloc of preview.allocations) {
+      expect(alloc.allocated).toBeLessThanOrEqual(alloc.amount_due);
+    }
+  });
+
+  it("an amount exceeding the whole agreement reports the excess rather than over-allocating", () => {
+    const preview = buildInviteSettlementPreview({
+      monthlyRent: 8000,
+      securityDeposit: 16000,
+      maintenanceCharge: 1500,
+      maintenanceType: "MONTHLY",
+      agreementStartDate: START,
+      durationMonths: 6, // Mar–Aug: one month left after today
+      dueDay: 5,
+      amountPaid: 100000,
+      amountIncludesDeposit: true,
+      today: TODAY_5_MONTHS_IN,
+    });
+
+    const agreementTotal = 16000 + 1500 + 6 * 8000;
+    expect(preview.total_to_settle).toBe(agreementTotal);
+    expect(preview.max_recordable).toBe(agreementTotal);
+    expect(preview.unallocated).toBe(100000 - agreementTotal);
     for (const alloc of preview.allocations) {
       expect(alloc.allocated).toBeLessThanOrEqual(alloc.amount_due);
       expect(alloc.result).toBe("PAID");

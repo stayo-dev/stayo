@@ -120,14 +120,15 @@ describe("the real service implements this rule", () => {
   // the service would leave every test in this file green.
   it("filters the settlement by obligation, excluding the deposit", async () => {
     const { readFileSync } = await import("node:fs");
-    const source = readFileSync(
-      "src/services/tenants/tenant-invitation-lifecycle-service.ts",
-      "utf8"
-    );
+    // The settlement moved out of the invite service into its own module
+    // (ADR-236); the invite still forwards the owner's answer to it.
+    const settlementSource = readFileSync("src/services/payments/invite-settlement-service.ts", "utf8");
+    expect(settlementSource).toContain("obligationIdFilter");
+    expect(settlementSource).toContain('obligation_type: { not: "SECURITY_DEPOSIT" }');
 
-    expect(source).toContain("obligationIdFilter");
-    expect(source).toContain('obligation_type: { not: "SECURITY_DEPOSIT" }');
-    expect(source).toContain("paid_includes_deposit");
+    const inviteSource = readFileSync("src/services/tenants/tenant-invitation-lifecycle-service.ts", "utf8");
+    expect(inviteSource).toContain("inviteSettlementService.settleInTx");
+    expect(inviteSource).toContain("paid_includes_deposit");
   });
 
   it("forwards the owner's answer from the bulk import", async () => {

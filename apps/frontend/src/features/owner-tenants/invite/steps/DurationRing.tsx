@@ -43,11 +43,25 @@ export function DurationRing({ value, onChange }: DurationRingProps) {
   const trackRef = useRef<HTMLDivElement | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
   /**
-   * Suppresses the scroll handler while *we* are the ones scrolling. Without
-   * it, programmatically centring a preset fires `onScroll` on the way there
-   * and reports every month it passes over as a choice.
+   * Where *we* are scrolling the strip to, while we are the ones scrolling —
+   * null otherwise. The scroll handler ignores everything until the strip
+   * actually arrives. Without it, centring a preset fires `onScroll` on the
+   * way there and reports a month it passes over as the choice.
+   *
+   * This used to be a flag cleared by a fixed 300 ms timer. A smooth scroll
+   * from 1 to 12 takes longer than that — longer still while the page is busy
+   * re-rendering — so the guard lapsed mid-flight, the first pause in scroll
+   * events committed whichever month was under the marker, and tapping
+   * "12 mo" left the agreement at 10 (seen live, 2026-10-08).
    */
-  const scrollingSelf = useRef(false);
+  const selfScrollTarget = useRef<number | null>(null);
+  const selfScrollFallback = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  /** A real drag, swipe or wheel always wins over our own animation. */
+  const releaseSelfScroll = () => {
+    selfScrollTarget.current = null;
+    if (selfScrollFallback.current) clearTimeout(selfScrollFallback.current);
+  };
 
   /**
    * The form stores months as a string and it is legitimately empty until the
@@ -67,20 +81,29 @@ export function DurationRing({ value, onChange }: DurationRingProps) {
     if (!track) return;
     const target = scrollLeftForIndex(selectedIndex, ITEM_WIDTH);
     if (Math.abs(track.scrollLeft - target) < 1) return;
-    scrollingSelf.current = true;
+    if (settleTimer.current) clearTimeout(settleTimer.current);
+    if (selfScrollFallback.current) clearTimeout(selfScrollFallback.current);
+    selfScrollTarget.current = target;
     track.scrollTo({ left: target, behavior: 'smooth' });
-    const done = setTimeout(() => {
-      scrollingSelf.current = false;
-    }, 300);
-    return () => clearTimeout(done);
+    // Only a safety net, for a scroll that never quite lands (an interrupted
+    // animation): the guard normally ends when the strip arrives, below. It
+    // ends without reading the position, so the chosen value stands.
+    selfScrollFallback.current = setTimeout(() => {
+      selfScrollTarget.current = null;
+    }, 1500);
   }, [selectedIndex]);
 
   useEffect(() => () => {
     if (settleTimer.current) clearTimeout(settleTimer.current);
+    if (selfScrollFallback.current) clearTimeout(selfScrollFallback.current);
   }, []);
 
   const handleScroll = () => {
-    if (scrollingSelf.current) return;
+    const track = trackRef.current;
+    if (selfScrollTarget.current !== null) {
+      if (track && Math.abs(track.scrollLeft - selfScrollTarget.current) < 1) releaseSelfScroll();
+      return;
+    }
     if (settleTimer.current) clearTimeout(settleTimer.current);
     settleTimer.current = setTimeout(() => {
       const track = trackRef.current;
@@ -124,6 +147,9 @@ export function DurationRing({ value, onChange }: DurationRingProps) {
         <div
           ref={trackRef}
           onScroll={handleScroll}
+          onPointerDown={releaseSelfScroll}
+          onTouchStart={releaseSelfScroll}
+          onWheel={releaseSelfScroll}
           onKeyDown={onKeyDown}
           role="slider"
           tabIndex={0}
