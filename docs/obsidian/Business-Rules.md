@@ -399,6 +399,10 @@ Two guards on the `visitor_leads` → `tenant_invitations` path, distinct from t
 
 Both guards, plus the hostel-scoped owner/tenant rule above and a concurrency fix for `createInvitation`'s eligibility check, came out of an audit of this flow — see [[Bugs]] and [[Decisions#ADR-162|ADR-162]] for the full rationale, and [[Database]] for the new `visitor_leads` partial unique index (migration 079, **verified applied to production 2026-09-23**).
 
+## Invitation resend after payments (2026-10-07)
+
+Once a tenant has any recorded payment, an invitation's **terms** (room, rent, deposit, maintenance, billing, move-in, agreement, contact details) are locked — a full resend deletes agreements and regenerates obligations. Re-issuing the **link** is still allowed: a resend that changes no term only refreshes token/expiry and re-sends. Related: [[Bugs]].
+
 ## Tenant acceptance is mandatory and explicit — the tenancy runs while it is pending (2026-09-02, [[Decisions#ADR-165|ADR-165]])
 
 **Supersedes the "an owner-managed tenant is handed an account with a link" model.** Inviting a tenant makes the tenancy operationally live immediately — `status = ACTIVE`, `access_mode = OWNER_MANAGED`, real room allocation, rent obligations generating, reminders firing — exactly as before. What changed: a new `tenants.acceptance_status` axis (`NOT_REQUIRED` legacy default | `PENDING` | `ACCEPTED`).

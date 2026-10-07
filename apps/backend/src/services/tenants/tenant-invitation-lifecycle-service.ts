@@ -792,7 +792,13 @@ export class TenantInvitationLifecycleService {
       where: { tenant_id: invitation.tenant_id },
     });
     if (paymentsCount > 0) {
-      throw new Error("VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded for this tenant");
+      // A resend rebuilds agreements and obligations, so term edits stay locked.
+      // But an expired link on a tenant who already paid (e.g. rent marked paid
+      // while adding them) must still be re-issuable: refresh only the link.
+      if (this.hasTermChanges(invitation, overrides)) {
+        throw new Error("VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded for this tenant");
+      }
+      return this.refreshInvitationLink(invitation, isLegacyOwnerManaged, tenantAlreadyOwnerManaged);
     }
 
     // Limit rule: Prevent more than 10 invitation versions
@@ -1139,6 +1145,100 @@ export class TenantInvitationLifecycleService {
       tenant_id: updated.updatedInvitation.tenant_id,
       email: updated.updatedInvitation.email,
       phone: updated.updatedInvitation.phone,
+      activation_link: activationLink,
+      ...delivery,
+    };
+  }
+
+  /** True if `overrides` would actually change anything the owner agreed with the tenant. */
+  private hasTermChanges(invitation: any, overrides?: any): boolean {
+    if (!overrides) return false;
+    const t = invitation.tenant;
+    const num = (v: unknown) => (v === null || v === undefined || v === "" ? undefined : Number(v));
+    const day = (v: unknown) => (v ? new Date(v as any).toISOString().split("T")[0] : undefined);
+    const differs = (next: unknown, current: unknown) => next !== undefined && next !== current;
+
+    const deposit = overrides.advance_amount ?? overrides.security_deposit ?? overrides.advance_deposit;
+    const maintenance = overrides.maintenance_amount ?? overrides.maintenance_charge;
+    const joining = overrides.joining_date ?? overrides.joined_on;
+    return (
+      differs(overrides.room_id, invitation.room_id) ||
+      differs(num(overrides.monthly_rent), num(t.monthly_rent)) ||
+      differs(num(deposit), num(t.security_deposit)) ||
+      differs(num(maintenance), num(t.maintenance_charge)) ||
+      differs(overrides.maintenance_type, t.maintenance_type) ||
+      differs(overrides.payment_frequency, t.payment_frequency) ||
+      (joining ? day(joining) !== day(t.joined_on) : false) ||
+      (typeof overrides.agreement_duration_months !== "undefined" &&
+        (num(overrides.agreement_duration_months) ?? null) !== (invitation.agreement_duration_months ?? null)) ||
+      (overrides.name ? String(overrides.name).trim() !== invitation.name : false) ||
+      (overrides.phone ? normalizeIndianPhone(overrides.phone) !== invitation.phone : false) ||
+      (overrides.email ? normalizeEmail(overrides.email) !== invitation.email : false)
+    );
+  }
+
+  /**
+   * Re-issues an invitation's link (new token, fresh expiry) and re-sends it,
+   * touching nothing else — no agreements, obligations or tenant fields. Used
+   * when payments are already recorded, where a full resend is locked.
+   */
+  private async refreshInvitationLink(invitation: any, isLegacyOwnerManaged: boolean, tenantAlreadyOwnerManaged: boolean) {
+    const token = crypto.randomBytes(32).toString("hex");
+    const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+
+    const updatedInvitation = await prisma.$transaction(async (tx: any) => {
+      if (!tenantAlreadyOwnerManaged) {
+        await tx.tenant_invitation_reservations.updateMany({
+          where: { invitation_id: invitation.id, status: "ACTIVE" },
+          data: { expires_at: expiresAt, updated_at: new Date() },
+        });
+      }
+      return tx.tenant_invitations.update({
+        where: { id: invitation.id },
+        data: {
+          token,
+          expires_at: expiresAt,
+          status: isLegacyOwnerManaged ? "SUPERSEDED" : "PENDING",
+          opened_at: null,
+          updated_at: new Date(),
+        },
+      });
+    });
+
+    const owner = await prisma.profile.findUnique({ where: { id: invitation.owner_id }, select: { name: true } });
+    const activationLink = frontendUrl(`/activate/${token}`);
+    const delivery = await this.dispatchInvitationNotification(
+      updatedInvitation,
+      invitation.tenant,
+      invitation.room,
+      owner || { name: "The Owner" },
+      activationLink
+    );
+    await recordWhatsAppDelivery(updatedInvitation.id, delivery.whatsapp_sent);
+
+    await eventLog.log("tenant_invitation_resent", invitation.owner_id, {
+      tenant_id: invitation.tenant_id,
+      invitation_id: updatedInvitation.id,
+      link_refresh_only: true,
+      whatsapp_sent: delivery.whatsapp_sent,
+      whatsapp_error: delivery.whatsapp_error,
+      email_sent: delivery.email_sent,
+      email_error: delivery.email_error,
+      needs_email: delivery.needs_email,
+    }, invitation.tenant_id);
+
+    return {
+      message: delivery.whatsapp_sent
+        ? "Invitation resent via WhatsApp"
+        : delivery.email_sent
+        ? "Invitation resent via Email"
+        : delivery.needs_email
+        ? "WhatsApp delivery failed. Email is required for fallback."
+        : "Failed to resend invitation",
+      action: "RESENT",
+      tenant_id: invitation.tenant_id,
+      email: updatedInvitation.email,
+      phone: updatedInvitation.phone,
       activation_link: activationLink,
       ...delivery,
     };
