@@ -17,7 +17,27 @@
  * the amounts come from the backend's own plan and are never recomputed here.
  */
 
-export type PaidAmountState = 'unknown' | 'none' | 'partial' | 'exact' | 'over';
+import type { PreviewCoverage } from './settlementPreview';
+
+/**
+ * `advance` — more than is owed today, and the agreement's coming months
+ * absorb it (ADR-236). `over` — more than the whole agreement can take; the
+ * only amount that is refused.
+ */
+export type PaidAmountState = 'unknown' | 'none' | 'partial' | 'exact' | 'advance' | 'over';
+
+/**
+ * What the settlement preview said this exact amount does — the part of the
+ * answer that depends on the amount, not just on what is owed today. Omitted
+ * when the preview has not answered for this amount yet.
+ */
+export interface PaidAmountOutcome {
+  /** > 0 when the amount runs past the agreement's last rent month. */
+  overpaidAmount: number;
+  /** The most that can be recorded, when `overpaidAmount > 0`. */
+  maxRecordable: number | null;
+  coverage: PreviewCoverage | null;
+}
 
 export interface PaidAmountGuidance {
   state: PaidAmountState;
@@ -30,9 +50,11 @@ export interface PaidAmountGuidance {
   /** Fills the field from a single tap. Null when there is nothing to fill. */
   fillAmount: number | null;
   /**
-   * True when the amount exceeds what is owed. The server refuses this, so
-   * saying it here — beside the field that caused it — is the difference
-   * between a correction and a dead end three screens later.
+   * True only when the amount runs past the whole agreement. Paying ahead is
+   * not an error — a year up front covers a year of rent — but money beyond
+   * the agreement's last month has nowhere to land and the server refuses it,
+   * so saying it here, beside the field, is a correction rather than a dead
+   * end three screens later.
    */
   isBlocking: boolean;
 }
@@ -41,9 +63,22 @@ export function formatRupees(amount: number): string {
   return `₹${Math.round(amount).toLocaleString('en-IN')}`;
 }
 
+/** "12 months of rent covered — paid through Jul 2027." */
+function describeAdvance(paid: number, owed: number, outcome: PaidAmountOutcome | undefined): string {
+  const coverage = outcome?.coverage;
+  if (!coverage || coverage.monthsCovered === 0) {
+    return `Covers everything owed today, and ${formatRupees(paid - owed)} goes to the coming months' rent.`;
+  }
+  const months = `${coverage.monthsCovered} month${coverage.monthsCovered === 1 ? '' : 's'} of rent covered`;
+  const through = coverage.paidThroughLabel ? ` — paid through ${coverage.paidThroughLabel}` : '';
+  const partial = coverage.partialNote ? `. ${coverage.partialNote}` : '';
+  return `${months}${through}${partial}.`;
+}
+
 export function paidAmountGuidance(
   enteredAmount: number | string | null | undefined,
   totalOutstanding: number | null | undefined,
+  outcome?: PaidAmountOutcome,
 ): PaidAmountGuidance {
   const owed = typeof totalOutstanding === 'number' && Number.isFinite(totalOutstanding) ? totalOutstanding : null;
 
@@ -66,16 +101,24 @@ export function paidAmountGuidance(
   // A rupee of tolerance, matching the server's own comparison, so a rounded
   // display value never reads as an overpayment.
   if (paid > owed + 0.01) {
+    if (outcome && outcome.overpaidAmount > 0.005) {
+      const max = outcome.maxRecordable ?? owed;
+      return {
+        state: 'over',
+        owedAmount: owed,
+        owedLabel,
+        message: `That is ${formatRupees(outcome.overpaidAmount)} more than the whole agreement's rent. Record ${formatRupees(max)} or less, or lengthen the agreement.`,
+        fillAmount,
+        isBlocking: true,
+      };
+    }
     return {
-      state: 'over',
+      state: 'advance',
       owedAmount: owed,
       owedLabel,
-      message:
-        owed > 0
-          ? `That is ${formatRupees(paid - owed)} more than is owed. Record ${formatRupees(owed)} or less.`
-          : 'Nothing is owed yet, so there is nothing to record against.',
+      message: describeAdvance(paid, owed, outcome),
       fillAmount,
-      isBlocking: true,
+      isBlocking: false,
     };
   }
 

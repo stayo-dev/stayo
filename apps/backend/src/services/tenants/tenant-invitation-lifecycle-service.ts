@@ -9,8 +9,7 @@ import { hostelBillingPreferencesService, type MaintenanceType } from "../../../
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { ensureActiveAllocation } from "./tenancy-allocation";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
-import { financialPaymentFacade } from "../payments/financial-payment-facade";
-import { financialService } from "../payments/financial-service";
+import { inviteSettlementService } from "../payments/invite-settlement-service";
 import { selectCurrentTenancy } from "@/lib/tenancy/active-tenancy";
 import { recordWhatsAppDelivery, readWhatsAppDeliveredAt } from "./invitation-delivery-trust";
 import { isPhoneAlreadyProven } from "./invitation-phone-trust";
@@ -608,76 +607,25 @@ export class TenantInvitationLifecycleService {
       // Allocation is the real settlement engine (FIFO, ledger, receipt), not
       // a status flip, so this cannot disagree with what
       // `buildInviteSettlementPreview` showed the owner before they committed.
-      let settlement: any = null;
-      const paidAmount = Number(data.paid_amount || 0);
-      if (paidAmount > 0) {
-        if (!data.payment_method) {
-          throw new Error("VALIDATION_ERROR: A payment method is required to record an amount already paid");
-        }
-        // Read through `tx`: the obligations this is checking against were
-        // created a few lines above, inside this same transaction, and are not
-        // committed yet. On the global client this returned nothing, reported
-        // ₹0.00 owed, and refused every amount an owner entered.
-        const owed = await financialService.getTenantDues(
-          tenant.id,
-          ownerId,
-          capacity.room.hostel_id,
-          tx
-        );
-        // "Paid includes deposit = No" means this money is rent and
-        // maintenance only; the deposit stays owed. Without a filter the
-        // planner settles FIFO across everything, including the deposit
-        // obligation, and the owner's answer was silently ignored.
-        const includesDeposit = data.paid_includes_deposit !== false && data.amount_includes_deposit !== false;
-        let obligationIdFilter: string[] | undefined;
-        let due = Number(owed?.total_due || 0);
-
-        if (!includesDeposit) {
-          const settleable = await tx.rent_obligations.findMany({
-            where: {
-              tenant_id: tenant.id,
-              hostel_id: capacity.room.hostel_id,
-              is_superseded: false,
-              obligation_type: { not: "SECURITY_DEPOSIT" },
-            },
-            select: { id: true, total_amount: true, amount: true },
-          });
-          obligationIdFilter = settleable.map((row: any) => row.id);
-          due = settleable.reduce(
-            (sum: number, row: any) => sum + Number(row.total_amount ?? row.amount ?? 0),
-            0
-          );
-        }
-
-        if (paidAmount > due + 0.01) {
-          throw new Error(
-            includesDeposit
-              ? `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed`
-              : `VALIDATION_ERROR: Cannot record ₹${paidAmount.toFixed(2)} — only ₹${due.toFixed(2)} is owed excluding the deposit. Tick "paid includes deposit" if the deposit is part of this amount.`
-          );
-        }
-
-        settlement = await financialPaymentFacade.receivePayment(
-          tx,
-          {
-            tenantId: tenant.id,
-            hostelId: capacity.room.hostel_id,
-            amountPaid: paidAmount,
-            ...(obligationIdFilter ? { obligationIdFilter } : {}),
-            paymentMethod: String(data.payment_method),
-            referenceNumber: data.payment_reference || undefined,
-            paymentDate: new Date(),
-            ownerId,
-            // One settlement per invitation: a double-submitted form must not
-            // record the money twice.
-            idempotencyKey: `invite-settle:${invitation.id}`,
-            offlineRecordedBy: ownerId,
-            offlineRecordedAt: new Date(),
-            offlineNote: "Recorded while inviting — already paid",
-          },
-          crypto.randomUUID()
-        );
-      }
+      //
+      // Paying ahead is allowed (ADR-236): money beyond what is owed today
+      // creates and settles the agreement's next rent periods, so a year paid
+      // up front is a year of PAID months that the monthly cron then skips.
+      // Only money past the agreement's last month is refused.
+      const settlement = await inviteSettlementService.settleInTx(tx, {
+        tenantId: tenant.id,
+        ownerId,
+        hostelId: capacity.room.hostel_id,
+        invitationId: invitation.id,
+        joiningDate,
+        agreementDurationMonths: invitation.agreement_duration_months ?? 12,
+        monthlyRent,
+        paidAmount: Number(data.paid_amount || 0),
+        paymentMethod: data.payment_method,
+        paymentReference: data.payment_reference,
+        paymentDate: data.payment_date,
+        includesDeposit: data.paid_includes_deposit !== false && data.amount_includes_deposit !== false,
+      });
 
       return { tenant, invitation, reservation, room: capacity.room, financials, settlement };
     }, { timeout: 30000 });

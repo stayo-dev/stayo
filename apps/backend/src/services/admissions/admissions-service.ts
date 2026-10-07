@@ -960,6 +960,14 @@ export class AdmissionsService {
         agreement_duration_months: input.agreement_duration_months,
         agreement_start_date: input.agreement_start_date,
         payment_frequency: input.payment_frequency,
+        // Money already handed over. The invite wizard sends these on this
+        // path too, and they used to be dropped here — an owner converting an
+        // enquiry recorded "already paid" and nothing was ever settled.
+        paid_amount: input.paid_amount,
+        paid_includes_deposit: input.paid_includes_deposit,
+        payment_method: input.payment_method,
+        payment_reference: input.payment_reference,
+        payment_date: input.payment_date,
       }, ownerId);
     } catch (error: any) {
       // tenantInvitationLifecycleService throws plain `Error("VALIDATION_ERROR: ...")`

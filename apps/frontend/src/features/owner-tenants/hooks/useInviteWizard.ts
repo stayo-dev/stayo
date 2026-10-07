@@ -19,6 +19,7 @@ import {
 } from '../invite/validation';
 import {
   buildPreviewRequestBody,
+  isPaidAmountRecordable,
   isPaymentDetailsValid,
   previewRequestKey,
   type InviteSettlementPreviewResponse,
@@ -140,7 +141,13 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     isValidTenantEmail(data.tenantEmail) &&
     !eligibilityConflict;
   const isStep1Valid = Boolean(data.hostelId && data.roomId && data.joiningDate && Number(data.agreementMonths) > 0);
-  const isStep2Valid = Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0) && isPaymentDetailsValid(data);
+  // An amount past the agreement's last rent month is the one the server
+  // refuses (ADR-236) — hold the step back on it rather than letting Send fail.
+  // Paying ahead within the agreement is fine and does not block.
+  const isStep2Valid =
+    Boolean(data.monthlyRent && Number(data.monthlyRent) >= 0) &&
+    isPaymentDetailsValid(data) &&
+    (!previewRequestBody || isPaidAmountRecordable(settlementPreviewQuery.data));
   const isStep3Valid = Boolean(agreed && data.roomId && isStep0Valid && isStep1Valid && isStep2Valid);
 
   const isCurrentStepValid = (() => {
@@ -185,15 +192,20 @@ export function useInviteWizard(options: UseInviteWizardOptions = {}) {
     payment_frequency: BILLING_TO_FREQUENCY[data.billing] ?? 'MONTHLY',
     // Money already handed over — a deposit paid face-to-face at the door, or
     // (backdated `joiningDate`) months of rent a hostel adopting mid-year has
-    // already collected. Only sent when the toggle is on and an amount was
-    // actually entered; the backend requires `payment_method` whenever
-    // `paid_amount > 0` and refuses an amount larger than what's owed.
+    // already collected, or rent paid months ahead. Only sent when the toggle
+    // is on and an amount was actually entered; the backend requires
+    // `payment_method` whenever `paid_amount > 0`, settles anything beyond
+    // today's dues against the agreement's coming months, and refuses only an
+    // amount larger than the whole agreement's rent (ADR-236).
     ...(data.hasPaidAlready && Number(data.paidAmount) > 0
       ? {
           paid_amount: Number(data.paidAmount),
           paid_includes_deposit: data.paidIncludesDeposit,
           payment_method: data.paymentMethod || undefined,
           ...(data.paymentReference.trim() ? { payment_reference: data.paymentReference.trim() } : {}),
+          // When the money actually changed hands — e.g. a year paid in
+          // January, added to Stayo in June. Omitted = today.
+          ...(data.paidOn.trim() ? { payment_date: data.paidOn.trim() } : {}),
         }
       : {}),
   });

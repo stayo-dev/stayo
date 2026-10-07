@@ -31,6 +31,11 @@ import {
   firstOfUtcMonth,
 } from "@/src/services/payments/rent-schedule-dates";
 import {
+  planAdvanceRentMonths,
+  summarizeRentCoverage,
+  type RentCoverage,
+} from "@/src/services/payments/advance-rent-coverage";
+import {
   buildSettlementPlan,
   type ObligationSnapshot,
   type PaymentPolicy,
@@ -55,8 +60,30 @@ export interface InviteSettlementPreviewInput {
 }
 
 export interface InviteSettlementPreview extends SettlementPlan {
-  /** The rent_month values (first-of-UTC-month) synthesised for this preview, oldest first. Empty if no rent month has elapsed yet. */
+  /** The elapsed rent_month values (first-of-UTC-month) synthesised for this preview, oldest first. Empty if no rent month has elapsed yet. */
   rent_months: Date[];
+  /**
+   * Future rent months the payment reaches into, oldest first — the periods
+   * the invite will create in advance so the money lands on real installments
+   * (ADR-036, ADR-236). Empty when the payment fits inside what is owed today.
+   */
+  advance_rent_months: Date[];
+  /** Where the rent money went, in the owner's terms. See `summarizeRentCoverage`. */
+  coverage: RentCoverage;
+  agreement: {
+    duration_months: number;
+    /** First of the agreement's last rent month, or null without a term. */
+    last_month: Date | null;
+  };
+  /**
+   * The most this invite can record: everything owed today plus every rent
+   * month left in the agreement. Equal to `amountPaid` when nothing is in
+   * excess. When `unallocated > 0` the excess is `amountPaid - max_recordable`
+   * and the invite refuses the payment — StayO holds no credit balance.
+   */
+  max_recordable: number;
+  /** Everything owed as of today (deposit, onboarding maintenance, elapsed rent) before this payment — the anchor beside the amount field. */
+  owed_today: number;
 }
 
 const PREVIEW_OWNER_ID = "preview";
@@ -164,7 +191,53 @@ export function buildInviteSettlementPreview(input: InviteSettlementPreviewInput
     }
   }
 
-  const plan = buildSettlementPlan(snapshots, amountPaid, PREVIEW_POLICY);
+  // Paying ahead (ADR-236): whatever is left after everything owed today
+  // reaches into the agreement's next months — the same periods, in the same
+  // order, that the invite transaction will create. Only as many as the money
+  // needs; never past the agreement's last month.
+  const owedTodayPaise = snapshots.reduce((sum, s) => sum + Math.round(s.amount * 100), 0);
+  const advance = planAdvanceRentMonths({
+    joiningDate: agreementStartDate,
+    durationMonths,
+    monthlyRent,
+    dueDay,
+    existingRentMonths: rentMonths,
+    amountNeeded: Math.max(Math.round(amountPaid * 100) - owedTodayPaise, 0) / 100,
+    today,
+  });
+  for (const month of advance.months) {
+    snapshots.push({
+      id: `preview-rent-${month.rent_month.toISOString().slice(0, 7)}`,
+      obligation_type: "RENT",
+      amount: month.amount,
+      paid: 0,
+      due_date: month.due_date,
+      rent_month: month.rent_month,
+      owner_id: PREVIEW_OWNER_ID,
+      status: month.status,
+    });
+  }
 
-  return { ...plan, rent_months: rentMonths };
+  const plan = buildSettlementPlan(snapshots, amountPaid, PREVIEW_POLICY);
+  const maxRecordable = (owedTodayPaise + Math.round(advance.coveredAmount * 100)) / 100;
+
+  // "Does this include the deposit? — No" keeps the deposit out of where the
+  // money goes, but not out of what the tenant owes: the invite still creates
+  // it, unpaid and due on the joining date. Leaving it out here told the
+  // owner "Due now ₹0" for a tenant who in fact owed the whole deposit the
+  // moment the invite was sent (seen live, 2026-10-08).
+  const coverage = summarizeRentCoverage(plan.allocations, today);
+  if (securityDeposit > 0 && !amountIncludesDeposit) {
+    coverage.current_due = (Math.round(coverage.current_due * 100) + Math.round(securityDeposit * 100)) / 100;
+  }
+
+  return {
+    ...plan,
+    rent_months: rentMonths,
+    advance_rent_months: advance.months.map((m) => m.rent_month),
+    coverage,
+    agreement: { duration_months: durationMonths, last_month: advance.lastAgreementMonth },
+    max_recordable: advance.exhausted ? maxRecordable : amountPaid,
+    owed_today: owedTodayPaise / 100,
+  };
 }

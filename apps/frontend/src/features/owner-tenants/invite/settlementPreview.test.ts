@@ -8,7 +8,10 @@ import {
   isPreviewRequestReady,
   previewBlockers,
   previewRequestKey,
+  isPaidAmountRecordable,
+  paidOnError,
   type InviteSettlementPreviewResponse,
+  type SettlementAllocationLite,
 } from './settlementPreview';
 
 function baseData(overrides: Partial<InviteWizardData> = {}): InviteWizardData {
@@ -190,15 +193,21 @@ describe('buildPreviewDisplay', () => {
     expect(display.outstandingLabel).toBe('Sep onwards');
   });
 
-  it('flags an over-payment plainly instead of letting it surface only at submit', () => {
+  it('names the excess past the agreement, and the figure that can be recorded instead (ADR-236)', () => {
     const overpaid: InviteSettlementPreviewResponse = {
       ...worked,
-      unallocated: 5000,
-      total_to_settle: 40000,
+      unallocated: 8200,
+      total_to_settle: 90200,
+      max_recordable: 90200,
+      agreement: { duration_months: 11, last_month: '2027-06-01T00:00:00.000Z' },
     };
-    const display = buildPreviewDisplay(overpaid, { paidAmount: 45000, monthlyRent: 8000 });
-    expect(display.overpaidAmount).toBe(5000);
-    expect(display.warning).toBe("₹5,000 is more than what's owed and won't be recorded");
+    const display = buildPreviewDisplay(overpaid, { paidAmount: 98400, monthlyRent: 8200 });
+    expect(display.overpaidAmount).toBe(8200);
+    expect(display.maxRecordable).toBe(90200);
+    expect(display.warning).toBe(
+      "₹8,200 remains after covering the whole 11-month agreement (through Jun 2027). Stayo doesn't hold extra money as credit, so record ₹90,200 or less, or lengthen the agreement.",
+    );
+    expect(isPaidAmountRecordable(overpaid)).toBe(false);
   });
 
   it('surfaces the backend rejection reason when the payment was not accepted and nothing was overpaid', () => {
@@ -300,5 +309,128 @@ describe('buildPreviewDisplay — remaining balance', () => {
     );
     expect(display.remainingOutstanding).toBe(0);
     expect(display.overpaidAmount).toBe(5000);
+  });
+});
+
+describe('buildPreviewDisplay — paying ahead (ADR-236)', () => {
+  const RENT = 8200;
+  const months = Array.from({ length: 12 }, (_, i) => new Date(Date.UTC(2026, 7 + i, 1)).toISOString());
+  const rentAlloc = (iso: string, allocated = RENT): SettlementAllocationLite => ({
+    obligation_id: `preview-rent-${iso.slice(0, 7)}`,
+    type: 'RENT',
+    rent_month: iso,
+    amount_due: RENT,
+    outstanding: RENT,
+    allocated,
+    result: allocated >= RENT ? 'PAID' : allocated > 0 ? 'PARTIAL' : 'UNCHANGED',
+  });
+
+  const yearUpFront: InviteSettlementPreviewResponse = {
+    allocations: months.map((m) => rentAlloc(m)),
+    unallocated: 0,
+    total_outstanding: 98400,
+    total_to_settle: 98400,
+    remaining_outstanding: 0,
+    payment_accepted: true,
+    rejection_reason: null,
+    rent_months: months.slice(0, 3),
+    advance_rent_months: months.slice(3),
+    coverage: {
+      months_covered: 12,
+      paid_through_month: months[11],
+      partial: null,
+      next_due_month: '2027-08-01T00:00:00.000Z',
+      rent_allocated: 98400,
+      future_rent_covered: 73800,
+      current_due: 0,
+    },
+    agreement: { duration_months: 12, last_month: months[11] },
+    max_recordable: 98400,
+    owed_today: 24600,
+  };
+
+  it('₹98,400 reads as 12 months covered, paid through Jul 2027, nothing due now — never as an overpayment', () => {
+    const display = buildPreviewDisplay(yearUpFront, { paidAmount: 98400, monthlyRent: RENT });
+    expect(display.headline).toBe('₹98,400 received');
+    expect(display.warning).toBeNull();
+    expect(display.overpaidAmount).toBe(0);
+    expect(display.remainingOutstanding).toBe(0);
+    expect(display.coverage).toEqual({
+      monthsCovered: 12,
+      paidThroughLabel: 'Jul 2027',
+      futureRentCovered: 73800,
+      partialNote: null,
+      nextDueLabel: 'Aug 2027',
+    });
+    expect(isPaidAmountRecordable(yearUpFront)).toBe(true);
+  });
+
+  it('collapses a year of rent into one ranged line instead of twelve', () => {
+    const display = buildPreviewDisplay(yearUpFront, { paidAmount: 98400, monthlyRent: RENT });
+    expect(display.lines).toEqual([
+      { key: 'preview-rent-2026-08', label: 'Rent, Aug 2026 – Jul 2027 · 12 months', amount: 98400 },
+    ]);
+  });
+
+  it('₹90,000 shows ten months plus ₹8,000 toward the next, and the ₹200 still to pay for it', () => {
+    const allocs = months.slice(0, 10).map((m) => rentAlloc(m));
+    allocs.push(rentAlloc(months[10], 8000));
+    const preview: InviteSettlementPreviewResponse = {
+      ...yearUpFront,
+      allocations: allocs,
+      total_to_settle: 90000,
+      remaining_outstanding: 200,
+      coverage: {
+        months_covered: 10,
+        paid_through_month: months[9],
+        partial: { rent_month: months[10], allocated: 8000, remaining: 200 },
+        next_due_month: months[10],
+        rent_allocated: 90000,
+        future_rent_covered: 65400,
+        current_due: 0,
+      },
+    };
+    const display = buildPreviewDisplay(preview, { paidAmount: 90000, monthlyRent: RENT });
+    expect(display.coverage?.monthsCovered).toBe(10);
+    expect(display.coverage?.paidThroughLabel).toBe('May 2027');
+    expect(display.coverage?.partialNote).toBe('₹8,000 toward Jun 2027 rent — ₹200 still to pay for that month');
+    // The ₹200 belongs to June 2027; nothing is due today.
+    expect(display.remainingOutstanding).toBe(0);
+    expect(display.lines).toEqual([
+      { key: 'preview-rent-2026-08', label: 'Rent, Aug 2026 – May 2027 · 10 months', amount: 82000 },
+      { key: 'preview-rent-2027-06', label: 'Jun 2027 rent (part)', amount: 8000 },
+    ]);
+  });
+
+  it('an older backend without coverage still renders the plain per-line view', () => {
+    const { coverage: _c, advance_rent_months: _a, agreement: _g, max_recordable: _m, owed_today: _o, ...legacy } = yearUpFront;
+    const display = buildPreviewDisplay(legacy, { paidAmount: 98400, monthlyRent: RENT });
+    expect(display.coverage).toBeNull();
+    expect(display.remainingOutstanding).toBe(0);
+  });
+});
+
+describe('paidOnError — when the money actually changed hands', () => {
+  const JUNE = new Date(2026, 5, 10);
+  const paid = (paidOn: string) =>
+    baseData({ hasPaidAlready: true, paidAmount: '75000', paymentMethod: 'Cash', paidOn });
+
+  it('accepts a blank date — it means today', () => {
+    expect(paidOnError(paid(''), JUNE)).toBeNull();
+    expect(isPaymentDetailsValid(paid(''), JUNE)).toBe(true);
+  });
+
+  it('accepts a payment made months before Stayo was introduced', () => {
+    expect(paidOnError(paid('2026-01-03'), JUNE)).toBeNull();
+    expect(isPaymentDetailsValid(paid('2026-01-03'), JUNE)).toBe(true);
+  });
+
+  it('accepts today', () => {
+    expect(paidOnError(paid('2026-06-10'), JUNE)).toBeNull();
+  });
+
+  it('refuses a date in the future and holds the step back', () => {
+    expect(paidOnError(paid('2026-06-11'), JUNE)).toBe('The payment date cannot be in the future.');
+    expect(isPaymentDetailsValid(paid('2026-06-11'), JUNE)).toBe(false);
   });
 });

@@ -223,6 +223,10 @@ Move-in reads **"Flexible"** until chosen, and sends no date — the previous de
 
 See [[Decisions#ADR-157|ADR-157]], [[Changelog]].
 
+### Invite Tenant wizard — rent paid ahead is recorded, and the screen says where it went (2026-10-07)
+
+An owner can record any amount the tenant has already paid, including months of rent in advance ([[Decisions#ADR-236|ADR-236]]). As the amount is typed, the Money step shows what it does — *"12 months of rent covered — paid through Jul 2027"*, or for ₹90,000 at ₹8,200, *"10 months … ₹8,000 toward Jun 2027 rent — ₹200 still to pay for that month"* — and a `CoverageSummary` card (rent covered, paid through, future rent covered, due now, next rent due) appears on both Money and Verify. Fully paid months collapse into one ranged line ("Rent, Aug 2026 – Jul 2027 · 12 months"). The only refusal is an amount past the agreement's rent, said beside the field with the figure that can be recorded, and Next is held back on it. An optional **Paid on** date records when the money was actually handed over (a year paid in January and entered in June stays a January payment); coverage is still counted from the joining date. After the invite the prepaid months are PAID obligations, so rent next falls due the month after coverage ends. **Key files:** `apps/frontend/src/features/owner-tenants/invite/` (`settlementPreview.ts`, `paidAmountGuidance.ts`, `steps/CoverageSummary.tsx`, `steps/MoneyStep.tsx`, `steps/VerifyStep.tsx`), `apps/backend/src/services/payments/{advance-rent-coverage,invite-settlement-service}.ts`, `apps/backend/lib/billing/invite-settlement-preview.ts`. **Not exercised in a running app.** See [[Changelog]], [[Business-Rules]].
+
 ### Invite Tenant wizard — the step shows what the system already knew (2026-09-01)
 
 Four changes to the owner's 4-step Invite Tenant wizard (Tenant → Stay → Money → Verify), all of the same kind: the data existed and the screen did not use it. See [[Decisions#ADR-164|ADR-164]].

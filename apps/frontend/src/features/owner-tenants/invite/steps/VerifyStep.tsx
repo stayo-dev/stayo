@@ -2,6 +2,7 @@ import { Check } from 'lucide-react';
 import type { OwnerSessionHostel } from '@features/owner-session/useOwnerSession';
 import { buildPreviewDisplay, describePreviewBlockers, type InviteSettlementPreviewResponse } from '../settlementPreview';
 import type { InviteWizardData } from '../../types';
+import { CoverageSummary } from './CoverageSummary';
 
 interface VerifyStepProps {
   data: InviteWizardData;
@@ -152,10 +153,21 @@ export function VerifyStep({
                   tenant falls behind but never how much, and how much is the
                   number the owner is verifying before they commit.
                 */}
+                {/*
+                  Paid ahead or not, the owner reads where the rent money went:
+                  months covered, paid through, due now, prepaid. An amount past
+                  the agreement is the one refusal, and it names the figure that
+                  can be recorded instead (ADR-236).
+                */}
                 {display.warning ? (
-                  <p className="rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] font-semibold text-destructive">
+                  <p
+                    role="alert"
+                    className="rounded-xl border border-destructive/25 bg-destructive/10 px-3 py-2 text-[12px] font-semibold text-destructive"
+                  >
                     {display.warning}
                   </p>
+                ) : display.coverage ? (
+                  <CoverageSummary display={display} />
                 ) : display.remainingOutstanding > 0 ? (
                   <div className="flex items-baseline justify-between gap-2 border-t border-border pt-2">
                     <span className="text-[12.5px] font-bold text-foreground">

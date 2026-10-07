@@ -1,7 +1,8 @@
 import { BILLING_FREQUENCIES, PAYMENT_MODES, type PaymentMode } from '@shared/mocks/payments';
 import type { InviteWizardData } from '../../types';
 import { paidAmountGuidance } from '../paidAmountGuidance';
-import type { InviteSettlementPreviewResponse } from '../settlementPreview';
+import { buildPreviewDisplay, paidOnError, type InviteSettlementPreviewResponse } from '../settlementPreview';
+import { CoverageSummary } from './CoverageSummary';
 
 interface MoneyStepProps {
   data: InviteWizardData;
@@ -25,7 +26,17 @@ export function MoneyStep({ data, setD, settlementPreview, isLoadingSettlementPr
   const maintenance = Number(data.maintenance) || 0;
   const total = rent + deposit + maintenance;
 
-  const guidance = paidAmountGuidance(data.paidAmount, settlementPreview?.total_outstanding);
+  // The preview is keyed on the amount, so it describes exactly what was typed.
+  // `owed_today` is the anchor (what is owed before any advance month); older
+  // backends without it fall back to the plan's own outstanding total.
+  const display = settlementPreview
+    ? buildPreviewDisplay(settlementPreview, { paidAmount: Number(data.paidAmount) || 0, monthlyRent: rent })
+    : null;
+  const guidance = paidAmountGuidance(
+    data.paidAmount,
+    settlementPreview ? (settlementPreview.owed_today ?? settlementPreview.total_outstanding) : undefined,
+    display ? { overpaidAmount: display.overpaidAmount, maxRecordable: display.maxRecordable, coverage: display.coverage } : undefined,
+  );
 
   return (
     <div className="flex flex-col gap-4.5">
@@ -195,6 +206,11 @@ export function MoneyStep({ data, setD, settlementPreview, isLoadingSettlementPr
                   {guidance.message}
                 </p>
               )}
+              {display && Number(data.paidAmount) > 0 && (
+                <div className="mt-2">
+                  <CoverageSummary display={display} />
+                </div>
+              )}
             </label>
 
             <button
@@ -226,6 +242,30 @@ export function MoneyStep({ data, setD, settlementPreview, isLoadingSettlementPr
                   </button>
                 ))}
               </div>
+            </label>
+
+            {/*
+              When the money changed hands — a year paid in January and only
+              now entered in Stayo keeps its real date. Which months it covers
+              is still worked out from the joining date, not from this.
+            */}
+            <label className="block">
+              <span className={labelStyle}>Paid on (optional)</span>
+              <input
+                type="date"
+                value={data.paidOn}
+                max={new Date().toISOString().slice(0, 10)}
+                onChange={(e) => setD({ paidOn: e.target.value })}
+                className={`w-full rounded-[11px] border bg-card px-3.5 py-3 text-sm font-semibold text-foreground focus:border-primary focus:outline-none ${
+                  paidOnError(data) ? 'border-destructive' : 'border-border'
+                }`}
+              />
+              <p
+                className={`mt-1.5 text-[11.5px] font-medium leading-[1.5] ${paidOnError(data) ? 'text-destructive' : 'text-muted-foreground'}`}
+                role={paidOnError(data) ? 'alert' : undefined}
+              >
+                {paidOnError(data) ?? 'Leave blank for today. Months covered are counted from the joining date.'}
+              </p>
             </label>
 
             <label className="block">
