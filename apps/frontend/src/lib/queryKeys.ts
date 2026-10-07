@@ -48,6 +48,13 @@ export const queryKeys = {
 
     /** Generic one-off owner payments (NOT subscription payments) — admin-recorded charges like onboarding cost. */
     payments: () => ownerKey('payments'),
+
+    /**
+     * Money → Collections → Received: tenants paying the owner. Under the
+     * `['owner', 'money']` prefix so every payment-recording mutation that
+     * invalidates the money screens refreshes this list too.
+     */
+    rentReceived: (params: object) => ownerKey('money', 'rent-received', params),
   },
 
   notifications: () => ownerKey('notifications'),

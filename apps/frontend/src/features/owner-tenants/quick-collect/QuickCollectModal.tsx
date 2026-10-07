@@ -262,6 +262,8 @@ export function QuickCollectModal({ open, onClose, initialTenant }: QuickCollect
       queryClient.invalidateQueries({ queryKey: ['owner', 'tenant-dues'] });
       queryClient.invalidateQueries({ queryKey: queryKeys.payments.all(selectedTenant!.hostelId) });
       queryClient.invalidateQueries({ queryKey: queryKeys.portfolio.all() });
+      // Money → Collections → Received, so the payment just recorded is there.
+      queryClient.invalidateQueries({ queryKey: ['owner', 'money'] });
       setPasswordError(false);
       setStep('success');
     },

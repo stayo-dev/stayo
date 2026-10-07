@@ -20,6 +20,10 @@ import { CollectionsFilters, type CollectionsSort } from '../components/collecti
 import { PaymentClaimsCard } from '../components/collections/PaymentClaimsCard';
 import { PayoutStrip } from '../components/payouts/PayoutStrip';
 import { TenantDueRow } from '../components/collections/TenantDueRow';
+import { CollectionsViewToggle, type CollectionsView } from '../components/collections/CollectionsViewToggle';
+import { ReceivedPanel } from '../components/collections/ReceivedPanel';
+import { compactRupees } from '../components/collections/received';
+import { useReceivedPanel } from '../hooks/useReceivedPanel';
 import { ExpenseSearchBar } from '../components/expenses/ExpenseSearchBar';
 import { ExpenseSearchSummary } from '../components/expenses/ExpenseSearchSummary';
 import { WhereItWentSection } from '../components/expenses/WhereItWentSection';
@@ -112,6 +116,8 @@ export function MoneyPage() {
   const [expenseFilters, setExpenseFilters] = useState(EMPTY_EXPENSE_FILTERS);
   const [hostelFilter, setHostelFilter] = useState('all');
   const [collectionsSort, setCollectionsSort] = useState<CollectionsSort>('Most overdue');
+  // "Who still owes" and "who has paid" — the two halves of Collections.
+  const [collectionsView, setCollectionsView] = useState<CollectionsView>('due');
   // The period the Collections and Finance exports use. The Expenses export
   // has no such state — it takes the date chips already on screen.
   const [exportPreset, setExportPreset] = useState<PeriodPresetId>('this_fy');
@@ -156,6 +162,10 @@ export function MoneyPage() {
       setDateRange('custom');
     }
   }, [expenseFilters.startDate, expenseFilters.endDate]);
+
+  // Fetched whenever Collections is open, not only on Received: the toggle
+  // shows the received total so the owner has the answer before he taps.
+  const received = useReceivedPanel(effectiveHostelFilter, money.tab === 'collections');
 
   const overdueTenants = useMemo(() => {
     let list = real.overdueTenants;
@@ -414,18 +424,51 @@ export function MoneyPage() {
               callback, so nothing enters the ledger until he acts here — and a
               tenant he is about to chase may already have paid. */}
           <PaymentClaimsCard hostelId={effectiveHostelFilter} />
-          <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} onOpenExport={() => money.openExport('collections')} />
-          <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
-            {overdueTenants.length === 0 ? (
-              <p className="py-8 text-center text-sm text-muted-foreground">Nothing overdue here — nice work.</p>
-            ) : (
-              overdueTenants.map((t) => (
-                <div key={t.id} className="rounded-2xl border border-border bg-card px-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
-                  <TenantDueRow tenant={t} onCollect={() => money.openCollect(toQuickCollectTenant(t))} />
+          <CollectionsViewToggle
+            view={collectionsView}
+            onChange={setCollectionsView}
+            dueCount={overdueTenants.length}
+            receivedLabel={received.summary ? compactRupees(received.summary.total) : null}
+          />
+          {collectionsView === 'due' ? (
+            <>
+              <CollectionsFilters hostels={real.hostelOptions} hostelFilter={effectiveHostelFilter} onHostelFilterChange={setHostelFilter} sort={collectionsSort} onSortChange={setCollectionsSort} hideHostelFilter={isDesktop} onOpenExport={() => money.openExport('collections')} />
+              <div className={isDesktop && overdueTenants.length > 0 ? 'grid gap-2 lg:grid-cols-2' : 'flex flex-col gap-2'}>
+                {overdueTenants.length === 0 ? (
+                  <p className="py-8 text-center text-sm text-muted-foreground">Nothing overdue here — nice work.</p>
+                ) : (
+                  overdueTenants.map((t) => (
+                    <div key={t.id} className="rounded-2xl border border-border bg-card px-3.5 shadow-[0_1px_2px_rgba(40,30,20,0.04),0_6px_16px_rgba(40,30,20,0.05)]">
+                      <TenantDueRow tenant={t} onCollect={() => money.openCollect(toQuickCollectTenant(t))} />
+                    </div>
+                  ))
+                )}
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Same hostel chips as To collect, so the scope can change here
+                  too; the sort chips do not apply to a dated list. */}
+              {/* hostelOptions leads with "All Hostels", so > 2 means 2+ hostels. */}
+              {!isDesktop && real.hostelOptions.length > 2 && (
+                <div className="flex gap-1.5 overflow-x-auto pb-0.5">
+                  {real.hostelOptions.map((h: { id: string; name: string }) => (
+                    <button
+                      key={h.id}
+                      type="button"
+                      onClick={() => setHostelFilter(h.id)}
+                      className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 font-display text-xs font-semibold ${
+                        effectiveHostelFilter === h.id ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'
+                      }`}
+                    >
+                      {h.name}
+                    </button>
+                  ))}
                 </div>
-              ))
-            )}
-          </div>
+              )}
+              <ReceivedPanel state={received} isDesktop={isDesktop} onOpenExport={() => money.openExport('collections')} />
+            </>
+          )}
         </div>
       )}
 
