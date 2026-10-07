@@ -32,6 +32,18 @@ export interface NormalizedTenant {
   hostelName: string | null;
   lastPaymentDate: string | null;
   overdueDays: number;
+  /** Past-due balance only (`outstandingAmount` also includes what is not yet due). */
+  overdueAmount: number;
+  /** Distinct rent periods unpaid past their due date. */
+  overdueRentCount: number;
+  /** The tenant's latest invitation, as the list endpoint returns it; null when there is none. */
+  latestInvitation: {
+    status: string | null;
+    sent_at: string | null;
+    opened_at: string | null;
+    activation_started_at: string | null;
+    expires_at: string | null;
+  } | null;
   hasAgreement: boolean;
   depositStatus: string;
   securityDeposit: number;
@@ -62,6 +74,22 @@ function activeAllocation(tenant: Record<string, unknown>) {
     allocations[0] ??
     null
   );
+}
+
+function optionalString(v: unknown): string | null {
+  return v != null ? String(v) : null;
+}
+
+function normalizeInvitation(v: unknown): NormalizedTenant['latestInvitation'] {
+  if (!v || typeof v !== 'object') return null;
+  const inv = v as Record<string, unknown>;
+  return {
+    status: optionalString(inv.status),
+    sent_at: optionalString(inv.sent_at),
+    opened_at: optionalString(inv.opened_at),
+    activation_started_at: optionalString(inv.activation_started_at),
+    expires_at: optionalString(inv.expires_at),
+  };
 }
 
 export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
@@ -96,6 +124,9 @@ export function normalizeTenant(s: Record<string, unknown>): NormalizedTenant {
     hostelName: s.hostel_name != null ? String(s.hostel_name) : null,
     lastPaymentDate: s.last_payment_date != null ? String(s.last_payment_date) : null,
     overdueDays: s.overdue_days != null ? Number(s.overdue_days) : 0,
+    overdueAmount: Number(s.overdue_amount ?? 0),
+    overdueRentCount: Number(s.overdue_rent_count ?? 0),
+    latestInvitation: normalizeInvitation(s.latest_invitation),
     hasAgreement: Boolean(s.has_agreement),
     depositStatus: String(s.deposit_status ?? 'UNKNOWN'),
     securityDeposit: Number(s.security_deposit ?? s.advance_deposit ?? 0),

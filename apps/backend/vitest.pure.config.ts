@@ -35,6 +35,7 @@ export default defineConfig({
       'tests/settlement-planner.test.ts',
       'tests/settlement-planner-policy.test.ts',
       'tests/settlement-planner-overdue.test.ts',
+      'tests/overdue-breakdown.test.ts',
       'tests/settlement-planner-minimum-percentage.test.ts',
       // Money → Collections → Received: query parsing and row shaping.
       'tests/received-payments-rules.test.ts',

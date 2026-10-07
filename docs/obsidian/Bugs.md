@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## "Send new link" failed for any tenant with a recorded payment (2026-10-07)
+
+**Symptom.** An owner added a tenant with the "rent paid" toggle, the 7-day invite link expired, and resending returned `VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded`. The invitation could never be re-issued.
+
+**Cause.** `resendInvitation` applied the payment lock to every resend, but the lock only protects *term edits* (a resend deletes agreements and regenerates obligations). Re-issuing an expired link changes none of that.
+
+**Fix.** With payments present and no term changes, resend takes a link-only path (`refreshInvitationLink`): new token, fresh expiry, PENDING, re-notify. Term edits stay locked. See [[Changelog]], [[Business-Rules]].
+
 ## The Action queue said every overdue tenant was "1590d overdue" (2026-09-22)
 
 **Symptom.** Reported by the owner from Money → Overview. The Action queue showed Mohammed Afreed, Sayanisai and B Avinash Kumar each as **"1590d overdue"** — four and a half years — and the identical number on all three rows made it look like a hardcoded placeholder.

@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Search, Check, ChevronDown } from 'lucide-react';
 import type { useRealTenantList } from '../hooks/useRealTenantList';
+import { DUES_BUCKETS, INVITE_STAGES, type SubFilter, type TenantView } from '../tenantListFilters';
 
 interface TenantFiltersProps {
   filters: ReturnType<typeof useRealTenantList>;
@@ -13,11 +14,13 @@ interface TenantFiltersProps {
   hideHostelSelector?: boolean;
 }
 
-const CHIPS: { id: 'all' | 'overdue' | 'invited'; label: string }[] = [
+const VIEWS: { id: TenantView; label: string }[] = [
   { id: 'all', label: 'All' },
-  { id: 'overdue', label: 'Overdue' },
+  { id: 'unpaid', label: 'Overdue' },
   { id: 'invited', label: 'Invited' },
 ];
+
+const rupees = (n: number) => `₹${Math.round(n).toLocaleString('en-IN')}`;
 
 /** Hostel selector + search + filter chips, per Stayo App.dc.html's Tenants tab. */
 export function TenantFilters({ filters, hideHostelSelector }: TenantFiltersProps) {
@@ -68,22 +71,95 @@ export function TenantFilters({ filters, hideHostelSelector }: TenantFiltersProp
       </div>
 
       <div className="flex gap-1.5 overflow-x-auto pb-0.5">
-        {CHIPS.map((c) => {
-          const active = filters.chip === c.id;
+        {VIEWS.map((v) => {
+          const active = filters.view === v.id;
+          const count = filters.counts[v.id];
           return (
             <button
-              key={c.id}
+              key={v.id}
               type="button"
-              onClick={() => filters.setChip(c.id)}
+              aria-pressed={active}
+              onClick={() => filters.setFilter(v.id)}
               className={`flex-none whitespace-nowrap rounded-full px-3.5 py-1.5 font-display text-xs font-semibold ${
                 active ? 'bg-foreground text-background' : 'border border-border bg-card text-muted-foreground'
               }`}
             >
-              {c.label} {filters.counts[c.id]}
+              {v.label} {count}
             </button>
           );
         })}
       </div>
+
+      {filters.view === 'unpaid' && (
+        <SubFilterRow
+          label="How far behind"
+          selected={filters.sub}
+          onSelect={(sub) => filters.setFilter('unpaid', sub)}
+          anyCount={filters.counts.unpaid}
+          options={DUES_BUCKETS.map((b) => ({ id: b.id, label: b.label, count: filters.counts.dues[b.id] }))}
+          note={
+            filters.counts.unpaid > 0
+              ? `${filters.counts.unpaid} ${filters.counts.unpaid === 1 ? 'tenant owes' : 'tenants owe'} ${rupees(filters.counts.unpaidAmount)} past due · furthest behind first`
+              : 'Nobody is behind on rent.'
+          }
+        />
+      )}
+
+      {filters.view === 'invited' && (
+        <SubFilterRow
+          label="Invitation stage"
+          selected={filters.sub}
+          onSelect={(sub) => filters.setFilter('invited', sub)}
+          anyCount={filters.counts.invited}
+          options={INVITE_STAGES.map((st) => ({ id: st.id, label: st.label, count: filters.counts.stages[st.id] }))}
+          note={
+            INVITE_STAGES.find((st) => st.id === filters.sub)?.hint ??
+            (filters.counts.invited > 0 ? 'Grouped by where each tenant is stuck, the ones needing you first.' : 'No pending invitations.')
+          }
+        />
+      )}
+    </div>
+  );
+}
+
+interface SubFilterRowProps {
+  label: string;
+  selected: SubFilter;
+  onSelect: (sub: SubFilter) => void;
+  anyCount: number;
+  options: { id: SubFilter; label: string; count: number }[];
+  note: string;
+}
+
+/**
+ * The drill-down under a view. Empty buckets are hidden so the row only
+ * offers choices that return someone, except the selected one, which stays
+ * visible so it can be switched off.
+ */
+function SubFilterRow({ label, selected, onSelect, anyCount, options, note }: SubFilterRowProps) {
+  const visible = options.filter((o) => o.count > 0 || o.id === selected);
+  return (
+    <div className="-mt-1 flex flex-col gap-2 rounded-[14px] border border-border bg-card/60 p-2.5">
+      <div role="group" aria-label={label} className="flex gap-1.5 overflow-x-auto">
+        {[{ id: 'any' as SubFilter, label: 'All', count: anyCount }, ...visible].map((o) => {
+          const active = selected === o.id;
+          return (
+            <button
+              key={o.id}
+              type="button"
+              aria-pressed={active}
+              onClick={() => onSelect(o.id)}
+              className={`flex flex-none items-center gap-1.5 whitespace-nowrap rounded-full border px-3 py-1 text-[11.5px] font-semibold ${
+                active ? 'border-primary/40 bg-primary/10 text-primary' : 'border-border bg-card text-muted-foreground'
+              }`}
+            >
+              {o.label}
+              <span className={`tabular-nums ${active ? 'text-primary' : 'text-foreground/70'}`}>{o.count}</span>
+            </button>
+          );
+        })}
+      </div>
+      <p className="px-1 text-[11.5px] leading-snug text-muted-foreground">{note}</p>
     </div>
   );
 }
