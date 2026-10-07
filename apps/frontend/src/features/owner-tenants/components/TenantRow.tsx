@@ -2,6 +2,7 @@ import { StatusPill, type StatusTone } from '@shared/ui-patterns/StatusPill';
 import type { MockTenant } from '@shared/mocks/tenants';
 import { TenantAvatar } from '@shared/ui/TenantAvatar';
 import { acceptanceBadge } from '../accessMode';
+import { isUnpaid, monthsUnpaidLabel } from '../tenantListFilters';
 import { TenantQuickActions } from './TenantQuickActions';
 
 const TONE_BY_STATUS: Record<MockTenant['status'], StatusTone> = {
@@ -28,7 +29,10 @@ export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProp
   // "Awaiting acceptance" (new model) or "Not on app" (legacy) — a fact about
   // reach, not a tenancy status, so kept off the status pill and beside the
   // room/rent line instead.
-  const accessLabel = acceptanceBadge(tenant);
+  // An invited row's status pill already names its invitation stage, so a
+  // second pill here only repeated it and squeezed the room line to one letter.
+  const accessLabel = tenant.status === 'invited' ? null : acceptanceBadge(tenant);
+  const behindLabel = isUnpaid(tenant) ? monthsUnpaidLabel(tenant) : null;
 
   return (
     /* The card holds the row *and* the contact strip, so the strip's buttons
@@ -84,6 +88,7 @@ export function TenantRow({ tenant, onClick, showHostel, active }: TenantRowProp
             ₹{tenant.outstanding.toLocaleString('en-IN')}
           </span>
         )}
+        {behindLabel && <span className="text-[10.5px] font-semibold text-destructive/80">{behindLabel}</span>}
       </div>
     </button>
     <TenantQuickActions tenantId={tenant.id} name={tenant.name} phone={tenant.phone} outstanding={tenant.outstanding} />

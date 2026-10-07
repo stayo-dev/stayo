@@ -10,6 +10,7 @@ import { assertGuardianPhoneNotTenant } from "../../../lib/utils/phone-utils";
 import { frontendUrl } from "../../../lib/config/domains";
 
 import { allocationReconciliationService } from "../../../lib/services/allocation-reconciliation-service";
+import { computeOverdueBreakdown } from "../payments/overdue-breakdown";
 import { financialService } from "../../../src/services/payments/financial-service";
 import { financialReadModelService } from "../../../src/services/payments/financial-read-model-service";
 import { obligationEngine } from "../../../src/services/payments/obligation-engine";
@@ -294,7 +295,12 @@ export class TenantService {
           tenant_invitations: {
             orderBy: { created_at: "desc" },
             take: 1,
-            select: { name: true, email: true, phone: true, status: true },
+            // The stage fields feed the owner list's invitation filters
+            // (not opened / opened / creating account / link expired).
+            select: {
+              name: true, email: true, phone: true, status: true,
+              created_at: true, opened_at: true, activation_started_at: true, expires_at: true,
+            },
           },
           room_allocations: {
             where: { is_active: true, end_date: null },
@@ -332,6 +338,8 @@ export class TenantService {
       const tenant = this.withLegacyTenantRelations(s);
       if (!tenant) return null;
       const summary = financialService.getTenantPaymentSummary(tenant.id, tenant.obligations ?? []);
+      const overdue = computeOverdueBreakdown(tenant.obligations ?? []);
+      const latestInvitation = s.tenant_invitations?.[0] ?? null;
       const firstAllocation = tenant.room_allocations?.[0];
       const firstObligation = (tenant.obligations ?? [])[0];
 
@@ -400,6 +408,17 @@ export class TenantService {
         hostel_name: tenant.hostels?.name ?? null,
         last_payment_date,
         overdue_days,
+        overdue_amount: overdue.overdue_amount,
+        overdue_rent_count: overdue.overdue_rent_count,
+        latest_invitation: latestInvitation
+          ? {
+              status: latestInvitation.status,
+              sent_at: latestInvitation.created_at,
+              opened_at: latestInvitation.opened_at,
+              activation_started_at: latestInvitation.activation_started_at,
+              expires_at: latestInvitation.expires_at,
+            }
+          : null,
         has_agreement,
         deposit_status,
         score: tenant.tenant_behavior_scores?.score ?? null,

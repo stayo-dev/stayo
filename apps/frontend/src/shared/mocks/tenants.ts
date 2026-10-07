@@ -74,6 +74,14 @@ export interface MockTenant {
    * "1590d overdue". Never turn this into months without converting.
    */
   overdueDays: number;
+  /** Payment status is OVERDUE (something is past its due date). Independent of invitation state. */
+  paymentOverdue?: boolean;
+  /** The past-due part of `outstanding` — from the API's `overdue_amount`. */
+  overdueAmount?: number;
+  /** Distinct rent periods unpaid past their due date — the API's `overdue_rent_count`. Months, for a monthly tenant. */
+  overdueRentCount?: number;
+  /** Where an invited tenant is in the invitation funnel, from their latest invitation. */
+  inviteStage?: 'expired' | 'not-opened' | 'opened' | 'signing-up' | 'accepting' | 'no-link';
   joinedDate: string;
   guardian?: MockGuardian;
   agreementStatus: string;

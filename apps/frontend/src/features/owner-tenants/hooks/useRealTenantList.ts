@@ -1,10 +1,19 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { tenantService } from '@features/tenants/api';
 import { normalizeTenants, getInitials, type NormalizedTenant } from '@features/tenants/utils/normalize';
 import type { MockTenant } from '@shared/mocks/tenants';
-import type { TenantFilterChip } from '../types';
+import { useSearchParams } from 'react-router-dom';
+import {
+  countTenants,
+  filterTenants,
+  inviteStageLabel,
+  inviteStageOf,
+  parseFilterParams,
+  type SubFilter,
+  type TenantView,
+} from '../tenantListFilters';
 
 export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelName: string): MockTenant {
   // A tenancy is ACTIVE from the moment it's invited (see createInvitation), so
@@ -21,9 +30,15 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
   const hasDues = !isInvited && !isOverdue && t.outstandingAmount > 0;
   let status: MockTenant['status'];
   let statusLabel: string;
+  // Every invited tenant has a stage; `no-link` covers one added without a link.
+  const inviteStage = isInvited ? inviteStageOf(t.latestInvitation) : undefined;
   if (isInvited) {
     status = 'invited';
-    statusLabel = isAwaitingAcceptance ? 'Awaiting acceptance' : 'Invited';
+    // The stage says more than "Invited" ever did: is the link dead, unopened,
+    // half-way through sign-up? A legacy row with no link keeps the old label.
+    statusLabel = inviteStage && inviteStage !== 'no-link'
+      ? inviteStageLabel(inviteStage)
+      : isAwaitingAcceptance ? 'Awaiting acceptance' : 'Invited';
   } else if (isOverdue) {
     status = 'overdue';
     statusLabel = 'Overdue';
@@ -56,6 +71,10 @@ export function toTenantListItem(t: NormalizedTenant, hostelId: string, hostelNa
     // Days in, days out. This line used to rename the API's `overdue_days`
     // to `overdueMonths`, and the row downstream multiplied it by 30.
     overdueDays: t.overdueDays,
+    paymentOverdue: t.paymentStatus.toUpperCase() === 'OVERDUE',
+    overdueAmount: t.overdueAmount,
+    overdueRentCount: t.overdueRentCount,
+    inviteStage,
     joinedDate: t.joinDate ?? '',
     agreementStatus: t.hasAgreement ? 'Signed' : 'Pending',
     kycStatus: t.documentVerified ? 'Verified' : 'Pending',
@@ -95,7 +114,26 @@ export function useRealTenantList(hostelScopeOverride?: string) {
   const hostelId = hostelScopeOverride ?? localHostelId;
   const setHostelId = setLocalHostelId;
   const [search, setSearch] = useState('');
-  const [chip, setChip] = useState<TenantFilterChip>('all');
+  // Filter lives in the URL so Back from a tenant's profile lands on the same
+  // filtered list rather than resetting to All.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const { view, sub } = parseFilterParams(searchParams);
+  const setFilter = useCallback(
+    (nextView: TenantView, nextSub: SubFilter = 'any') => {
+      setSearchParams(
+        (prev) => {
+          const next = new URLSearchParams(prev);
+          if (nextView === 'all') next.delete('view');
+          else next.set('view', nextView);
+          if (nextSub === 'any') next.delete('show');
+          else next.set('show', nextSub);
+          return next;
+        },
+        { replace: true },
+      );
+    },
+    [setSearchParams],
+  );
 
   const hostelOptions = useMemo(
     () => [{ id: 'all', name: 'All Hostels' }, ...session.hostels.map((h) => ({ id: h.id, name: h.name }))],
@@ -125,27 +163,9 @@ export function useRealTenantList(hostelScopeOverride?: string) {
 
   const allTenants = listQuery.data ?? [];
 
-  const counts = useMemo(
-    () => ({
-      all: allTenants.length,
-      overdue: allTenants.filter((t) => t.status === 'overdue').length,
-      invited: allTenants.filter((t) => t.status === 'invited').length,
-    }),
-    [allTenants],
-  );
+  const counts = useMemo(() => countTenants(allTenants), [allTenants]);
 
-  const tenants = useMemo(() => {
-    let list = allTenants;
-    if (chip === 'overdue') list = list.filter((t) => t.status === 'overdue');
-    if (chip === 'invited') list = list.filter((t) => t.status === 'invited');
-    const q = search.trim().toLowerCase();
-    if (q) {
-      list = list.filter(
-        (t) => t.name.toLowerCase().includes(q) || t.room.toLowerCase().includes(q) || t.phone.replace(/\s/g, '').includes(q.replace(/\s/g, '')),
-      );
-    }
-    return list;
-  }, [allTenants, chip, search]);
+  const tenants = useMemo(() => filterTenants(allTenants, { view, sub, search }), [allTenants, view, sub, search]);
 
   const selectedHostelName = hostelOptions.find((h) => h.id === hostelId)?.name ?? 'All Hostels';
 
@@ -156,8 +176,9 @@ export function useRealTenantList(hostelScopeOverride?: string) {
     selectedHostelName,
     search,
     setSearch,
-    chip,
-    setChip,
+    view,
+    sub,
+    setFilter,
     counts,
     tenants,
     isLoading: session.isLoading || listQuery.isLoading,

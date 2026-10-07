@@ -6,8 +6,6 @@
 
 import type { PaymentMode } from '@shared/mocks/payments';
 
-export type TenantFilterChip = 'all' | 'overdue' | 'invited';
-
 export type TenantDetailTab = 'charges' | 'activity' | 'documents' | 'stay';
 
 export interface InviteWizardData {
