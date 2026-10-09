@@ -17,11 +17,15 @@ import { ClerkAuthProvider } from '@/app/providers/ClerkAuthProvider';
  * SDK is paid for by people who have a reason to load it.
  *
  * It still no-ops entirely when `VITE_CLERK_PUBLISHABLE_KEY` is unset.
+ *
+ * `clerkRestore="provider"`: the `ClerkProvider` below owns loading Clerk, so
+ * `AuthProvider` waits for it before deciding anyone is signed out, instead of
+ * starting a second load of its own (see `lib/auth/sessionRestore.ts`).
  */
 export function ProtectedAppProviders({ children }: PropsWithChildren) {
   return (
     <QueryClientProvider client={queryClient}>
-      <AuthProvider>
+      <AuthProvider clerkRestore="provider">
         <ClerkAuthProvider>{children}</ClerkAuthProvider>
         <Toaster position="top-right" expand visibleToasts={4} closeButton richColors />
       </AuthProvider>

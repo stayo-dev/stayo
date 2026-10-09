@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Signed-in users asked to log in again after the homepage, a refresh or a new tab (2026-10-09)
+
+**Symptom.** An owner signed in on the homepage was handed to `/owner/home` and immediately shown `/login`; signing in a second time worked. Refreshing any protected page, or opening one in a new tab, did the same. Tenants were worse: every reload of `/tenant/*` signed them out.
+
+**Cause.** A regression from [[Decisions#ADR-204|ADR-204]] (2026-09-15). Password sign-in used to leave a Supabase session in localStorage, which `AuthProvider` found instantly on any page load. Since ADR-204 it leaves only a Clerk session, and Clerk's SDK loads asynchronously. `AuthProvider` decided "signed out" as soon as Supabase reported nothing — `hasClerkSession()` read an empty `window.Clerk` — and attached its Clerk listener while `window.Clerk` did not exist, so `subscribeToClerkSession()` returned a no-op and the session arriving later was never heard. `ProtectedRoute` then redirected to `/login`. The homepage hand-off (`window.location.assign`, added 2026-09-18) is a full page load, which is why that path always hit it; `/owners` and `/login` navigate in-app with Clerk already loaded, which is why the second sign-in worked. The tenant shell mounts no `ClerkProvider` at all, so Clerk never loaded there. The same race had already been fixed once, for `/auth/callback` (entry below, 2026-09-09) — but not for session restore.
+
+**Fix.** `lib/auth/sessionRestore.ts`: three outcomes (`wait`, `hydrate`, `signed-out`), `wait` while Clerk is loading; the Clerk listener attached only after Clerk loads, exactly once, and removed on unmount; a 10 s timeout and load failures fail closed to signed-out; overlapping `/auth/me` results can no longer overwrite a newer sign-in or sign-out. Owner/admin shells wait for their `ClerkProvider`; tenant, `/payment-return`, `/stay` and `/onboarding` load Clerk themselves; public pages load it only when Clerk's `__client_uat` cookie is set. `/login` now also sends an already-signed-in tenant on (to `/tenant/home`, or `/discover` without a tenancy). Route guards are unchanged and still ignore Clerk — roles come only from `GET /auth/me`.
+
+**Also found:** `clerkBundleIsolation.test.ts` silently skipped every multi-line `import { … } from` (106 files), so the "no Clerk on the landing page" guard was under-checking. Fixed; no hidden leak surfaced.
+
+**Verified** by 72 new node tests. **Not verified** in a browser or against production Clerk — in particular, that `__client_uat` is readable on the production domain.
+
+**See:** [[Frontend]] · [[Changelog]]
+
 ## Any owner could cancel another owner's obligation (2026-10-09)
 
 **Symptom.** Found by a read-only code audit, not reported in use. `POST /api/payments/obligations/:id/cancel` checked only `role === "OWNER"`, and `obligationEngine.cancelObligationInTx` never compared the obligation to the caller. Any owner (owner signup is public) holding another owner's obligation id could void it; the identity step-up only re-checked the *caller's* own password. Waive did compare `owner_id`, but as `ob.owner_id && ob.owner_id !== actorId`, so a NULL `owner_id` (the column is nullable, no FK) passed for anyone.
