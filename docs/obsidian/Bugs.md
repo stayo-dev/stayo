@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Any owner could cancel another owner's obligation (2026-10-09)
+
+**Symptom.** Found by a read-only code audit, not reported in use. `POST /api/payments/obligations/:id/cancel` checked only `role === "OWNER"`, and `obligationEngine.cancelObligationInTx` never compared the obligation to the caller. Any owner (owner signup is public) holding another owner's obligation id could void it; the identity step-up only re-checked the *caller's* own password. Waive did compare `owner_id`, but as `ob.owner_id && ob.owner_id !== actorId`, so a NULL `owner_id` (the column is nullable, no FK) passed for anyone.
+
+**Cause.** Ownership is checked route by route, and each route did it differently: `record-offline` compares, `history` compares, waive compared leniently, cancel not at all.
+
+**Fix.** Both engine methods take an `ownerScope`, checked against the row locked `FOR UPDATE` inside the transaction, before any status check. The row's `owner_id` must equal the caller (NULL never matches) **and** its hostel's `hostels.owner_id` must too. A foreign obligation throws the same `NOT_FOUND` as a missing one (404, identical body), so the endpoint does not reveal which ids exist. The routes also require `owner_id === id` for an OWNER session, the `resolveOwnerScope` rule. System workflows (move-out, invitation expiry, allocation reconciliation, `bulkWaiveInTx`) pass no scope and are unchanged.
+
+**Verified** by `tests/obligation-owner-authorization.test.ts` (19 pure tests; 10 of them fail against the pre-fix code). **Not verified** against a real database or in a browser. **Open question:** an owner can no longer cancel or waive their *own* obligation if its `owner_id` is NULL. How many such rows exist in production is unknown / needs clarification.
+
+**See:** [[APIs]] · [[Business-Rules]] · [[Changelog]]
+
 ## "Send new link" failed for any tenant with a recorded payment (2026-10-07)
 
 **Symptom.** An owner added a tenant with the "rent paid" toggle, the 7-day invite link expired, and resending returned `VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded`. The invitation could never be re-issued.
