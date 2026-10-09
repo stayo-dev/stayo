@@ -207,6 +207,9 @@ export default defineConfig({
       // Which obligations bind to a room allocation — the rule behind a real
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
+      // Owner-initiated cancel/waive may touch only the caller's own
+      // obligations (2026-10-09 audit P1-1). Mocks `@/lib/db`.
+      'tests/obligation-owner-authorization.test.ts',
       // Who is holding which bed. The mock supplies allocation, reservation
       // and invitation rows as plain arrays — no client, no database.
       'tests/room-capacity-service.test.ts',
