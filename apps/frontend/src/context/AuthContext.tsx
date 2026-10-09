@@ -1,9 +1,19 @@
-import React, { createContext, useState, useContext, useEffect } from 'react';
+import React, { createContext, useState, useContext, useEffect, useRef } from 'react';
 import { useNavigate, useLocation } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import api from '@lib/api-client';
 import { supabase } from '@lib/supabaseClient';
-import { hasClerkSession, subscribeToClerkSession, pickSessionSource } from '@lib/auth/clerkBrowser';
+import { hasClerkSession, isClerkLoaded, subscribeToClerkSession, waitForClerkLoaded } from '@lib/auth/clerkBrowser';
+import { readClerkConfig } from '@lib/auth/clerkConfig';
+import {
+  clerkRestoreModeForPath,
+  hasClerkSignedInHint,
+  initialClerkPhase,
+  signedInLoginRedirect,
+  startSessionRestore,
+  type ClerkRestoreMode,
+  type SessionRestoreHandle,
+} from '@lib/auth/sessionRestore';
 import { establishSession, clearLocalSessions, SessionEstablishmentError } from '@lib/auth/establishSession';
 import { queryClient } from '@lib/queryClient';
 import { useIdleSessionTimeout } from '@shared/hooks/useIdleSessionTimeout';
@@ -165,12 +175,26 @@ function buildAuthUser(data: any): AuthUser {
   };
 }
 
-export function AuthProvider({ children }: { children: React.ReactNode }) {
+/**
+ * `clerkRestore` says how this shell gets Clerk loaded to restore a session
+ * (see `sessionRestore.ts`). Shells that mount `ClerkProvider` pass
+ * `"provider"`; everywhere else it follows the path — signed-in areas load
+ * Clerk, public pages only when Clerk's cookie says someone is signed in.
+ */
+export function AuthProvider({
+  children,
+  clerkRestore,
+}: {
+  children: React.ReactNode;
+  clerkRestore?: ClerkRestoreMode;
+}) {
   const [user, setUser] = useState<AuthUser | null>(null);
   const [loading, setLoading] = useState(true);
   const [expiredMessage, setExpiredMessage] = useState<string | null>(null);
   const location = useLocation();
   const navigate = useNavigate();
+  const restoreRef = useRef<SessionRestoreHandle | null>(null);
+  const justSignedInRef = useRef(false);
 
   const logout = async (redirect = true, options: LogoutOptions = {}) => {
     // Before the request, not after: logout revokes the session server-side, so
@@ -185,6 +209,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     // Both providers, locally: Clerk's session (the backend has already
     // revoked it server-side) and any pre-Clerk Supabase one.
     await clearLocalSessions();
+    restoreRef.current?.supersede();
     setUser(null);
     queryClient.clear();
     clearSessionScopedStorage(options);
@@ -205,98 +230,59 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   };
 
   useEffect(() => {
-    const publicPaths = ['/login'];
-    if (user && publicPaths.includes(location.pathname)) {
-      const role = user.role?.toLowerCase();
-      if (role === 'admin' || role === 'manager') {
-        navigate('/admin', { replace: true });
-      } else if (role === 'owner') {
-        navigate('/owner/home', { replace: true });
-      }
-    }
+    if (!user || location.pathname !== '/login') return;
+    const destination = signedInLoginRedirect({
+      role: user.role,
+      tenantId: user.tenant_id,
+      justSignedIn: justSignedInRef.current,
+    });
+    if (destination) navigate(destination, { replace: true });
   }, [user, location.pathname, navigate]);
 
-  // ADR-031: Supabase's client owns session persistence/refresh — this
-  // effect only reacts to it. `onAuthStateChange` fires immediately once
-  // with the current session (INITIAL_SESSION) and again on every
-  // SIGNED_IN/TOKEN_REFRESHED/SIGNED_OUT. Each time a session appears, the
-  // app-specific bits (role, owner_id, tenant_id, name — Supabase's own
-  // session object knows none of this) are fetched from GET /auth/me.
+  // Session restore (ADR-204). Supabase's client still owns pre-Clerk
+  // sessions; Clerk owns every sign-in since. Nobody is declared signed out
+  // while Clerk may still produce a session — see `lib/auth/sessionRestore.ts`
+  // for the rule, the listener lifecycle and the failure handling. Each time a
+  // session is found, role and permissions come from GET /auth/me.
   useEffect(() => {
-    let mounted = true;
+    const config = readClerkConfig();
+    const mode = clerkRestore ?? clerkRestoreModeForPath(location.pathname);
 
-    const hydrate = async () => {
-      try {
-        const response = await api.get('/auth/me');
-        if (mounted) setUser(buildAuthUser(response.data));
-      } catch {
-        if (mounted) setUser(null);
-      }
-    };
-
-    /**
-     * ADR-176 Phase 3 — dual session authority.
-     *
-     * `hydrate()` is provider-agnostic: `api-client` attaches whichever token
-     * exists (Supabase first, Clerk second), and `GET /auth/me` accepts both
-     * and returns the same shape. So the only thing that changes here is *when*
-     * to re-hydrate — a Clerk sign-in must wake this up the way a Supabase one
-     * already does, or someone who signed in with Google would sit on a stale
-     * signed-out state until a full reload.
-     *
-     * Clerk is read through `window.Clerk` rather than its hooks because
-     * `AuthProvider` sits above `ClerkAuthProvider` on every shell; inverting
-     * that would drag the SDK onto the public landing page (Phase 2.6).
-     */
-    const resolve = (hasSupabaseSession: boolean) => {
-      const source = pickSessionSource({
-        hasSupabaseSession,
-        hasClerkSession: hasClerkSession(),
-      });
-
-      if (source === 'none') {
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-
-      hydrate().finally(() => {
-        if (mounted) setLoading(false);
-      });
-    };
-
-    const { data: subscription } = supabase.auth.onAuthStateChange((event, session) => {
-      // An explicit Supabase sign-out still clears everything: during the
-      // migration a browser holds at most one of these, never both.
-      if (event === 'SIGNED_OUT') {
-        // Dropping a leftover Supabase session after a Clerk sign-in fires
-        // this too (establishSession does exactly that) — that is not a
-        // sign-out of the person, who is signed in with Clerk.
-        if (hasClerkSession()) {
-          resolve(false);
-          return;
-        }
-        setUser(null);
-        setLoading(false);
-        return;
-      }
-      resolve(Boolean(session));
+    const handle = startSessionRestore<AuthUser>({
+      clerkPhase: initialClerkPhase({
+        configured: config.configured,
+        mode,
+        alreadyLoaded: isClerkLoaded(),
+        hasSignedInHint: hasClerkSignedInHint(typeof document === 'undefined' ? '' : document.cookie),
+      }),
+      loadClerk: async (signal) => {
+        if (mode === 'provider') return waitForClerkLoaded(signal);
+        const { loadClerk } = await import('@lib/auth/clerkLoader');
+        await loadClerk();
+      },
+      hasClerkSession,
+      subscribeClerk: subscribeToClerkSession,
+      subscribeSupabase: (onChange) => {
+        const { data } = supabase.auth.onAuthStateChange((event, session) => onChange(event, Boolean(session)));
+        return () => data.subscription.unsubscribe();
+      },
+      getSupabaseSession: async () => {
+        const { data } = await supabase.auth.getSession();
+        return Boolean(data.session);
+      },
+      fetchProfile: async () => buildAuthUser((await api.get('/auth/me')).data),
+      setUser,
+      settle: () => setLoading(false),
     });
-
-    // Clerk's session can appear after this effect runs (its SDK loads
-    // asynchronously, and a Google redirect lands with the session already
-    // established). A no-op when Clerk was never mounted.
-    const unsubscribeClerk = subscribeToClerkSession(async () => {
-      if (!mounted) return;
-      const { data } = await supabase.auth.getSession();
-      resolve(Boolean(data.session));
-    });
+    restoreRef.current = handle;
 
     return () => {
-      mounted = false;
-      subscription.subscription.unsubscribe();
-      unsubscribeClerk();
+      handle.dispose();
+      if (restoreRef.current === handle) restoreRef.current = null;
     };
+    // Mount-only, as before: the mode is fixed by the shell and the path it
+    // was entered on.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   const login = async (email: string, password: string): Promise<AuthUser> => {
@@ -322,6 +308,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       // listener above will also fire and re-hydrate — harmless, one extra
       // GET.
       const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
+      justSignedInRef.current = true;
+      restoreRef.current?.supersede();
       setUser(userData);
       return userData;
     } catch (error: unknown) {
@@ -369,6 +357,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       await establishSession(response.data);
 
       const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
+      justSignedInRef.current = true;
+      restoreRef.current?.supersede();
       setUser(userData);
       return userData;
     } catch (error: unknown) {
@@ -410,6 +400,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         'You were signed out because your secure session ended. Please sign in again.';
       setExpiredMessage(message);
       persistSessionExpiryNotice(message, detail?.reason || 'expired');
+      restoreRef.current?.supersede();
       setUser(null);
       queryClient.clear();
       clearSessionScopedStorage({ preserveSessionNotice: true });

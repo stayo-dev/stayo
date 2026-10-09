@@ -1,11 +1,14 @@
 /**
- * Route authorisation while Supabase and Clerk coexist (ADR-176, Phase 2).
+ * Route authorisation (ADR-176, ADR-204).
  *
- * The centrepiece is the matrix in "Clerk cannot influence authorisation": it
- * asserts that every Clerk state produces an identical decision. That is the
- * mechanical guarantee that adding Clerk to the app in this phase changed
- * nobody's access — and the test Phase 3 must deliberately rewrite when Clerk
- * sessions start carrying a profile.
+ * The centrepiece is the matrix in "Clerk state never authorises": every Clerk
+ * state produces an identical decision. Clerk proves who someone is; their
+ * role comes only from `profiles`, through `AuthContext` and `GET /auth/me`.
+ *
+ * Waiting for Clerk is not this function's job. `AuthContext` keeps
+ * `profileLoading` true until Clerk has had its chance to restore a session
+ * (`sessionRestore.ts`), and it has a timeout — a guard that waited on Clerk's
+ * own `isLoaded` instead would hang forever whenever Clerk failed to load.
  */
 
 import { describe, expect, it } from 'vitest';
@@ -70,7 +73,7 @@ describe('decideRouteAccess — the pre-Clerk behaviour, unchanged', () => {
   });
 });
 
-describe('Clerk cannot influence authorisation in Phase 2', () => {
+describe('Clerk state never authorises', () => {
   const scenarios = [
     { name: 'loading', input: { profileLoading: true, profile: null }, expected: 'loading' },
     { name: 'no profile', input: { profileLoading: false, profile: null }, expected: 'redirect-login' },
@@ -87,8 +90,8 @@ describe('Clerk cannot influence authorisation in Phase 2', () => {
   }
 
   it('a Clerk session never substitutes for a profile', () => {
-    // The escalation this whole phase has to avoid: a fresh Clerk signup, with
-    // no row in `profiles` and therefore no role, reaching a dashboard.
+    // The escalation to avoid: a fresh Clerk signup, with no row in
+    // `profiles` and therefore no role, reaching a dashboard.
     expect(
       decideRouteAccess({
         profileLoading: false,
@@ -97,6 +100,15 @@ describe('Clerk cannot influence authorisation in Phase 2', () => {
         allowedRoles: ['OWNER'],
       }),
     ).toBe('redirect-login');
+  });
+
+  it('while the profile session is still being restored, nobody is sent to /login', () => {
+    // The double-login regression: AuthContext reported "done, no profile"
+    // before Clerk had loaded. It now reports loading until Clerk settles, and
+    // this is the state the guard sees in that window.
+    for (const [, clerk] of CLERK_STATES) {
+      expect(decideRouteAccess({ profileLoading: true, profile: null, clerk, allowedRoles: ['OWNER'] })).toBe('loading');
+    }
   });
 });
 

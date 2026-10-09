@@ -35,7 +35,10 @@ const ALIASES: Record<string, string> = {
 /** Static `import ... from '<spec>'` and `export ... from '<spec>'`. Not `import(...)`. */
 function staticSpecifiers(source: string): string[] {
   const specs: string[] = [];
-  const re = /(?:^|\n)\s*(?:import|export)\b(?![^'"\n]*\()[^'"\n]*?from\s*['"]([^'"]+)['"]/g;
+  // The clause may span lines (`import {\n  a,\n  b,\n} from '...'`); the
+  // previous single-line pattern silently skipped every such import. Parens
+  // are excluded, so a dynamic `import('...')` never matches.
+  const re = /(?:^|\n)\s*(?:import|export)\s+(?:type\s+)?[^;'"()]*?\s*from\s*['"]([^'"]+)['"]/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(source))) specs.push(m[1]);
   // Bare side-effect imports: `import './styles.css'`
@@ -117,6 +120,17 @@ describe('the public entry does not statically reach Clerk', () => {
     const reachable = [...graph.files].map((f) => path.relative(SRC, f));
     expect(reachable).not.toContain('app/providers/ClerkRuntime.tsx');
     expect(reachable).not.toContain('app/providers/ClerkAuthProvider.tsx');
+  });
+
+  it('never statically reaches the on-demand Clerk loaders', () => {
+    // Session restore (AuthContext) and ticket redemption load Clerk through
+    // `clerkLoader`, behind `import()`. A static edge would put the loader —
+    // and its dynamic import of the SDK script loader — on the landing page.
+    const reachable = [...graph.files].map((f) => path.relative(SRC, f));
+    expect(reachable).toContain('lib/auth/sessionRestore.ts');
+    expect(reachable).not.toContain('lib/auth/clerkLoader.ts');
+    expect(reachable).not.toContain('lib/auth/clerkTicket.ts');
+    expect(graph.packages.has('@clerk/shared/loadClerkJsScript')).toBe(false);
   });
 
   it('may reach clerkConfig — but only because it imports nothing from Clerk', () => {

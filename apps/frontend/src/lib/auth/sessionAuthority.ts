@@ -1,25 +1,25 @@
 /**
- * Who is allowed onto a protected route, while two auth providers coexist
- * (ADR-176, Phase 2).
+ * Who is allowed onto a protected route (ADR-176, ADR-204).
  *
  * The rule this module exists to hold: **a Clerk session, on its own, authorises
- * nothing.** Business roles (`OWNER`, `TENANT`, `ADMIN`, `WARDEN`) live in our
- * database and reach the browser only through `AuthContext`, which is still
- * backed by Supabase. Until the backend accepts Clerk tokens and returns a
- * profile for them (Phase 3), somebody signed into Clerk is *identified* but not
- * *authorised* — and treating those as the same thing would let a brand-new
- * Clerk signup walk into an owner dashboard.
+ * nothing.** Clerk is the only authentication provider (ADR-204), but business
+ * roles (`OWNER`, `TENANT`, `ADMIN`, `MANAGER`) live in our database and reach
+ * the browser only through `AuthContext` (`GET /auth/me`). Somebody signed into
+ * Clerk is *identified*, not *authorised* — treating those as the same thing
+ * would let a brand-new Clerk signup walk into an owner dashboard.
  *
- * `clerk` is therefore accepted and deliberately ignored by `decideRouteAccess`.
- * That is not dead weight: it is the seam Phase 3 changes, and
- * `sessionAuthority.test.ts` asserts across a full matrix that varying the Clerk
- * state never changes a single decision. If that test ever fails, authorisation
- * has started depending on the provider we have not finished migrating to.
+ * `clerk` is therefore accepted and deliberately ignored by `decideRouteAccess`,
+ * and `sessionAuthority.test.ts` asserts across a full matrix that varying the
+ * Clerk state never changes a single decision.
+ *
+ * Waiting for Clerk to load is `AuthContext`'s job, not this one's: it holds
+ * `profileLoading` true until Clerk has had its chance to restore a session
+ * (`sessionRestore.ts`), with a timeout so a Clerk outage cannot hang the page.
  *
  * PURE — plain arguments, no React, no I/O.
  */
 
-/** The profile-backed session. Today: Supabase. Phase 3: either provider. */
+/** The profile-backed session, from `GET /auth/me` (either provider's token). */
 export interface ProfileSession {
   role: string;
 }
@@ -39,7 +39,7 @@ export interface RouteAccessInput {
   /** `AuthContext`'s `loading` — the profile session is still being resolved. */
   profileLoading: boolean;
   profile: ProfileSession | null;
-  /** Present but unused for the decision in Phase 2. See the module header. */
+  /** Present but deliberately unused for the decision. See the module header. */
   clerk: ClerkSessionState | null;
   allowedRoles?: readonly string[];
 }
