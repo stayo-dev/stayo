@@ -46,7 +46,6 @@ const WITH_DETAILS = {
   room_id: "room-101",
   monthly_rent: 8500,
   joining_date: "2026-10-01",
-  date_of_birth: "15/08/2004",
   gender: "male",
   profile_type: "Student",
   guardian_name: "Ramesh Reddy",
@@ -119,7 +118,6 @@ describe("confirm writes the owner's details onto the new tenancy", () => {
     const { where, data } = mockPrisma.tenants.update.mock.calls[0][0];
     expect(where).toEqual({ id: "tenant-1" });
     expect(data).toEqual({
-      date_of_birth: new Date("2004-08-15T00:00:00.000Z"),
       gender: "Male",
       profile_type: "STUDENT",
       guardian_name: "Ramesh Reddy",
@@ -134,7 +132,7 @@ describe("confirm writes the owner's details onto the new tenancy", () => {
     seed([WITH_DETAILS]);
     await confirm();
     const sent = mockLifecycle.createInvitation.mock.calls[0][0];
-    for (const key of ["date_of_birth", "gender", "profile_type", "guardian_name", "guardian_phone", "guardian_relation"]) {
+    for (const key of ["gender", "profile_type", "guardian_name", "guardian_phone", "guardian_relation"]) {
       expect(sent).not.toHaveProperty(key);
     }
     expect(sent).toMatchObject({ name: "Akhil Reddy", room_id: "room-101", dispatch: "DEFERRED", batch_id: BATCH_ID });
@@ -185,7 +183,7 @@ describe("wiring that the behaviour depends on", () => {
     expect(ACTIVATION).toMatch(/const alreadyVerified = await isGuardianPhoneVerifiedForTenant\(tenant\.id, guardianPhone\)/);
   });
 
-  it("onboarding still requires date of birth, gender and photo, and the agreement step is untouched", () => {
+  it("onboarding still asks every tenant for their date of birth and photo, and the agreement step is untouched", () => {
     expect(ACTIVATION).toContain('if (!tenant.date_of_birth) missingTier1.push("date_of_birth");');
     expect(ACTIVATION).toContain('if (!tenant.photo_url) missingTier1.push("photo_url");');
     expect(ACTIVATION).not.toMatch(/bulk_import|isGuardianSuppliedByOwnerImport[\s\S]{0,400}agreement\.update/);

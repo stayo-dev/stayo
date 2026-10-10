@@ -1,8 +1,8 @@
 /**
  * Bulk import carries the tenant's details through to onboarding (2026-10-10).
  *
- * An owner can now give each tenant's date of birth, gender, tenant type,
- * and guardian in the import workbook. Onboarding
+ * An owner can now give each tenant's gender, tenant type and guardian in
+ * the import workbook. Onboarding
  * already prefills from the tenancy record, so these land there; a guardian
  * the owner supplied with a name and number for this tenancy skips the
  * guardian OTP — keyed to the import row, never to a number merely being on
@@ -72,7 +72,6 @@ const OWNER_ID = "22222222-2222-2222-2222-222222222222";
 describe("the workbook columns", () => {
   it("adds the onboarding details after the existing columns, in this order", () => {
     expect(PROFILE_HEADERS).toEqual([
-      "Date of Birth",
       "Gender",
       "Tenant Type",
       "Guardian Name",
@@ -92,7 +91,6 @@ describe("the workbook columns", () => {
           name: "Akhil Reddy",
           phone: "9876543210",
           room_no: "101",
-          date_of_birth: "15/08/2004",
           gender: "Male",
           profile_type: "Student",
           guardian_name: "Ramesh Reddy",
@@ -104,7 +102,6 @@ describe("the workbook columns", () => {
     const [row] = parseTenantWorkbook(buffer, "import.xlsx");
     expect(row).toMatchObject({
       name: "Akhil Reddy",
-      date_of_birth: "15/08/2004",
       gender: "Male",
       profile_type: "Student",
       guardian_name: "Ramesh Reddy",
@@ -123,21 +120,22 @@ describe("the workbook columns", () => {
     const sheet = XLSX.read(buffer, { type: "buffer" }).Sheets.Tenants;
     const [header, example] = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1 });
     expect(header.slice(15)).toEqual(PROFILE_HEADERS);
-    expect(example[15]).toBe("15/08/2004");
+    expect(example[15]).toBe("Male");
     expect(() => parseTenantWorkbook(buffer, "t.xlsx")).toThrow(/doesn't have any tenants/);
   });
 
   it("accepts owners' own spellings of the headers", () => {
-    expect(readProfileCells({ DOB: "01/01/2003", "Parent Phone": "9876500002", Relation: "Mother" })).toEqual({
-      date_of_birth: "01/01/2003",
+    expect(readProfileCells({ "Profile Type": "student", "Parent Phone": "9876500002", Relation: "Mother" })).toEqual({
+      profile_type: "student",
       guardian_phone: "9876500002",
       guardian_relation: "Mother",
     });
   });
 
-  it("does not read college, course, roll number, company, office, job role or address — the tenant gives those", () => {
+  it("does not read date of birth, college, course, roll number, company, office, job role or address — the tenant gives those", () => {
     expect(
       readProfileCells({
+        "Date of Birth": "15/08/2004", DOB: "15/08/2004",
         College: "ABC", Course: "BSc", "Roll Number": "R1", Company: "Infosys", "Office Location": "HYD", "Job Role": "Dev",
         "Permanent Address": "12 MG Road", Address: "Pune",
       }),
@@ -145,7 +143,7 @@ describe("the workbook columns", () => {
   });
 
   it("blank cells are simply absent — the tenant fills those in", () => {
-    expect(readProfileCells({ Gender: "  ", "Date of Birth": "" })).toEqual({});
+    expect(readProfileCells({ Gender: "  ", "Guardian Name": "" })).toEqual({});
   });
 });
 
@@ -157,17 +155,8 @@ describe("profileProblems — only values onboarding itself would accept", () =>
 
   it("accepts a complete, valid set", () => {
     expect(
-      codes({ date_of_birth: "15/08/2004", gender: "female", profile_type: "Working Professional", guardian_phone: "+91 98765 00001" }),
+      codes({ gender: "female", profile_type: "Working Professional", guardian_phone: "+91 98765 00001" }),
     ).toEqual([]);
-  });
-
-  it.each([
-    ["31/02/2004", "an impossible date"],
-    ["11/10/2026", "a date in the future"],
-    ["01/01/1899", "before 1900"],
-    ["sometime in 2004", "not a date"],
-  ])("rejects a date of birth that is %s (%s)", (dob) => {
-    expect(codes({ date_of_birth: dob })).toEqual(["DOB_INVALID"]);
   });
 
   it("rejects a gender or tenant type outside onboarding's options", () => {
@@ -200,10 +189,10 @@ describe("what lands on the tenancy", () => {
   it("is normalised exactly as onboarding stores it", () => {
     expect(
       normalizeProfileFields(
-        { date_of_birth: "15/08/2004", gender: "m", profile_type: "student", guardian_phone: "98765 00001", guardian_name: " Ramesh " },
+        { gender: "m", profile_type: "student", guardian_phone: "98765 00001", guardian_name: " Ramesh " },
         TODAY,
       ),
-    ).toEqual({ date_of_birth: "2004-08-15", gender: "Male", profile_type: "STUDENT", guardian_phone: "+919876500001", guardian_name: "Ramesh" });
+    ).toEqual({ gender: "Male", profile_type: "STUDENT", guardian_phone: "+919876500001", guardian_name: "Ramesh" });
   });
 
   it("writes the guardian phone to both columns onboarding reads", () => {
@@ -211,14 +200,14 @@ describe("what lands on the tenancy", () => {
     expect(data).toEqual({ guardian_name: "Ramesh", guardian_relation: "Father", guardian_phone: "+919876500001", phone_2: "+919876500001" });
   });
 
-  it("never writes college, course, roll number, company, office, job role or address", () => {
-    const sneaked = { college_name: "ABC", course: "BSc", roll_number: "R1", office_name: "Infosys", office_location: "HYD", job_role: "Dev", permanent_address: "Pune" } as any;
+  it("never writes date of birth, college, course, roll number, company, office, job role or address", () => {
+    const sneaked = { date_of_birth: "15/08/2004", college_name: "ABC", course: "BSc", roll_number: "R1", office_name: "Infosys", office_location: "HYD", job_role: "Dev", permanent_address: "Pune" } as any;
     expect(tenantPrefillData(normalizeProfileFields({ ...sneaked, profile_type: "Student" }, TODAY))).toEqual({ profile_type: "STUDENT" });
   });
 
   it("never touches agreement, signature, acceptance, activation, completion or documents", () => {
     const data = tenantPrefillData({
-      date_of_birth: "2004-08-15", gender: "Male", profile_type: "STUDENT", guardian_name: "R", guardian_phone: "+919876500001",
+      gender: "Male", profile_type: "STUDENT", guardian_name: "R", guardian_phone: "+919876500001",
       guardian_relation: "Father",
     });
     const forbidden = /agreement|signature|signed|accept|status|activation|profile_completed|document|photo|verified/i;
@@ -232,9 +221,8 @@ describe("what lands on the tenancy", () => {
 
 describe("storage keeps what the owner typed", () => {
   it("an invalid value is stored as typed, so a re-check still blocks the row", () => {
-    const stored = sanitizeImportRowForStorage({ name: "A", phone: "9876543210", email: "", room_no: "101", date_of_birth: "31/02/2004", gender: " Male " } as any);
-    expect(stored.date_of_birth).toBe("31/02/2004");
-    expect(stored.gender).toBe("Male");
+    const stored = sanitizeImportRowForStorage({ name: "A", phone: "9876543210", email: "", room_no: "101", gender: " Boy? " } as any);
+    expect(stored.gender).toBe("Boy?");
   });
 });
 
@@ -269,7 +257,7 @@ describe("validateRows with the new columns", () => {
 
   it("a row with valid details imports, carrying them", async () => {
     const result = await validate([
-      row({ date_of_birth: "15/08/2004", gender: "Male", guardian_name: "Ramesh", guardian_phone: "9123400001", guardian_relation: "Father" }),
+      row({ gender: "Male", guardian_name: "Ramesh", guardian_phone: "9123400001", guardian_relation: "Father" }),
     ]);
     expect(result.validRows).toHaveLength(1);
     expect(result.validRows[0].data).toMatchObject({ guardian_name: "Ramesh", guardian_phone: "9123400001" });
@@ -287,11 +275,11 @@ describe("validateRows with the new columns", () => {
   });
 
   it("an invalid detail blocks only its own row, with an issue on that field", async () => {
-    const result = await validate([row({ date_of_birth: "31/02/2004" }), row()]);
+    const result = await validate([row({ gender: "Boy?" }), row()]);
     expect(result.validRows).toHaveLength(1);
     expect(result.invalidRows).toHaveLength(1);
-    const issue = result.invalidRows[0].issues.find((i) => i.code === "DOB_INVALID");
-    expect(issue).toMatchObject({ severity: "BLOCKER", field: "date_of_birth" });
+    const issue = result.invalidRows[0].issues.find((i) => i.code === "GENDER_INVALID");
+    expect(issue).toMatchObject({ severity: "BLOCKER", field: "gender" });
   });
 
   it("a blocked row claims no bed", async () => {
@@ -302,8 +290,8 @@ describe("validateRows with the new columns", () => {
     expect(result.validRows).toHaveLength(1);
   });
 
-  it("college, office and address columns in an owner's own sheet are ignored, not validated or stored", async () => {
-    const result = await validate([row({ roll_number: "SAME", college_name: "x".repeat(500), permanent_address: "x".repeat(900) }), row({ roll_number: "SAME" })]);
+  it("date of birth, college, office and address columns in an owner's own sheet are ignored, not validated or stored", async () => {
+    const result = await validate([row({ date_of_birth: "31/02/2004", roll_number: "SAME", college_name: "x".repeat(500), permanent_address: "x".repeat(900) }), row({ roll_number: "SAME" })]);
     expect(result.validRows).toHaveLength(2);
   });
 

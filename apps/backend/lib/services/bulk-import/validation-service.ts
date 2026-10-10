@@ -35,7 +35,6 @@ const FIELD_LABELS: Record<string, string> = {
   phone: "mobile number",
   room_no: "room",
   notes: "notes",
-  date_of_birth: "date of birth",
   gender: "gender",
   profile_type: "tenant type",
   guardian_name: "guardian name",

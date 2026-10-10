@@ -35,7 +35,6 @@ export const ISSUE_CODES = [
   "ROOM_CAPACITY_BELOW_OCCUPANCY",
   "ROOM_SHEET_NUMBER_INVALID",
   // Tenant details the owner supplied for onboarding (profile-fields.ts).
-  "DOB_INVALID",
   "GENDER_INVALID",
   "TENANT_TYPE_INVALID",
   "GUARDIAN_PHONE_INVALID",
@@ -119,7 +118,6 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   // A detail the owner gave must be one onboarding would accept, or the
   // tenant would be shown a prefilled value their own screen then refuses.
   // Clearing the cell is always a valid fix — the tenant fills it in instead.
-  DOB_INVALID: "BLOCKER",
   GENDER_INVALID: "BLOCKER",
   TENANT_TYPE_INVALID: "BLOCKER",
   GUARDIAN_PHONE_INVALID: "BLOCKER",
@@ -305,12 +303,6 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     field: "joining_date",
     fix: { kind: "PICK_DATE" },
   }),
-  DOB_INVALID: (c) => ({
-    title: `"${c.value ?? ""}" isn't a date of birth we can use.`,
-    detail: `Use DD/MM/YYYY — 15/08/2004 means 15 August 2004 — and a date in the past. Or clear the cell and the tenant enters it themselves.`,
-    field: "date_of_birth",
-    fix: { kind: "EDIT_FIELD" },
-  }),
   GENDER_INVALID: (c) => ({
     title: `"${c.value ?? ""}" isn't one of the gender options.`,
     detail: `Use Male, Female, Other or Prefer not to say. Or clear the cell and the tenant chooses it themselves.`,
@@ -394,7 +386,6 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   FORMULA_IN_CELL: (n) => `${n} rows contain a spreadsheet formula.`,
   DATE_UNREADABLE: (n) => `${n} rows have a missing or unreadable joining date.`,
   HOSTEL_STAMP_MISMATCH: () => `This file was made for a different hostel.`,
-  DOB_INVALID: (n) => `${n} rows have a date of birth we can't use.`,
   GENDER_INVALID: (n) => `${n} rows have a gender that isn't one of the options.`,
   TENANT_TYPE_INVALID: (n) => `${n} rows have a tenant type we don't recognise.`,
   GUARDIAN_PHONE_INVALID: (n) => `${n} rows have a guardian phone that isn't a mobile number.`,

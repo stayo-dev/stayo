@@ -1,6 +1,6 @@
 /**
- * Tenant details an owner can supply in the import workbook — date of birth,
- * gender, tenant type and guardian — so the tenant is not
+ * Tenant details an owner can supply in the import workbook — gender, tenant
+ * type and guardian — so the tenant is not
  * asked for them again at onboarding.
  *
  * Onboarding already prefills every screen from the tenancy record — the
@@ -18,8 +18,9 @@
  * - touch agreement, signature, rules-acceptance, activation or KYC fields —
  *   the tenant still reviews and signs the agreement themselves;
  * - collect a photo or documents (they cannot come from a spreadsheet), or
- *   college/course/roll-number, company/office/job-role or address details —
- *   those stay with the tenant at onboarding (product decision, 2026-10-10);
+ *   date of birth, college/course/roll-number, company/office/job-role or
+ *   address — those stay with the tenant at onboarding (product decision,
+ *   2026-10-10);
  * - mark anything verified. The one consequence of import data for
  *   verification is the guardian rule in `guardianSuppliedByImport`, which is
  *   keyed to *this tenancy's own import row*, never to a number merely being
@@ -27,7 +28,6 @@
  *
  * PURE MODULE — no I/O, runs under vitest.pure.config.ts.
  */
-import { parseImportDate } from "./dates";
 import { indianPhoneKey } from "./identity";
 
 /**
@@ -52,7 +52,6 @@ export function normalizeIndianPhone(value: string | null | undefined): string |
 
 /** The owner-supplied profile values, as stored in `bulk_import_rows.mapped_data`. */
 export interface ImportedProfileFields {
-  date_of_birth?: string;
   gender?: string;
   profile_type?: string;
   guardian_name?: string;
@@ -61,7 +60,6 @@ export interface ImportedProfileFields {
 }
 
 export const PROFILE_FIELD_KEYS = [
-  "date_of_birth",
   "gender",
   "profile_type",
   "guardian_name",
@@ -75,7 +73,6 @@ export const PROFILE_FIELD_KEYS = [
  * spellings for files owners make themselves.
  */
 export const PROFILE_COLUMNS: Record<keyof ImportedProfileFields, string[]> = {
-  date_of_birth: ["Date of Birth", "date_of_birth", "DOB", "dob", "Birth Date"],
   gender: ["Gender", "gender"],
   profile_type: ["Tenant Type", "tenant_type", "Profile Type", "profile_type", "type"],
   guardian_name: ["Guardian Name", "guardian_name", "Parent Name", "parent_name"],
@@ -130,22 +127,8 @@ export function normalizeTenantType(value: string | undefined): "STUDENT" | "WOR
   return null;
 }
 
-/**
- * A date of birth onboarding would accept: a real DD/MM/YYYY (or ISO /
- * Excel-serial) date, before today, not before 1900 — `validDateOfBirth`'s rule.
- */
-export function parseDateOfBirth(value: string | undefined, today: Date): Date | null {
-  const text = String(value ?? "").trim();
-  if (!text) return null;
-  const date = parseImportDate(text);
-  if (!date) return null;
-  if (date.getTime() >= today.getTime()) return null;
-  if (date.getFullYear() < 1900) return null;
-  return date;
-}
-
 export type ProfileProblem = {
-  code: "DOB_INVALID" | "GENDER_INVALID" | "TENANT_TYPE_INVALID" | "GUARDIAN_PHONE_INVALID" | "GUARDIAN_PHONE_IS_TENANT" | "TEXT_TOO_LONG";
+  code: "GENDER_INVALID" | "TENANT_TYPE_INVALID" | "GUARDIAN_PHONE_INVALID" | "GUARDIAN_PHONE_IS_TENANT" | "TEXT_TOO_LONG";
   field: keyof ImportedProfileFields;
   value: string;
 };
@@ -161,9 +144,6 @@ export function profileProblems(
   context: { tenantPhone: string | null | undefined; today: Date },
 ): ProfileProblem[] {
   const problems: ProfileProblem[] = [];
-  if (fields.date_of_birth && !parseDateOfBirth(fields.date_of_birth, context.today)) {
-    problems.push({ code: "DOB_INVALID", field: "date_of_birth", value: fields.date_of_birth });
-  }
   if (fields.gender && !normalizeGender(fields.gender)) {
     problems.push({ code: "GENDER_INVALID", field: "gender", value: fields.gender });
   }
@@ -193,8 +173,6 @@ export function profileProblems(
  */
 export function normalizeProfileFields(fields: ImportedProfileFields, today: Date): ImportedProfileFields {
   const out: ImportedProfileFields = {};
-  const dob = parseDateOfBirth(fields.date_of_birth, today);
-  if (dob) out.date_of_birth = toIsoDate(dob);
   const gender = normalizeGender(fields.gender);
   if (gender) out.gender = gender;
   const type = normalizeTenantType(fields.profile_type);
@@ -206,13 +184,6 @@ export function normalizeProfileFields(fields: ImportedProfileFields, today: Dat
     if (value) out[key] = value;
   }
   return out;
-}
-
-function toIsoDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
 }
 
 /**
@@ -228,7 +199,6 @@ function toIsoDate(date: Date): string {
  */
 export function tenantPrefillData(fields: ImportedProfileFields): Record<string, unknown> {
   const data: Record<string, unknown> = {};
-  if (fields.date_of_birth) data.date_of_birth = new Date(`${fields.date_of_birth}T00:00:00.000Z`);
   if (fields.gender) data.gender = fields.gender;
   if (fields.profile_type) data.profile_type = fields.profile_type;
   if (fields.guardian_name) data.guardian_name = fields.guardian_name;

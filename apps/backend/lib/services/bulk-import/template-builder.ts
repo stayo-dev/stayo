@@ -135,7 +135,7 @@ const TENANT_HEADERS = [
   "Payment Method",
   "Payment Reference",
   "Notes",
-  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation.
+  // Gender, Tenant Type, Guardian Name/Phone/Relation.
   ...PROFILE_HEADERS,
 ];
 
@@ -183,11 +183,11 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
     "",
-    "Tenant details (optional — every column from Date of Birth onwards)",
+    "Tenant details (optional — every column from Gender onwards)",
     "• Whatever you fill in here is already filled in when the tenant opens their invitation, so they are not asked for it again. Leave a cell blank and the tenant fills it in themselves.",
-    "• Date of Birth is DD/MM/YYYY. Gender is Male, Female, Other or Prefer not to say. Tenant Type is Student or Working Professional.",
+    "• Gender is Male, Female, Other or Prefer not to say. Tenant Type is Student or Working Professional.",
     "• Guardian: if you give both the Guardian Name and Guardian Phone, the tenant is not asked to verify that number with a code — you are vouching for it. Only fill it in if you are sure it is right.",
-    "• The tenant still adds their own photo and ID documents, and reads and signs the agreement themselves. Nothing here signs anything for them.",
+    "• The tenant still adds their own date of birth, photo and ID documents, and reads and signs the agreement themselves. Nothing here signs anything for them.",
     "",
     "Do not edit this sheet. It tells Stayo which hostel this file belongs to.",
   ];
@@ -326,7 +326,6 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "CASH",
     "",
     "Already living here since January",
-    "15/08/2004",
     "Male",
     "Student",
     "Ramesh Kumar",
