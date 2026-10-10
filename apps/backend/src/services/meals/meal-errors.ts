@@ -1,6 +1,6 @@
 import { apiError } from "@/lib/utils/api-utils";
 
-export type MealErrorCode = "INVALID_REQUEST" | "NOT_FOUND";
+export type MealErrorCode = "INVALID_REQUEST" | "NOT_FOUND" | "CONFLICT";
 
 export class MealError extends Error {
   constructor(
@@ -14,6 +14,8 @@ export class MealError extends Error {
 }
 
 export const invalidRequest = (message: string) => new MealError("INVALID_REQUEST", message, 400);
+export const notFound = (message: string) => new MealError("NOT_FOUND", message, 404);
+export const conflict = (message: string) => new MealError("CONFLICT", message, 409);
 
 /** Every meals route's catch block: the repo's standard error envelope. */
 export function mealErrorResponse(error: any) {
