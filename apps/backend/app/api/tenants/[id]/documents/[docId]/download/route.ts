@@ -1,10 +1,12 @@
 export const dynamic = "force-dynamic";
 export const runtime = "nodejs";
+export const maxDuration = 30; // a missing agreement PDF is rendered on demand
 
 import { NextRequest, NextResponse } from "next/server";
 import { prisma } from "@/lib/db";
 import { getSession } from "@/lib/auth";
 import { agreementDocumentAccessibleWhere } from "@/src/services/tenants/agreement-status";
+import { AgreementGenerationService } from "@/src/services/tenants/agreement-generation-service";
 
 function safeFileName(value: string) {
   return value.replace(/[^a-z0-9._-]/gi, "_").slice(0, 80) || "document";
@@ -21,7 +23,7 @@ export async function GET(
 
   const { id: tenantId, docId } = params;
 
-  let fileUrl: string;
+  let fileUrl: string | null;
   let docType: string;
   let mimeType: string;
   let docTenant: { id: string; profile_id: string | null; owner_id: string };
@@ -45,9 +47,12 @@ export async function GET(
       where: { id: docId, tenant_id: tenantId, status: agreementDocumentAccessibleWhere() },
       include: { tenant: { select: { id: true, profile_id: true, owner_id: true } } },
     });
-    if (!agreement || !agreement.pdf_url) {
+    if (!agreement) {
       return NextResponse.json({ error: { message: "Document not found" } }, { status: 404 });
     }
+    // Null when the post-signing PDF upload failed — signing only logs that
+    // failure, so a SIGNED agreement can have no file. It is rendered below,
+    // after the access checks, instead of answering 404.
     fileUrl = agreement.pdf_url;
     docType = "RENTAL_AGREEMENT";
     mimeType = "application/pdf";
@@ -62,6 +67,32 @@ export async function GET(
   }
   if (!["TENANT", "OWNER", "ADMIN"].includes(session.role)) {
     return NextResponse.json({ error: { message: "Forbidden" } }, { status: 403 });
+  }
+
+  if (!fileUrl) {
+    let pdf: Buffer;
+    try {
+      pdf = await AgreementGenerationService.renderPdf(docId);
+    } catch (error) {
+      console.error("[documents/download] agreement PDF render failed", { docId, error });
+      return NextResponse.json({ error: { message: "Document file unavailable" } }, { status: 502 });
+    }
+    // Store it so the next view is a plain fetch. Best-effort: the owner or
+    // tenant still gets the document if storage is down.
+    try {
+      await AgreementGenerationService.storePdf(docId, pdf);
+    } catch (error) {
+      console.error("[documents/download] agreement PDF store failed", { docId, error });
+    }
+    return new NextResponse(new Uint8Array(pdf), {
+      status: 200,
+      headers: {
+        "Content-Type": "application/pdf",
+        "Content-Disposition": `inline; filename="${safeFileName(`rental_agreement-${docId}.pdf`)}"`,
+        "Cache-Control": "private, no-store",
+        "X-Content-Type-Options": "nosniff",
+      },
+    });
   }
 
   const upstream = await fetch(fileUrl, { cache: "no-store" });

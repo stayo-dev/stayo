@@ -20,7 +20,7 @@ import axios from "axios";
 // Re-exported from their new home so existing importers are unaffected; the
 // definitions moved to break an import cycle with the document resolver.
 export { formatAgreementDate, formatAgreementDateTime } from "../agreements/agreement-dates";
-import { formatAgreementDate } from "../agreements/agreement-dates";
+import { formatAgreementDate, formatAgreementDateTime } from "../agreements/agreement-dates";
 
 
 // Re-exported from their new home so existing importers are unaffected; the
@@ -276,9 +276,18 @@ export class AgreementGenerationService {
    * Generates the A4 Agreement PDF and uploads it to ImageKit, returning the URL.
    */
   static async generateAndUploadPdf(agreementId: string): Promise<string> {
-    const data = await this.getAgreementRenderData(agreementId);
-    const pdfBuffer = await this.generatePdfBuffer(data);
+    const pdfBuffer = await this.renderPdf(agreementId);
+    return this.storePdf(agreementId, pdfBuffer);
+  }
 
+  /** Renders an agreement's PDF from its stored snapshot, without storing it. */
+  static async renderPdf(agreementId: string): Promise<Buffer> {
+    const data = await this.getAgreementRenderData(agreementId);
+    return this.generatePdfBuffer(data);
+  }
+
+  /** Uploads an already-rendered agreement PDF and records its URL on the agreement. */
+  static async storePdf(agreementId: string, pdfBuffer: Buffer): Promise<string> {
     // Upload PDF to ImageKit
     const uploadRes = await imagekit.files.upload({
       file: pdfBuffer.toString("base64"),
