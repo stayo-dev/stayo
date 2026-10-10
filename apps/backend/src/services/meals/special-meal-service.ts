@@ -146,6 +146,11 @@ export function createSpecialMealService(deps: {
     }));
   }
 
+  async function mealStartFor(occasion: any): Promise<string> {
+    const hostel = await db.hostels.findUnique({ where: { id: occasion.hostel_id }, select: { preferences_config: true } });
+    return normalizeMealTimings(hostel?.preferences_config)[occasion.meal_type as MealType].start;
+  }
+
   async function cutoffFor(occasion: any, serveDate: string): Promise<Date> {
     const hostel = await db.hostels.findUnique({ where: { id: occasion.hostel_id }, select: { name: true, preferences_config: true } });
     const timings = normalizeMealTimings(hostel?.preferences_config);
@@ -215,6 +220,15 @@ export function createSpecialMealService(deps: {
   async function updateOccasion(hostelId: string, occasionId: string, input: any, now: Date = new Date()): Promise<OccasionView> {
     await occasionOf(hostelId, occasionId);
     const data: Record<string, unknown> = { updated_at: new Date() };
+    if ("weekday" in (input ?? {})) {
+      const w = input.weekday;
+      if (typeof w !== "number" || !Number.isInteger(w) || w < 0 || w > 6) throw invalidRequest("weekday must be 0 (Sunday) to 6 (Saturday)");
+      data.weekday = w;
+    }
+    if ("mealType" in (input ?? {})) {
+      if (!isMealType(input.mealType)) throw invalidRequest("mealType must be BREAKFAST, LUNCH, SNACKS or DINNER");
+      data.meal_type = input.mealType;
+    }
     if ("vegDish" in (input ?? {})) data.veg_dish = cleanDish(input.vegDish, "vegDish");
     if ("nonVegDish" in (input ?? {})) data.non_veg_dish = cleanDish(input.nonVegDish, "nonVegDish");
     if ("cutoffMinutesBefore" in (input ?? {})) data.cutoff_minutes_before = cleanCutoff(input.cutoffMinutesBefore);
@@ -226,8 +240,19 @@ export function createSpecialMealService(deps: {
       if (typeof input.isActive !== "boolean") throw invalidRequest("isActive must be true or false");
       data.is_active = input.isActive;
     }
-    const row = await db.special_meal_occasions.update({ where: { id: occasionId }, data });
-    return viewOf(row, istDateOf(now));
+    try {
+      const row = await db.special_meal_occasions.update({ where: { id: occasionId }, data });
+      return viewOf(row, istDateOf(now));
+    } catch (error: any) {
+      if (error?.code === "P2002") throw conflict("This hostel already has a special meal on that day");
+      throw error;
+    }
+  }
+
+  /** Deletes the special meal with its answers and ready alerts (FK cascade in migration 096). */
+  async function deleteOccasion(hostelId: string, occasionId: string) {
+    await occasionOf(hostelId, occasionId);
+    await db.special_meal_occasions.delete({ where: { id: occasionId } });
   }
 
   async function getCount(hostelId: string, occasionId: string, date?: string, now: Date = new Date()) {
@@ -242,7 +267,7 @@ export function createSpecialMealService(deps: {
       cutoffFor(occasion, serveDate),
     ]);
     const count = buildMealCount({ serveDate, policy: occasion.no_answer_policy, residents, leaves, answers, lastChoices });
-    const [readyAlerts, contacted] = await Promise.all([readyAlertsFor(occasionId, serveDate), contactedFor(occasionId, serveDate)]);
+    const [readyAlerts, contacted, mealStart] = await Promise.all([readyAlertsFor(occasionId, serveDate), contactedFor(occasionId, serveDate), mealStartFor(occasion)]);
     const audience = askAudience({ serveDate, residents, leaves, answered: new Set(answers.keys()) });
     const reached = new Set(Array.from(contacted.askOk).concat(Array.from(contacted.remindOk)));
     const outreach = {
@@ -255,6 +280,8 @@ export function createSpecialMealService(deps: {
     return {
       occasion: viewOf(occasion, today),
       serveDate,
+      /** The meal's serving start, "HH:mm" IST, from Meal Plan or the defaults. */
+      mealStart,
       cutoffAt: cutoffAt.toISOString(),
       isOpen: now < cutoffAt,
       isToday: serveDate === today,
@@ -581,7 +608,7 @@ export function createSpecialMealService(deps: {
     return { serveDate, ...r };
   }
 
-  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound, sendReadyAlert, sendNow };
+  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound, sendReadyAlert, sendNow, deleteOccasion };
 }
 
 export const specialMealService = createSpecialMealService();
