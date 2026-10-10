@@ -6,6 +6,7 @@ const db = vi.hoisted(() => ({
   roomAllocation: { findMany: vi.fn() },
   stay_leaves: { findMany: vi.fn() },
   hostels: { findUnique: vi.fn() },
+  whatsapp_logs: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
@@ -23,6 +24,7 @@ const T2 = "33333333-3333-4333-8333-333333333333";
 let sendTemplate: ReturnType<typeof vi.fn>;
 beforeEach(() => {
   vi.resetAllMocks();
+  db.whatsapp_logs.findMany.mockResolvedValue([]);
   sendTemplate = vi.fn().mockResolvedValue({ sent: true, skipped: false });
   db.special_meal_occasions.findMany.mockResolvedValue([OCC]);
   db.hostels.findUnique.mockResolvedValue({ name: "Sri", preferences_config: null });

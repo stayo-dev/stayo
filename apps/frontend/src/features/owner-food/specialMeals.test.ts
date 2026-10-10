@@ -70,3 +70,39 @@ describe('ready buttons', () => {
     expect(r.bothLabel).toBeNull();
   });
 });
+
+import { outreachActions } from './specialMeals';
+
+describe('ask / remind now', () => {
+  const o = (x: Partial<{ asked: number; reminded: number; unreachable: number; toAsk: number; toRemind: number }>) => ({
+    asked: 0, reminded: 0, unreachable: 0, toAsk: 0, toRemind: 0, ...x,
+  });
+
+  it('offers nothing once answers have closed', () => {
+    expect(outreachActions(o({ toAsk: 49 }), false)).toBeNull();
+  });
+
+  it('offers to ask everyone before anything was sent', () => {
+    expect(outreachActions(o({ toAsk: 49 }), true)).toEqual({ status: null, ask: 'Ask residents now · 49', remind: null });
+  });
+
+  it('after asking, offers a reminder for the silent and says what happened', () => {
+    expect(outreachActions(o({ asked: 49, toRemind: 31 }), true)).toEqual({
+      status: 'Asked 49 · Reminded 0',
+      ask: null,
+      remind: "Remind 31 who haven't answered",
+    });
+  });
+
+  it('asks newcomers as "more", and owns up to unreachable phones', () => {
+    expect(outreachActions(o({ asked: 49, reminded: 31, unreachable: 2, toAsk: 1 }), true)).toEqual({
+      status: "Asked 49 · Reminded 31 · 2 couldn't be reached",
+      ask: 'Ask 1 more',
+      remind: null,
+    });
+  });
+
+  it('copes with a server that has not sent outreach yet', () => {
+    expect(outreachActions(undefined, true)).toBeNull();
+  });
+});

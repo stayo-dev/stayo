@@ -38,6 +38,10 @@ export function useSpecialMealCount(hostelId: string | null | undefined, occasio
       foodService.setSpecialMealAnswer(hostelId as string, occasionId as string, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
+  const sendNow = useMutation({
+    mutationFn: (kind: 'ASK' | 'REMIND') => foodService.sendSpecialMealNow(hostelId as string, occasionId as string, kind),
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  });
   const ready = useMutation({
     mutationFn: (choice: 'VEG' | 'NON_VEG' | 'BOTH') => foodService.sendSpecialMealReady(hostelId as string, occasionId as string, choice),
     onSettled: () => qc.invalidateQueries({ queryKey: key }),
@@ -49,5 +53,7 @@ export function useSpecialMealCount(hostelId: string | null | undefined, occasio
     isSaving: mutation.isPending,
     sendReady: ready.mutateAsync,
     isSendingReady: ready.isPending,
+    sendNow: sendNow.mutateAsync,
+    isSendingNow: sendNow.isPending,
   };
 }

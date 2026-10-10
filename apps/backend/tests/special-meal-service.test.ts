@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   roomAllocation: { findMany: vi.fn() },
   stay_leaves: { findMany: vi.fn() },
   hostels: { findUnique: vi.fn() },
+  whatsapp_logs: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
@@ -22,6 +23,7 @@ const alloc = (tenantId: string, room = "101") => ({
 
 beforeEach(() => {
   vi.resetAllMocks();
+  db.whatsapp_logs.findMany.mockResolvedValue([]);
   db.hostels.findUnique.mockResolvedValue({ name: "Sri", preferences_config: null }); // default LUNCH 12:30
   db.stay_leaves.findMany.mockResolvedValue([]);
   db.special_meal_ready_alerts.findMany.mockResolvedValue([]);

@@ -7,6 +7,7 @@ const db = vi.hoisted(() => ({
   roomAllocation: { findMany: vi.fn() },
   stay_leaves: { findMany: vi.fn() },
   hostels: { findUnique: vi.fn() },
+  whatsapp_logs: { findMany: vi.fn() },
 }));
 vi.mock("@/lib/db", () => ({ prisma: db }));
 
@@ -34,6 +35,7 @@ const svc = () => createSpecialMealService({ sendTemplate: sendTemplate as any, 
 
 beforeEach(() => {
   vi.resetAllMocks();
+  db.whatsapp_logs.findMany.mockResolvedValue([]);
   sendTemplate = vi.fn().mockResolvedValue({ sent: true, skipped: false });
   sendText = vi.fn().mockResolvedValue(undefined);
   db.special_meal_occasions.findFirst.mockResolvedValue(OCC);
