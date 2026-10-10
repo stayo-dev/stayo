@@ -52,6 +52,7 @@ const FoodPage = lazy(() => import('@features/owner-food/pages/FoodPage').then((
 const MealPlanPage = lazy(() => import('@features/owner-food/pages/MealPlanPage').then((m) => ({ default: m.MealPlanPage })));
 const RetiredToMealPlan = lazy(() => import('@features/owner-food/pages/RetiredFoodRoutes').then((m) => ({ default: m.RetiredToMealPlan })));
 const KitchenSheetPage = lazy(() => import('@features/owner-food/pages/KitchenSheetPage').then((m) => ({ default: m.KitchenSheetPage })));
+const SpecialMealsPage = lazy(() => import('@features/owner-food/pages/SpecialMealsPage').then((m) => ({ default: m.SpecialMealsPage })));
 const FoodPollsPage = lazy(() => import('@features/owner-food/pages/FoodPollsPage').then((m) => ({ default: m.FoodPollsPage })));
 const StayBoardPage = lazy(() => import('@features/owner-stay/pages/StayBoardPage').then((m) => ({ default: m.StayBoardPage })));
 const AlertsPage = lazy(() => import('@features/owner-alerts/pages/AlertsPage').then((m) => ({ default: m.AlertsPage })));
@@ -246,6 +247,7 @@ export function OwnerRoutes() {
         {/* Stay Status (ADR-194) — tonight's occupancy, opened from Home's Tonight row. */}
         <Route path="/owner/stay" element={<StayBoardPage />} />
         <Route path="/owner/food/polls" element={<FoodPollsPage />} />
+        <Route path="/owner/food/special-meals" element={<SpecialMealsPage />} />
         {/* Meal Timings and the Weekly Timetable were merged into one Meal
             Plan page (ADR-121) — these two routes redirect so old
             links/bookmarks (and the Today card's "Fix" deep link) still land

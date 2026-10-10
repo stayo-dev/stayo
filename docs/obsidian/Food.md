@@ -602,3 +602,16 @@ Two things this page previously recorded as absent now exist:
 The old inline `eligibleCount` (ACTIVE tenants, repeated per poll/publish route) is untouched and still does its own job — the forecast does **not** use it, because a resident on leave is not a diner.
 
 Related: [[Decisions#ADR-195|ADR-195]], [[Features]], [[Database]]
+
+## Special-meal choices — veg / non-veg (Phase 1, 2026-10-10, [[Decisions#ADR-238|ADR-238]])
+
+Replaces the warden's door-to-door veg/non-veg round before a hostel's recurring special meal (e.g. Sunday lunch). **Merged 2026-10-11. Migration 096 applied to production (2026-10-11, per the user); templates submitted 2026-10-10 (see `docs/design/special-meal-whatsapp-template.md` for their status). Not yet exercised end to end.** Spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`, audit `docs/audits/special-meal-choices-audit.md`, plan `docs/superpowers/plans/2026-10-10-special-meal-choices-phase-1.md`.
+
+- The owner adds an occasion (weekday + meal, optional dish names, cutoff) at `/owner/food/special-meals`.
+- At ≈18:00 IST the day before, every resident who is here, not moving out and has a phone gets `stayo_special_meal_question` with **Veg · Non-veg · I'm away** buttons. Anyone still silent gets the same message again at ≈08:00 IST on the day. A typed "veg" / "nv" / "skip" / "I'm away" also works.
+- The count locks at the cutoff for WhatsApp answers. The owner can still edit any resident's answer afterwards (labelled `OWNER`).
+- The cook's numbers are confirmed answers plus, under the default `LAST_CHOICE` policy, each silent resident's last explicit veg/non-veg for that occasion. The screen labels which is which. Leave always wins over an answer.
+- The kitchen sheet shows one line per special meal served today or tomorrow.
+- **"Food's ready" bell** (added the same day): on the serving day, the kitchen sheet and the special-meals page show **Non-veg is ready · tell N**, **Veg is ready · tell N** and **Both**. One tap (after a confirm naming the number) WhatsApps only the residents that dish was cooked for, once per dish per serving, with one of three wordings that rotate weekly (`stayo_meal_ready_hot` / `_wait_over` / `_ding`). Each carries an **I'm on my way** quick reply that gets a friendly answer. The idea is Zomato's: a ping people enjoy is one they keep opening.
+
+**Separate from food polls** (§ polls), which stay the tool for one-off questions, and from the [[Decisions#ADR-195|ADR-195]] forecast, which this does not read or change.

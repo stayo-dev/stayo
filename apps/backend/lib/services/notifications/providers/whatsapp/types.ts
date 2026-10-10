@@ -21,6 +21,8 @@ export type WhatsAppTemplateMessage = {
   headerDocument?: { mediaId?: string; link?: string; filename?: string };
   /** URL suffix parameters for CTA URL button components */
   buttonParameters?: string[];
+  /** Per-send quick-reply payloads, in button order (special-meal choices). */
+  quickReplyPayloads?: string[];
 };
 
 export type WhatsAppButton = {

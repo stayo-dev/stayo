@@ -63,6 +63,12 @@ export const queryKeys = {
   meals: {
     forecast: (hostelId: string | null | undefined, from?: string, to?: string) =>
       hostelKey(hostelId, 'meals', 'forecast', from ?? 'today', to ?? 'tomorrow'),
+    /** Special-meal choices (spec 2026-10-10). */
+    special: {
+      occasions: (hostelId: string | null | undefined) => hostelKey(hostelId, 'meals', 'special'),
+      count: (hostelId: string | null | undefined, occasionId: string, date?: string) =>
+        hostelKey(hostelId, 'meals', 'special', occasionId, 'count', date ?? 'next'),
+    },
   },
 
   /** Stay Status (ADR-194). The tenant key sits beside the other ['tenant', …] keys. */

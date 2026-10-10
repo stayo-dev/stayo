@@ -831,6 +831,14 @@ What the kitchen actually served — the ground truth every meal forecast is lea
 
 **Applied 2026-09-14 to production `qgfyfbdccjnibdhhvnsr`**, verified directly: 9 columns, 3 indexes (pkey, the `(hostel_id, serve_date, meal_type)` unique key, the ratio index), RLS on, 0 rows — no probe rows were written. Nothing else reads this table, so deploy order only affects the meals endpoints.
 
+## `special_meal_occasions`, `special_meal_answers` ([[Decisions#ADR-238|ADR-238]], migration `096_special_meals.sql`, **applied 2026-10-11** per the user)
+
+- `special_meal_occasions`: one row per hostel × weekday (0 = Sunday) × meal (`UNIQUE`). Optional `veg_dish` / `non_veg_dish` (≤ 60 chars), `cutoff_minutes_before` (0–1440, default 180), `no_answer_policy` (`LAST_CHOICE` | `LEAVE_OUT`), `is_active`.
+- `special_meal_answers`: one row per occasion × `serve_date` × tenant (`UNIQUE`; the latest answer replaces the earlier one). `choice` CHECK `VEG|NON_VEG|AWAY|SKIP`, `source` CHECK `WHATSAPP|OWNER`, `recorded_by` (owner profile, null for a tenant's tap). History index `(occasion_id, tenant_id, serve_date DESC)`.
+- `special_meal_ready_alerts`: one row per occasion × `serve_date` × `choice` (`VEG|NON_VEG`, `UNIQUE`), with `sent_by` and `recipients`. **Inserted before any message is sent**, so its unique key is what stops a double-tapped Ready button from pinging residents twice. Same migration file (096), same RLS and revokes.
+- **No Prisma relation fields** on any of the three models, so no existing model changed. The SQL still declares the foreign keys (cascade from hostels / tenants / occasions).
+- RLS enabled and `REVOKE ALL … FROM anon, authenticated` in the same file, because dietary choice is sensitive.
+
 ## Migration 082 — `activity_logs` gains the indexes it never had (2026-09-14)
 
 Two btree indexes, **deliberately not in `schema.prisma`** — the first is an expression index on a JSON key Prisma cannot express, and both serve raw SQL only. Code is correct whether or not the file has been applied, just slower; it also stays clear of the new-Prisma-field blast radius (see migration 074).

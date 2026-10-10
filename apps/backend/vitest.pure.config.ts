@@ -47,6 +47,16 @@ export default defineConfig({
       'tests/food-voting-expiry.test.ts',
       'tests/food-meal-items.test.ts',
       'tests/food-meal-timings.test.ts',
+      // Special-meal choices (Phase 1).
+      'tests/special-meal-schema.test.ts',
+      'tests/special-meal-rules.test.ts',
+      'tests/special-meal-template.test.ts',
+      'tests/whatsapp-template-components.test.ts',
+      'tests/special-meal-service.test.ts',
+      'tests/special-meal-reply.test.ts',
+      'tests/special-meal-rounds.test.ts',
+      'tests/special-meal-ready.test.ts',
+      'tests/special-meal-intent.test.ts',
       // The menu persists across months; mocks `@/lib/db` (2026-10-10).
       'tests/food-month-carry-forward.test.ts',
       'tests/food-poll-edit-validation.test.ts',

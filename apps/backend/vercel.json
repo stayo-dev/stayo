@@ -4,6 +4,14 @@
   ],
   "crons": [
     {
+      "path": "/api/cron/special-meal-asks",
+      "schedule": "30 12 * * *"
+    },
+    {
+      "path": "/api/cron/special-meal-reminders",
+      "schedule": "30 2 * * *"
+    },
+    {
       "path": "/api/cron/move-out-releases",
       "schedule": "0 16 * * *"
     },

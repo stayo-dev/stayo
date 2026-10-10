@@ -896,6 +896,14 @@ Owner routes use `resolveOwnerScope` → `requireHostelBelongsToOwner`, and `src
 |---|---|---|---|
 | GET | `/api/hostels/[id]/meals/forecast?from=&to=` | OWNER | `{ today, days: [{ date, meals: [{ mealType, expected, basis, samples, ratio, headcount, served }] }] }`. Defaults to today + tomorrow; at most 14 days per call. `basis` is `learned` or `headcount`, and the UI must label the second honestly. |
 | PUT | `/api/hostels/[id]/meals/served` | OWNER | `{ serveDate, mealType, servedCount }` → `{ entry }`. **PUT, not POST:** one truth per hostel/date/meal, so re-entry corrects a typo. |
+| GET | `/api/hostels/[id]/meals/special` | OWNER | `{ occasions: [{ id, weekday, mealType, vegDish, nonVegDish, cutoffMinutesBefore, noAnswerPolicy, isActive, nextServeDate }] }`. [[Decisions#ADR-238|ADR-238]]. |
+| POST | `/api/hostels/[id]/meals/special` | OWNER | `{ weekday 0-6, mealType, vegDish?, nonVegDish?, cutoffMinutesBefore? (0-1440, default 180), noAnswerPolicy? }` → 201 `{ occasion }`; `409 CONFLICT` if that day+meal exists. |
+| PATCH | `/api/hostels/[id]/meals/special/[occasionId]` | OWNER | Any of `vegDish`, `nonVegDish`, `cutoffMinutesBefore`, `noAnswerPolicy`, `isActive` → `{ occasion }`. |
+| GET | `/api/hostels/[id]/meals/special/[occasionId]/count?date=` | OWNER | `{ occasion, serveDate, cutoffAt, isOpen, count: { cook: { veg, nonVeg }, confirmed, lastChoice, noAnswer, skipping, awaySaid, onLeave, people[] } }`. `date` defaults to the next serving and must fall on the occasion's weekday. |
+| PUT | `/api/hostels/[id]/meals/special/[occasionId]/answers` | OWNER | `{ tenantId, serveDate, choice: VEG / NON_VEG / AWAY / SKIP / null }` → `{ count }`. `null` clears. Allowed after the cutoff; recorded as `source: OWNER`. |
+| POST | `/api/hostels/[id]/meals/special/[occasionId]/ready` | OWNER | `{ choice: VEG / NON_VEG / BOTH }` → `{ alerts: [{ choice, sent, failed, alreadySent }] }`. "Food's ready" WhatsApp to residents that choice was cooked for. Serving day only (`400` otherwise); once per choice per serving (`409 CONFLICT` if every requested choice already went out). The count `GET` now also returns `isToday` and `readyAlerts: [{ choice, sentAt, recipients }]`. |
+| GET | `/api/cron/special-meal-asks` | `CRON_SECRET` | Daily `30 12 * * *` (18:00 IST). Asks tomorrow's residents. Fails closed on a missing secret. Returns `{ occasions, sent, skipped, failed, closed }`. |
+| GET | `/api/cron/special-meal-reminders` | `CRON_SECRET` | Daily `30 2 * * *` (08:00 IST). Re-asks today's still-silent residents. Same shape. |
 
 Rejections from `recordServed`, all `400 INVALID_REQUEST`: a future `serveDate`, a date more than 28 days old, an unknown `mealType`, a negative or fractional count, and a count above **3× the headcount** (a slipped keypad, not a feast). Zero is accepted — nobody came is a real answer.
 

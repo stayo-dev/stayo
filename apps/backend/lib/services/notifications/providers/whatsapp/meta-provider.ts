@@ -1,4 +1,5 @@
 import { getLogger } from "@/lib/logger";
+import { buildTemplateComponents } from "./template-components";
 import {
   WhatsAppConfigError,
   WhatsAppProviderError,
@@ -304,39 +305,7 @@ export class MetaWhatsAppProvider {
   async sendTemplate(message: WhatsAppTemplateMessage): Promise<WhatsAppSendResult> {
     const phone = normalizeWhatsAppPhone(message.to);
     const url = `${this.config.baseUrl}/${this.config.phoneNumberId}/messages`;
-    const components: any[] = [];
-    if (message.headerDocument) {
-      const docObj: Record<string, string> = {};
-      if (message.headerDocument.mediaId) docObj.id = message.headerDocument.mediaId;
-      else if (message.headerDocument.link) docObj.link = message.headerDocument.link;
-      if (message.headerDocument.filename) docObj.filename = message.headerDocument.filename;
-
-      components.push({
-        type: "header",
-        parameters: [
-          {
-            type: "document",
-            document: docObj,
-          },
-        ],
-      });
-    }
-    if (message.bodyParameters?.length) {
-      components.push({
-        type: "body",
-        parameters: message.bodyParameters.map((text) => ({ type: "text", text: String(text) })),
-      });
-    }
-    if (message.buttonParameters?.length) {
-      message.buttonParameters.forEach((suffix, index) => {
-        components.push({
-          type: "button",
-          sub_type: "url",
-          index,
-          parameters: [{ type: "text", text: String(suffix) }],
-        });
-      });
-    }
+    const components = buildTemplateComponents(message);
 
     const body = {
       messaging_product: "whatsapp",

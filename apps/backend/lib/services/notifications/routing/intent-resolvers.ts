@@ -2,6 +2,7 @@ import { Intent, IntentResolutionInput, IntentResolver } from "./types";
 import { resolveCommand } from "../command-center/commands";
 import { looksLikeOtp } from "../command-center/guardian-access";
 import { decodePayload } from "../command-center/menu";
+import { decodeMealPayload, decodeReadyPayload, parseTypedChoice } from "../providers/whatsapp/special-meal-template-contract";
 
 /** Registry keys, so resolvers and the registry can't drift apart on strings. */
 export const INTENTS = {
@@ -11,10 +12,28 @@ export const INTENTS = {
    * things — see `command-center/commands.ts`.
    */
   COMMAND_CENTER: "COMMAND_CENTER",
+  /** A resident's special-meal answer (spec 2026-10-10). */
+  MEAL_CHOICE: "MEAL_CHOICE",
   GUARDIAN_VERIFICATION: "GUARDIAN_VERIFICATION",
   INTERACTIVE_REPLY: "INTERACTIVE_REPLY",
   OWNER_ASSISTANT: "OWNER_ASSISTANT",
 } as const;
+
+/**
+ * A special-meal answer: a tapped template button (`MEAL:` choice or
+ * `MEALREADY:` on-my-way payload, both arriving as text) or a whole-message typed answer ("veg", "nv", "skip",
+ * "I'm away"). First in the chain because its payloads are ours and exact. The
+ * handler declines anything that is not an open serving for the sender's own
+ * residency, so a guardian's "veg" falls through untouched.
+ */
+export const mealChoiceIntentResolver: IntentResolver = {
+  name: "meal-choice",
+  async resolve({ message }: IntentResolutionInput): Promise<Intent[]> {
+    const body = message.body;
+    if (!decodeMealPayload(body) && !decodeReadyPayload(body) && !parseTypedChoice(body)) return [];
+    return [{ name: INTENTS.MEAL_CHOICE, source: "KEYWORD", confidence: 0.9, metadata: { resolver: "meal-choice" } }];
+  },
+};
 
 /**
  * A button or list reply the user tapped — the highest-confidence signal there
@@ -157,6 +176,7 @@ export function createCompositeIntentResolver(resolvers: IntentResolver[]): Inte
  * owner paths, then the resident/guardian vocabulary.
  */
 export const defaultIntentResolver = createCompositeIntentResolver([
+  mealChoiceIntentResolver,
   interactiveIntentResolver,
   guardianVerificationIntentResolver,
   linkIntentResolver,

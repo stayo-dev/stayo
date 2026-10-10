@@ -1166,6 +1166,17 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **Logging is corrective:** re-entering a served count replaces it. Rejected are future dates, days more than 28 days old, and counts above 3× the headcount.
 - **Tenants declare nothing.** Away Today was dropped rather than built, because the learned lunch ratio already absorbs the population's day-out pattern.
 
+## Special-meal choices ([[Decisions#ADR-238|ADR-238]])
+
+- Answers are `VEG | NON_VEG | AWAY | SKIP`. Buttons offer the first three; `SKIP` is typed or set by the owner.
+- **Absence wins.** A resident on a leave covering the serve date (`start ≤ date < return`) is never messaged and never cooked for, even if they answered earlier. Residents with `exit_date ≤ serve date` are not listed at all.
+- **"I'm away" is a meal answer, never a leave.** It writes no `stay_events` / `stay_leaves` row.
+- **Nothing is guessed.** A silent resident is cooked for only under the occasion's `LAST_CHOICE` policy, as their last explicit veg/non-veg for that same occasion, and the screen labels them "last time". Under `LEAVE_OUT` they are not cooked for.
+- **WhatsApp answers close at the cutoff** (meal start from `preferences_config.meal_timings`, defaults if unset, minus `cutoff_minutes_before`). Owner edits are allowed after it.
+- A button tap carries its own occasion, date and resident (`MEAL:<occasion>:<date>:<tenant>:<choice>`), so last week's message answers last week and a shared phone cannot answer for someone who isn't its own resident.
+- Dietary choice is sensitive: owner-only, and the tables are revoked from `anon` / `authenticated`.
+- **"Food's ready" goes only to residents that dish was cooked for** (confirmed answer, or last choice under `LAST_CHOICE`) and who have a phone. Never to anyone away, skipping, unanswered or on leave. Only on the serving day, at most once per choice per serving.
+
 ## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-214|ADR-214]])
 
 - **A manager's authority is re-derived on every request, never cached in the session/JWT.** `requireAdminOrManagerPermission` and `assertHostelAccess`/`scopeHostelIds` (`src/services/managers/manager-authorization.ts`) load `manager_permission_grants`/`manager_hostel_assignments` fresh from the DB each call. Revoking a permission or unassigning a hostel takes effect on the manager's very next request — no session invalidation, no logout required.

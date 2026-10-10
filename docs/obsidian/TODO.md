@@ -4,6 +4,20 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Special-meal choices — veg / non-veg (2026-10-10, [[Food]])
+
+Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`.
+- [x] **Code audit** — `docs/audits/special-meal-choices-audit.md` (2026-10-10).
+- [x] **Production half of the audit** — done 2026-10-10 (audit §7): tenant self-service first; "I'm away" carries absence because only 2 leaves were ever recorded.
+- [x] **Decided:** buttons `Veg · Non-veg · I'm away`. "I'm away" is meal-specific and creates no leave record; Skip is a typed reply.
+- [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
+- [x] ~~Submit the two templates early~~ — Phase 1 needs only the question template (also the reminder); the heads-up is Phase 2.
+- [x] Phase 1 built on `feat/special-meal-choices` ([[Decisions#ADR-238|ADR-238]]).
+- [x] **Submitted the four templates** (2026-10-10; question + ready_hot re-classified Marketing and resubmitted for review, wait_over/ding in review) (`stayo_special_meal_question` + `stayo_meal_ready_hot` / `_wait_over` / `_ding`) exactly as `docs/design/special-meal-whatsapp-template.md` says. Nothing sends until they are approved.
+- [x] **Applied `migrations/096_special_meals.sql`** to production (2026-10-11, per the user).
+- [ ] **One real test:** one occasion, one phone. Tap each button, type "veg", tap after the cutoff, and check the owner screen and the kitchen sheet.
+- [ ] Phase 2: standing orders, the heads-up template, `MEALS` / `ASK ME`.
+
 ## Restore production's missing integrity guards (2026-09-14, [[Database]])
 
 - [ ] **Apply 075 and 082 to production.** Both additive and safe; 082's `CONCURRENTLY` must be dropped in the Supabase SQL editor (it runs in a transaction) — the table is small enough that a plain build is instant.
