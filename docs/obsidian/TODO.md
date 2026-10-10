@@ -7,9 +7,11 @@ tags: [todo, backlog]
 ## Special-meal choices — veg / non-veg (2026-10-10, [[Food]])
 
 Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`.
-- [ ] **Audit first:** against prod, how many hostels have Food meal timings, how many live tenants have a WhatsApp number, whether `stay_leaves` is used at all.
-- [ ] **Verify a Meta template quick-reply can carry a per-send payload** (occasion + date) — the same blocker parked Stay Status's WhatsApp slice ([[Decisions#ADR-194|ADR-194]]).
-- [ ] **Submit the four templates early** (question / heads-up / reminder / "make it your usual?") — Meta approval is the long pole.
+- [x] **Code audit** — `docs/audits/special-meal-choices-audit.md` (2026-10-10).
+- [ ] **Production half of the audit** — the read-only queries in the audit's §6 (blocked from the dev session). Leave-reporting volume decides whether the question needs an [I'm away] button.
+- [ ] **Decide:** buttons `Veg · Non-veg · I'm away` (Skip typed) vs `Veg · Non-veg · Skip` — audit §4.2.
+- [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
+- [ ] **Submit the two templates early** (question — also the reminder — and heads-up); the rest go inside the 24h window as interactive messages (audit A4). Meta approval is the long pole.
 - [ ] Then: Phase 1 plan → TDD → verification.
 
 ## Restore production's missing integrity guards (2026-09-14, [[Database]])

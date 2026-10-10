@@ -3,6 +3,8 @@
 **Date:** 2026-10-10 · **Status:** product design approved, not audited, not built · **ADR:** none yet (claim the next free number on `origin/main` at merge)
 **Builds on:** [[Decisions#ADR-194|ADR-194]] (Stay Status) · [[Decisions#ADR-195|ADR-195]] (meal forecast) · [[Food]]
 
+> **Audited 2026-10-10** — `docs/audits/special-meal-choices-audit.md` changes four things in this design (§1 there): fixed daily send slots instead of per-owner ask times (Vercel Hobby crons are once-daily), `ASK ME` instead of `STOP` (taken by ADR-234), per-send button payloads are supported by Meta and only need new code, and only two Meta templates are needed. The production-data half of the audit is still pending.
+
 ## Context
 
 Many hostels serve a **special meal on fixed days, e.g. Wednesday and Sunday**, cooked in a veg version and a non-veg version. Today a warden goes door to door the evening before and asks each room how many want veg and how many want non-veg, then adds up the totals on paper. The aim is to replace that round with WhatsApp, and over time stop asking people whose answer is already known, while never counting tenants who are away.
@@ -117,8 +119,8 @@ A tenant who joins between ask time and cutoff (asked on joining). Opted out of 
 ---
 
 ## Fit with the architecture (for the spec, not decided yet)
-- Answers are per tenant per dated occasion, and corrections replace earlier answers. That points to their own table (like `meal_service_logs`), plus a standing-order table. Both are **new tables only**, with RLS on, under the root `migrations/` (next number 095). No new column on an existing model.
-- Eligibility comes from composing `stayService` residents/leaves + `liveTenancyWhere`. It is not a new presence formula.
+- Answers are per tenant per dated occasion, and corrections replace earlier answers. That points to their own table (like `meal_service_logs`), plus a standing-order table. Both are **new tables only**, with RLS on, under the root `migrations/` (next number 096 — 095 is taken; see the audit). No new column on an existing model.
+- Eligibility comes from composing `stayService` residents/leaves (occupying allocations + leaves) plus `tenants.exit_date`. It is not a new presence formula.
 - A cron at each occasion's ask time and cutoff. WhatsApp templates (question / heads-up / reminder / "make it usual?") need **Meta approval**. That is the long pole, so templates should be submitted early.
 - **Must verify in the audit:** whether a template quick-reply can carry a **per-send payload** (occasion + date). The Stay Status memory flagged this as the blocker for the earlier WhatsApp slice.
 - ADR: the next free number on `origin/main` (currently 235 is the latest), claimed at merge time.
