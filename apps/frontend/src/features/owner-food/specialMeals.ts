@@ -31,6 +31,14 @@ export interface ReadyAlert {
   recipients: number;
 }
 
+export interface Outreach {
+  asked: number;
+  reminded: number;
+  unreachable: number;
+  toAsk: number;
+  toRemind: number;
+}
+
 export interface SpecialCount {
   occasion: SpecialOccasion;
   serveDate: string;
@@ -39,6 +47,8 @@ export interface SpecialCount {
   /** True only on the serving day itself: the only day "food's ready" can be sent. */
   isToday: boolean;
   readyAlerts: ReadyAlert[];
+  /** Who has been messaged for this serving, by the crons or the owner's buttons. */
+  outreach?: Outreach;
   count: {
     cook: { veg: number; nonVeg: number };
     confirmed: number; lastChoice: number; noAnswer: number; skipping: number; awaySaid: number; onLeave: number;
@@ -128,4 +138,22 @@ export function readyButtons(c: SpecialCount['count'], alerts: ReadyAlert[], isT
   });
   const bothOpen = buttons.length === 2 && buttons.every((b) => b.sent === null);
   return { buttons, bothLabel: bothOpen ? `Both are ready · tell ${c.cook.nonVeg + c.cook.veg}` : null };
+}
+
+/**
+ * The owner's "Ask now" / "Remind now" (the crons fire only at ~18:00 and
+ * ~08:00). Only while answers are open; each button names how many residents
+ * it will message, and disappears once there is nobody left for it.
+ */
+export function outreachActions(o: Outreach | undefined, isOpen: boolean) {
+  if (!isOpen || !o) return null;
+  const parts: string[] = [];
+  if (o.asked > 0 || o.reminded > 0) parts.push(`Asked ${o.asked}`, `Reminded ${o.reminded}`);
+  if (o.unreachable > 0) parts.push(`${o.unreachable} couldn't be reached`);
+  const fresh = o.asked === 0 && o.reminded === 0;
+  return {
+    status: parts.length ? parts.join(' · ') : null,
+    ask: o.toAsk > 0 ? (fresh ? `Ask residents now · ${o.toAsk}` : `Ask ${o.toAsk} more`) : null,
+    remind: o.toRemind > 0 ? `Remind ${o.toRemind} who haven't answered` : null,
+  };
 }

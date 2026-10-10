@@ -39,6 +39,11 @@ export const foodService = {
   setSpecialMealAnswer: async (hostelId: string, occasionId: string, body: { tenantId: string; serveDate: string; choice: MealChoice | null }) => {
     await api.put(`/hostels/${hostelId}/meals/special/${occasionId}/answers`, body);
   },
+  sendSpecialMealNow: async (hostelId: string, occasionId: string, kind: 'ASK' | 'REMIND') => {
+    const response = await api.post(`/hostels/${hostelId}/meals/special/${occasionId}/send`, { kind });
+    const { success: _success, ...rest } = (response.data ?? {}) as any;
+    return rest as { serveDate: string; sent: number; skipped: number; failed: number };
+  },
   sendSpecialMealReady: async (hostelId: string, occasionId: string, choice: 'VEG' | 'NON_VEG' | 'BOTH') => {
     const response = await api.post(`/hostels/${hostelId}/meals/special/${occasionId}/ready`, { choice });
     return unwrap(response).alerts as Array<{ choice: 'VEG' | 'NON_VEG'; sent: number; failed: number; alreadySent: boolean }>;
