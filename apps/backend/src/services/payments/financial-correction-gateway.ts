@@ -20,7 +20,7 @@
  *   - REFUND: Return money to tenant (future)
  */
 
-import { tenantFinancialLedgerService } from "./tenant-financial-ledger-service";
+import { tenantFinancialLedgerService, WAIVER_REFERENCE_TYPE } from "./tenant-financial-ledger-service";
 import { getLogger } from "@/lib/logger";
 
 const logger = getLogger("financial-correction-gateway");
@@ -78,7 +78,7 @@ class DirectLedgerCorrectionGateway implements IFinancialCorrectionGateway {
             amount,
             notes: `Waived outstanding balance of ₹${amount.toLocaleString("en-IN")} on ${displayLabel}. Reason: ${reason}`,
             referenceId: obligationId,
-            referenceType: "RENT_OBLIGATION_WAIVER",
+            referenceType: WAIVER_REFERENCE_TYPE,
           });
 
           logger.info("correction.waiver.applied", {

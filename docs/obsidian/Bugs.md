@@ -8,6 +8,16 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## "Send again" sent a link that still said expired (2026-10-10)
+
+**Symptom.** An owner pressed "Send new link" for a tenant who hadn't accepted; the tenant opened it and was told the invitation had expired. Re-sending again changed nothing.
+
+**Cause.** Two gaps. (1) Once the expiry sweep closed the tenancy (link expired + 7 days' grace), the resend minted a new token but never undid `tenants.status = EXPIRED`, and `resolveByToken` refuses any EXPIRED tenancy regardless of the invitation — so every new link was dead on arrival; the bed and the voided future rent stayed gone too. (2) When WhatsApp failed, `POST /api/tenants/resend-invitation` returned only `{ error }`, so the owner's screen shared its cached link, whose token the resend had just replaced.
+
+**Fix.** "Send again" reopens a swept tenancy in the same transaction that issues the new 7-day link (`reopenExpiredTenancy`): bed re-held only if free, voided rent restored in place with the ledger waiver reversed, payments untouched. The route returns the new link on 202/502 failures and the screen uses it. Regression tests: `tests/invitation-resend-reopens-link.test.ts`, `tests/resend-invitation-route-link.test.ts`, `inviteDelivery.test.ts`, and `tests/invitation-resend-reopen.db.test.ts` (real Postgres, local-only: repeated resends, old-link invalidation, onboarding completion, no double allocation, rent/ledger restoration with payments, sweep reclaim).
+
+**Found while verifying on a real database** (the mocked tests could not see either): a tenant reopened without a bed could never activate even once a bed freed, because room capacity counts every live invitation as a held bed — including the tenant's own; and restored future rent came back `UPCOMING` regardless of type, which would have left maintenance un-promotable. Both fixed before merge. Rule change: [[Decisions#ADR-237|ADR-237]]; see [[Business-Rules]].
+
 ## The food menu reset every month (2026-10-10)
 
 **Symptom.** An owner built the weekly menu in September; on 1 October the Meal Plan was blank and had to be rebuilt, and the owner Home card, Kitchen Sheet and Food page showed nothing. (Tenants kept seeing September's menu, labelled September, because their view shows the latest published month.)

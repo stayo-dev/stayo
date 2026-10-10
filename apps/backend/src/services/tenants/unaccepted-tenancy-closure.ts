@@ -1,6 +1,14 @@
 import { obligationEngine } from "@/src/services/payments/obligation-engine";
 
 /**
+ * The `waived_reason` the expiry sweep stamps on the future rent it voids.
+ * `reopenExpiredTenancy` restores exactly the obligations carrying it — never
+ * one an owner waived by hand.
+ */
+export const AUTO_EXPIRE_WAIVER_REASON =
+  "Invitation expired — tenant never accepted; room freed, future obligations voided, past dues kept for settlement";
+
+/**
  * Close a live-but-unaccepted tenancy (`status = ACTIVE`,
  * `acceptance_status = PENDING`) — owner cancellation or automatic expiry.
  *

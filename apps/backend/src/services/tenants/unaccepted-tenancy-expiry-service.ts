@@ -1,7 +1,7 @@
 import { prisma } from "@/lib/db";
 import { eventLog } from "@/lib/services/event-log-service";
 import { getLogger } from "@/lib/logger";
-import { closeUnacceptedTenancy } from "./unaccepted-tenancy-closure";
+import { AUTO_EXPIRE_WAIVER_REASON, closeUnacceptedTenancy } from "./unaccepted-tenancy-closure";
 import { allocationReconciliationService } from "@/lib/services/allocation-reconciliation-service";
 import { eventSystem } from "@/lib/events";
 
@@ -30,7 +30,10 @@ export class UnacceptedTenancyExpiryService {
 
     const tenants = await prisma.tenants.findMany({
       where: {
-        status: "ACTIVE",
+        // INVITED + OWNER_MANAGED: a swept tenancy that a resend reopened while
+        // its room was full (ADR-237). It holds no allocation, but its live
+        // invitation counts as a held bed, so it must lapse like any other.
+        OR: [{ status: "ACTIVE" }, { status: "INVITED", access_mode: "OWNER_MANAGED" }],
         acceptance_status: "PENDING",
         tenant_invitations: {
           some: {
@@ -79,8 +82,7 @@ export class UnacceptedTenancyExpiryService {
           actorId: tenant.owner_id,
           terminalStatus: "EXPIRED",
           invitationStatus: "EXPIRED",
-          reason:
-            "Invitation expired — tenant never accepted; room freed, future obligations voided, past dues kept for settlement",
+          reason: AUTO_EXPIRE_WAIVER_REASON,
         });
         waived = result.waivedObligationIds.length;
       });

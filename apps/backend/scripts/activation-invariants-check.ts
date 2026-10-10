@@ -100,6 +100,14 @@ async function main() {
     prisma.tenants.findMany({
       where: {
         acceptance_status: "PENDING",
+        // ADR-237: a swept tenancy re-sent while its room was full reopens as
+        // INVITED, owner-managed, with a bound profile and no bed — by design.
+        NOT: {
+          status: "INVITED",
+          access_mode: "OWNER_MANAGED",
+          profile_id: { not: null },
+          room_allocations: { none: { is_active: true, end_date: null } },
+        },
         OR: [
           { status: { not: "ACTIVE" } },
           { access_mode: { not: "OWNER_MANAGED" } },
