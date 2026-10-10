@@ -17,10 +17,12 @@ export function TenantDueRow({ tenant, onCollect }: TenantDueRowProps) {
       className="flex cursor-pointer items-center gap-3 border-t border-border/60 py-3 first:border-t-0"
     >
       <div className="min-w-0 flex-1">
-        <div className="text-[13px] font-semibold text-foreground">{tenant.name}</div>
-        <div className="mt-0.5 flex items-center gap-1.5">
-          <span className="text-[11.5px] text-muted-foreground">{tenant.hostelName}</span>
-          <span className="rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">{overdueBadgeLabel(tenant.overdueDays)}</span>
+        <div className="truncate text-[13px] font-semibold text-foreground">{tenant.name}</div>
+        {/* The badge never wraps ("71d / overdue" on two lines); a long hostel
+            name gives way and truncates instead. */}
+        <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+          <span className="min-w-0 truncate text-[11.5px] text-muted-foreground">{tenant.hostelName}</span>
+          <span className="flex-none whitespace-nowrap rounded-md bg-destructive/10 px-1.5 py-0.5 text-[10px] font-bold text-destructive">{overdueBadgeLabel(tenant.overdueDays)}</span>
         </div>
       </div>
       <div className="flex-none font-display text-[13.5px] font-bold tabular-nums text-destructive">₹{tenant.outstanding.toLocaleString('en-IN')}</div>

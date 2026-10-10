@@ -6,6 +6,7 @@ import { portfolioService, dashboardService } from '@features/dashboard/api';
 import { expenseService } from '@features/expenses/api';
 import { queryKeys } from '@lib/queryKeys';
 import type { MockExpense } from '@shared/mocks/expenses';
+import { lastNDays, sumDailyCollections, type CashflowResult } from './cashflowSeries';
 
 function formatINR(value: number) {
   return `₹${Math.round(value).toLocaleString('en-IN')}`;
@@ -22,10 +23,6 @@ interface PortfolioAggregate {
 interface PortfolioSummaryResponse {
   aggregate: PortfolioAggregate;
   hostels: { hostel_id: string }[];
-}
-
-interface CashflowResult {
-  data: { daily_collection: { date: string; amount: number }[] };
 }
 
 interface RealCategoryRow {
@@ -104,16 +101,6 @@ const MONTH_SHORT: Record<string, string> = {
   '07': 'Jul', '08': 'Aug', '09': 'Sep', '10': 'Oct', '11': 'Nov', '12': 'Dec',
 };
 
-/** Generate last N days as YYYY-MM-DD strings, oldest first. */
-function lastNDays(n: number) {
-  const days: string[] = [];
-  for (let i = n - 1; i >= 0; i -= 1) {
-    const d = new Date();
-    d.setDate(d.getDate() - i);
-    days.push(d.toISOString().slice(0, 10));
-  }
-  return days;
-}
 
 /**
  * Real data for the Money tab (Pulse/Collections/Expenses reads) — composes
@@ -161,22 +148,14 @@ export function useRealMoney() {
 
   const aggregate = portfolioQuery.data?.aggregate;
 
-  const forecast = useMemo(() => {
-    const byDate = new Map<string, number>();
-    for (const day of days) byDate.set(day, 0);
-    for (const q of cashflowQueries) {
-      const daily = q.data?.data?.daily_collection ?? [];
-      for (const row of daily) {
-        const key = row.date.slice(0, 10);
-        if (byDate.has(key)) byDate.set(key, (byDate.get(key) ?? 0) + Number(row.amount || 0));
-      }
-    }
-    return days.map((day) => {
-      const amount = byDate.get(day) ?? 0;
-      const [, m, d] = day.split('-');
-      return { label: `${d} ${MONTH_SHORT[m]}`, value: formatINR(amount), amount };
-    });
-  }, [cashflowQueries, days]);
+  const forecast = useMemo(
+    () =>
+      sumDailyCollections(days, cashflowQueries.map((q) => q.data)).map(({ date, amount }) => {
+        const [, m, d] = date.split('-');
+        return { label: `${d} ${MONTH_SHORT[m]}`, value: formatINR(amount), amount };
+      }),
+    [cashflowQueries, days],
+  );
 
   const expenses = expensesQuery.data;
   const mappedExpenses = useMemo(() => (expenses?.expenses ?? []).map(toMockExpense), [expenses]);
