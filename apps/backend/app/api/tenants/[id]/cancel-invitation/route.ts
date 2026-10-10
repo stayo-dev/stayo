@@ -47,9 +47,11 @@ export async function POST(
     return apiResponse(result);
   } catch (error: any) {
     const msg: string = error?.message || "Failed to cancel invitation";
-    if (msg.startsWith("NOT_FOUND:"))  return apiError(msg, "NOT_FOUND", 404);
-    if (msg.startsWith("FORBIDDEN:"))  return apiError(msg, "FORBIDDEN", 403);
-    if (msg.startsWith("VALIDATION:")) return apiError(msg, "VALIDATION_ERROR", 400);
+    // The prefix is for routing here, not for the owner's screen.
+    const text = msg.replace(/^[A-Z_]+:\s*/, "");
+    if (msg.startsWith("NOT_FOUND:"))  return apiError(text, "NOT_FOUND", 404);
+    if (msg.startsWith("FORBIDDEN:"))  return apiError(text, "FORBIDDEN", 403);
+    if (msg.startsWith("VALIDATION:")) return apiError(text, "VALIDATION_ERROR", 400);
     return apiError(msg);
   }
 }

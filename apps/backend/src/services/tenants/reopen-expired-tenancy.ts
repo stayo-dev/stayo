@@ -54,10 +54,9 @@ export async function reopenExpiredTenancy(
   }
 
   await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
-  const capacity = await roomCapacityService.getRoomCapacitySnapshot(roomId, { tx });
   const now = new Date();
 
-  if (capacity.available <= 0) {
+  if (!(await hasBedFreeFor(tx, roomId, tenantId))) {
     await tx.tenants.update({ where: { id: tenantId }, data: { status: "INVITED", updated_at: now } });
     return { reopened: true, bedHeld: false, restoredObligationIds: [] };
   }
@@ -185,4 +184,27 @@ export async function restoreSweptObligations(
     await financialLifecycleService.activatePayableObligations(tx, { tenantId, ownerId, hostelId, obligationIds: payableNow });
   }
   return restored;
+}
+
+/**
+ * Is there a bed in `roomId` for this tenant, counting everyone else's
+ * occupancy and holds but not the tenant's own?
+ *
+ * `roomCapacityService` counts every live invitation and active reservation
+ * as a held bed (deduplicated per tenant). A tenancy being reopened or
+ * activated can still have one of its own — a link refreshed before ADR-237
+ * left the invitation live behind an EXPIRED tenancy — and that hold is the
+ * bed it is asking for, not a rival for it. Caller holds the room lock.
+ */
+export async function hasBedFreeFor(tx: any, roomId: string, tenantId: string): Promise<boolean> {
+  const capacity = await roomCapacityService.getRoomCapacitySnapshot(roomId, { tx });
+  const [ownInvites, ownReservations] = await Promise.all([
+    tx.tenant_invitations.count({
+      where: { tenant_id: tenantId, room_id: roomId, status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"] } },
+    }),
+    tx.tenant_invitation_reservations.count({ where: { tenant_id: tenantId, room_id: roomId, status: "ACTIVE" } }),
+  ]);
+  const ownHold = ownInvites + ownReservations > 0 ? 1 : 0;
+  const heldByOthers = Math.max(0, capacity.reserved - ownHold);
+  return capacity.occupied + heldByOthers < capacity.capacity;
 }

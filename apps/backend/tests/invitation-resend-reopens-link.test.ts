@@ -73,10 +73,11 @@ function makeDb() {
         withRelations(s.invitations.find((i: any) => (where.id ? i.id === where.id : i.token === where.token))),
       ),
       update: vi.fn(async ({ where, data }: any) => Object.assign(s.invitations.find((i: any) => i.id === where.id), data)),
-      count: vi.fn(async () => s.invitations.length),
+      count: vi.fn(async ({ where }: any = {}) => s.invitations.filter((i: any) => matches(i, where)).length),
     },
     tenant_invitation_reservations: {
       updateMany: vi.fn(async () => ({ count: 0 })),
+      count: vi.fn(async () => 0),
       findFirst: vi.fn(async () => null),
       create: vi.fn(),
       update: vi.fn(),
@@ -445,5 +446,38 @@ describe("the expiry sweep reclaims a tenancy reopened without a bed", () => {
     const where = db.current.tenants.findMany.mock.calls[0][0].where;
     expect(where.OR).toEqual([{ status: "ACTIVE" }, { status: "INVITED", access_mode: "OWNER_MANAGED" }]);
     expect(where.acceptance_status).toBe("PENDING");
+  });
+});
+
+describe("a tenancy left EXPIRED behind a live link by the pre-ADR-237 refresh", () => {
+  // The old link refresh issued a new token and set the invitation PENDING
+  // with a fresh week, but never reopened the tenancy. The owner then saw
+  // "Expires in 7 days" and every Nudge answered "This tenancy has ended".
+  beforeEach(() => {
+    Object.assign(invitation(), { token: "stuck-token", status: "PENDING", expires_at: new Date(Date.now() + 7 * 86_400_000), cancelled_at: null });
+  });
+
+  it("Nudge reopens it and sends a link that opens onboarding", async () => {
+    // The room's only hold is this tenant's own live invitation.
+    Object.assign(h.capacity, { available: 0, occupied: 1, reserved: 1, capacity: 2 });
+    const result = await sendAgain();
+
+    expect(tenant().status).toBe("ACTIVE");
+    expect(result).toMatchObject({ reopened: true, bed_held: true });
+    expect(result.activation_link).toContain(`/activate/${invitation().token}`);
+    await expect(service.resolveByToken(invitation().token)).resolves.toMatchObject({ tenant: { id: "tenant-1" } });
+  });
+
+  it("works the same with payments on record", async () => {
+    h.state.paymentsCount = 2;
+    await sendAgain();
+    expect(tenant().status).toBe("ACTIVE");
+    await expect(service.resolveByToken(invitation().token)).resolves.toBeTruthy();
+  });
+
+  it("a cancelled tenancy behind a live link is still refused", async () => {
+    tenant().status = "CANCELLED";
+    await expect(sendAgain()).rejects.toThrow(/ended|cancelled/i);
+    expect(invitation().token).toBe("stuck-token");
   });
 });
