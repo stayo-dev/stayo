@@ -81,6 +81,28 @@ select status, count(*) n, max(created_at) latest from stay_leaves group by 1;
 select count(*) inbound_30d from whatsapp_webhook_events where created_at > now() - interval '30 days';
 ```
 
+**One-paste version** (the Supabase editor shows only the last result, so this returns a single table of counts):
+
+```sql
+-- Special-meal choices audit — read-only, aggregate counts only.
+select o as "#", metric, value from (
+  select 1 o, 'Active tenants' metric, count(*)::text value from tenants where status = 'ACTIVE'
+  union all select 2, 'Active tenants with a phone number', count(*)::text from tenants where status = 'ACTIVE' and coalesce(trim(phone_1), '') <> ''
+  union all select 3, 'Active tenants with an app login', count(*)::text from tenants where status = 'ACTIVE' and profile_id is not null
+  union all select 4, 'Hostels with active tenants', count(distinct hostel_id)::text from tenants where status = 'ACTIVE'
+  union all select 5, 'Largest hostel (active tenants)', coalesce(max(n), 0)::text from (select count(*) n from tenants where status = 'ACTIVE' group by hostel_id) x
+  union all select 6, 'Hostels with meal timings set', count(*)::text from hostels where preferences_config::jsonb ? 'meal_timings'
+  union all select 7, 'Hostels with a published food schedule', count(distinct hostel_id)::text from food_schedules where status = 'PUBLISHED'
+  union all select 8, 'Food polls: total / last 60 days', count(*)::text || ' / ' || count(*) filter (where created_at > now() - interval '60 days')::text from food_polls
+  union all select 9, 'Food poll votes / distinct voters', count(*)::text || ' / ' || count(distinct tenant_id)::text from food_poll_votes
+  union all select 10, 'Stay events: total / last 30 days', count(*)::text || ' / ' || count(*) filter (where occurred_at > now() - interval '30 days')::text from stay_events
+  union all select 11, 'Stay events by source', coalesce(string_agg(source || '=' || n, ', '), 'none') from (select source, count(*) n from stay_events group by source) s
+  union all select 12, 'Leaves: total / still active', count(*)::text || ' / ' || count(*) filter (where status = 'ACTIVE')::text from stay_leaves
+  union all select 13, 'Inbound WhatsApp messages, last 30 days', count(*)::text from whatsapp_webhook_events where received_at > now() - interval '30 days' and raw_payload::jsonb #> '{entry,0,changes,0,value}' ? 'messages'
+  union all select 14, 'Distinct WhatsApp senders, last 30 days', count(distinct raw_payload::jsonb #>> '{entry,0,changes,0,value,messages,0,from}')::text from whatsapp_webhook_events where received_at > now() - interval '30 days' and raw_payload::jsonb #> '{entry,0,changes,0,value}' ? 'messages'
+) t order by o;
+```
+
 What each answer decides:
 - **Leave reporting near zero** → the [I'm away] button (§4.2) becomes essential.
 - **Few phones** → the warden-entry path is the main path, not a fallback.
