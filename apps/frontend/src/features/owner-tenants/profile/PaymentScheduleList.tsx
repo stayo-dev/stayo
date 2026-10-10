@@ -1,5 +1,7 @@
+import { useState } from 'react';
+import { ChevronDown, ChevronUp } from 'lucide-react';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
-import type { PaymentSchedule, PaymentScheduleItem } from './paymentSchedule';
+import { previewRows, SECTION_PREVIEW_LIMIT, type PaymentSchedule, type PaymentScheduleItem } from './paymentSchedule';
 
 /**
  * The owner tenant profile's payment schedule — Overdue / Upcoming / Paid,
@@ -113,22 +115,44 @@ function Section({
   title,
   items,
   tone,
+  limit,
   onManage,
 }: {
   title: string;
   items: PaymentScheduleItem[];
   tone: string;
+  /** Rows shown before "Show all"; null shows every row. */
+  limit: number | null;
   onManage?: (item: PaymentScheduleItem, mode: 'edit' | 'remove') => void;
 }) {
+  const [expanded, setExpanded] = useState(false);
   if (items.length === 0) return null;
+  const { visible, hidden } = previewRows(items, limit, expanded);
   return (
     <div className="flex flex-col gap-2">
       <div className={`text-[10.5px] font-bold uppercase tracking-wide ${tone}`}>
         {title} · {items.length}
       </div>
-      {items.map((item) => (
+      {visible.map((item) => (
         <Row key={item.id} item={item} onManage={onManage} />
       ))}
+      {(hidden > 0 || expanded) && (
+        <button
+          type="button"
+          onClick={() => setExpanded((v) => !v)}
+          className="flex min-h-9 items-center justify-center gap-1 rounded-[11px] border border-dashed border-border text-[12px] font-bold text-muted-foreground"
+        >
+          {expanded ? (
+            <>
+              Show less <ChevronUp className="h-3.5 w-3.5" />
+            </>
+          ) : (
+            <>
+              Show all {items.length} {title.toLowerCase()} <ChevronDown className="h-3.5 w-3.5" />
+            </>
+          )}
+        </button>
+      )}
     </div>
   );
 }
@@ -166,10 +190,10 @@ export function PaymentScheduleList({ schedule, onAddCharge, onManageCharge }: P
         </p>
       ) : (
         <div className="flex flex-col gap-4 pt-2">
-          <Section title="Overdue" items={schedule.overdue} tone="text-destructive" onManage={onManageCharge} />
-          <Section title="Upcoming" items={schedule.upcoming} tone="text-muted-foreground" onManage={onManageCharge} />
-          <Section title="Paid" items={schedule.paid} tone="text-success" />
-          <Section title="Withdrawn" items={schedule.cancelled} tone="text-muted-foreground" />
+          <Section title="Overdue" items={schedule.overdue} tone="text-destructive" limit={SECTION_PREVIEW_LIMIT.overdue} onManage={onManageCharge} />
+          <Section title="Upcoming" items={schedule.upcoming} tone="text-muted-foreground" limit={SECTION_PREVIEW_LIMIT.upcoming} onManage={onManageCharge} />
+          <Section title="Paid" items={schedule.paid} tone="text-success" limit={SECTION_PREVIEW_LIMIT.paid} />
+          <Section title="Withdrawn" items={schedule.cancelled} tone="text-muted-foreground" limit={SECTION_PREVIEW_LIMIT.cancelled} />
         </div>
       )}
     </div>

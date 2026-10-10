@@ -269,3 +269,23 @@ export function describeNextPayment(
 
   return { amount, dateLabel, timing, periodLabel, multiMonth, isOverdue, projected: next.projected };
 }
+
+/**
+ * How many rows each section shows before "Show all". Overdue is never cut:
+ * it is the work. Upcoming used to list the whole tenancy — eleven identical
+ * ₹8,000 months — which buried everything below it.
+ */
+export const SECTION_PREVIEW_LIMIT: Record<'overdue' | 'upcoming' | 'paid' | 'cancelled', number | null> = {
+  overdue: null,
+  upcoming: 2,
+  paid: 3,
+  cancelled: 2,
+};
+
+/** The rows to render and how many are hidden behind "Show all". */
+export function previewRows<T>(items: T[], limit: number | null, expanded: boolean): { visible: T[]; hidden: number } {
+  if (expanded || limit == null || items.length <= limit) return { visible: items, hidden: 0 };
+  // Hiding a single row saves nothing and costs a tap.
+  if (items.length === limit + 1) return { visible: items, hidden: 0 };
+  return { visible: items.slice(0, limit), hidden: items.length - limit };
+}
