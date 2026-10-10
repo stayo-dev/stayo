@@ -1,6 +1,4 @@
 import {
-  Landmark,
-  Share2,
   Receipt,
   FileStack,
   RotateCcw,
@@ -14,10 +12,8 @@ import { AdaptiveSurface } from '@/app/components/ui/adaptive-surface';
 interface TenantActionsSheetProps {
   open: boolean;
   onClose: () => void;
-  onCollectPayment: () => void;
   onChangeRent: () => void;
   onCheckout: () => void;
-  onShareLink: () => void;
   onCreateCharge: () => void;
   onViewReceipts: () => void;
   onRequestChange: () => void;
@@ -27,16 +23,11 @@ interface TenantActionsSheetProps {
 
 const GROUPS: {
   label: string;
-  rows: { icon: typeof Landmark; title: string; sub: string; key: string }[];
+  rows: { icon: typeof Receipt; title: string; sub: string; key: string }[];
 }[] = [
-  {
-    label: 'Collect',
-    rows: [{ icon: Landmark, title: 'Receive Payment', sub: 'Log cash, UPI or bank transfer', key: 'collect' }],
-  },
   {
     label: 'Charges & Receipts',
     rows: [
-      { icon: Share2, title: 'Share Payment Link', sub: 'Send a secure pay link to tenant', key: 'share-link' },
       { icon: Receipt, title: 'Create Charge', sub: 'Add rent, deposit or one-off fee', key: 'create-charge' },
       { icon: FileStack, title: 'View Receipts', sub: 'All issued receipts & invoices', key: 'view-receipts' },
     ],
@@ -57,14 +48,12 @@ const GROUPS: {
   },
 ];
 
-/** Tenant Actions menu, grouped per Stayo App.dc.html — a `BottomSheet` below `lg`, a right-side drawer at `lg+` (`AdaptiveSurface variant="form"`, ADR-171 Phase 2.4) so the grouped rich rows keep their layout and the profile stays visible behind it. Every row is real — wired to the same backend flows used elsewhere in the app (Change Rent's identity-confirmed pattern, the tenant's own Activity tab, etc), none are silent no-ops. */
+/** Tenant Actions menu, grouped per Stayo App.dc.html (Receive Payment and Share Payment Link removed by product decision 2026-10-10; collecting stays on the profile's "Collect Now" card) — a `BottomSheet` below `lg`, a right-side drawer at `lg+` (`AdaptiveSurface variant="form"`, ADR-171 Phase 2.4) so the grouped rich rows keep their layout and the profile stays visible behind it. Every row is real — wired to the same backend flows used elsewhere in the app (Change Rent's identity-confirmed pattern, the tenant's own Activity tab, etc), none are silent no-ops. */
 export function TenantActionsSheet({
   open,
   onClose,
-  onCollectPayment,
   onChangeRent,
   onCheckout,
-  onShareLink,
   onCreateCharge,
   onViewReceipts,
   onRequestChange,
@@ -72,10 +61,8 @@ export function TenantActionsSheet({
   onChangeRoom,
 }: TenantActionsSheetProps) {
   const ROW_HANDLERS: Record<string, () => void> = {
-    collect: onCollectPayment,
     'change-rent': onChangeRent,
     checkout: onCheckout,
-    'share-link': onShareLink,
     'create-charge': onCreateCharge,
     'view-receipts': onViewReceipts,
     'request-change': onRequestChange,
@@ -99,16 +86,14 @@ export function TenantActionsSheet({
                 key={row.key}
                 type="button"
                 onClick={() => handleRow(row.key)}
-                className={`flex items-center gap-3 rounded-2xl p-3.5 text-left ${
-                  row.key === 'collect' ? 'bg-primary' : 'bg-muted'
-                }`}
+                className="flex items-center gap-3 rounded-2xl bg-muted p-3.5 text-left"
               >
-                <span className={`flex h-9 w-9 flex-none items-center justify-center rounded-[11px] ${row.key === 'collect' ? 'bg-white/15' : 'bg-card'}`}>
-                  <row.icon className={`h-4.5 w-4.5 ${row.key === 'collect' ? 'text-primary-foreground' : 'text-muted-foreground'}`} strokeWidth={1.9} />
+                <span className="flex h-9 w-9 flex-none items-center justify-center rounded-[11px] bg-card">
+                  <row.icon className="h-4.5 w-4.5 text-muted-foreground" strokeWidth={1.9} />
                 </span>
                 <div className="min-w-0 flex-1">
-                  <div className={`text-[13.5px] font-bold ${row.key === 'collect' ? 'text-primary-foreground' : 'text-foreground'}`}>{row.title}</div>
-                  <div className={`text-[11px] ${row.key === 'collect' ? 'text-primary-foreground/80' : 'text-muted-foreground'}`}>{row.sub}</div>
+                  <div className="text-[13.5px] font-bold text-foreground">{row.title}</div>
+                  <div className="text-[11px] text-muted-foreground">{row.sub}</div>
                 </div>
               </button>
             ))}

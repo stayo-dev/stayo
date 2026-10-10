@@ -8,6 +8,7 @@ import { changeRequestKeys } from '@features/change-management';
 import { agreementAmendmentService, type AgreementAmendment } from '../api/agreementAmendment';
 import type { AmendmentOutcome } from './amendmentOutcome';
 import type { RealTenantDetail } from '../hooks/useTenantDetail';
+import { formatAgreementDay, toDateInputValue } from './agreementDates';
 
 /**
  * Amend the agreement's terms.
@@ -51,7 +52,7 @@ interface FieldDef {
 
 const FIELDS: FieldDef[] = [
   { key: 'agreement_duration_months', label: 'Agreement duration (months)', type: 'number' },
-  { key: 'agreement_start_date', label: 'Agreement start date', type: 'date' },
+  { key: 'agreement_start_date', label: 'Agreement start date', type: 'date', format: formatAgreementDay },
   { key: 'security_deposit', label: 'Security deposit', type: 'number', format: money },
   { key: 'maintenance_charge', label: 'Maintenance charge', type: 'number', format: money },
   {
@@ -74,7 +75,8 @@ export function AmendAgreementSheet({ open, onClose, tenant, onChangeRent }: Ame
 
   const current: Record<FieldKey, any> = {
     agreement_duration_months: tenant.agreement?.durationMonths ?? null,
-    agreement_start_date: tenant.agreement?.startDate ?? null,
+    // Day only, so it compares equal to what the date input holds.
+    agreement_start_date: toDateInputValue(tenant.agreement?.startDate),
     security_deposit: tenant.stay.deposit,
     maintenance_charge: tenant.maintenanceCharge,
     maintenance_type: tenant.maintenanceType,

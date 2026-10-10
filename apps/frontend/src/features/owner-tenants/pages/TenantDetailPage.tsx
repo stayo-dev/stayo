@@ -7,7 +7,6 @@ import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { EmptyState } from '@shared/ui-patterns/EmptyState';
 import { queryKeys } from '@lib/queryKeys';
-import { useTenantActions } from '@features/tenants/hooks/useTenantActions';
 import { ChangeFrequencyModal } from '@/app/components/modals/ChangeFrequencyModal';
 import { useTenantDetail } from '../hooks/useTenantDetail';
 import { useDocumentVerification } from '../hooks/useDocumentVerification';
@@ -19,6 +18,8 @@ import type { TenantDetailTab } from '../types';
 import { InvitedTenantProfileView } from '../components/InvitedTenantProfileView';
 import { showsInvitationManagement } from '../invitationManagement';
 import { TenantActionsSheet } from '../actions/TenantActionsSheet';
+import { ReceiptsSheet } from '../actions/ReceiptsSheet';
+import { formatAgreementDay } from '../profile/agreementDates';
 import { ProfileHeader } from '../profile/ProfileHeader';
 import { CommunicationCard } from '../profile/CommunicationCard';
 import { PrivateNotesCard } from '../profile/PrivateNotesCard';
@@ -65,6 +66,7 @@ export function TenantDetailPage() {
 
   const [activeTab, setActiveTab] = useState<TenantDetailTab>('charges');
   const [actionsOpen, setActionsOpen] = useState(false);
+  const [receiptsOpen, setReceiptsOpen] = useState(false);
   const [quickCollectOpen, setQuickCollectOpen] = useState(false);
   const [changeRentOpen, setChangeRentOpen] = useState(false);
   const [moveOutOpen, setMoveOutOpen] = useState(false);
@@ -83,7 +85,6 @@ export function TenantDetailPage() {
     doc?: ReviewDocument;
   } | null>(null);
 
-  const tenantActions = useTenantActions(tenant?.hostelId ?? '');
   const verification = useDocumentVerification(tenantId);
   // Vault review requests. Additive — a hostel that has never used vault
   // sharing gets an empty list and the tab looks exactly as it did.
@@ -452,7 +453,7 @@ export function TenantDetailPage() {
                           <div className="text-[13px] font-bold text-foreground">Rental agreement</div>
                           <div className="mt-0.5 text-[11px] text-muted-foreground">
                             {documentGroups.agreement.startDate && documentGroups.agreement.endDate
-                              ? `${documentGroups.agreement.startDate} – ${documentGroups.agreement.endDate}`
+                              ? `${formatAgreementDay(documentGroups.agreement.startDate)} – ${formatAgreementDay(documentGroups.agreement.endDate)}`
                               : 'Terms not set'}
                           </div>
                         </div>
@@ -519,15 +520,19 @@ export function TenantDetailPage() {
       <TenantActionsSheet
         open={actionsOpen}
         onClose={() => setActionsOpen(false)}
-        onCollectPayment={() => setQuickCollectOpen(true)}
         onChangeRent={() => setChangeRentOpen(true)}
         onCheckout={() => setMoveOutOpen(true)}
-        onShareLink={() => tenantActions.sharePaymentLink(tenant.id, tenant.phone, tenant.outstanding || undefined)}
         onCreateCharge={() => setCreateChargeOpen(true)}
-        onViewReceipts={() => setActiveTab('activity')}
+        onViewReceipts={() => setReceiptsOpen(true)}
         onRequestChange={() => setAmendAgreementOpen(true)}
         onChangeBilling={() => setChangeBillingOpen(true)}
         onChangeRoom={() => setChangeRoomOpen(true)}
+      />
+      <ReceiptsSheet
+        open={receiptsOpen}
+        onClose={() => setReceiptsOpen(false)}
+        tenantName={tenant.name}
+        receipts={tenant.receipts}
       />
       <QuickCollectModal
         open={quickCollectOpen}
