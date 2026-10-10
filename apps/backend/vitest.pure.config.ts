@@ -49,6 +49,7 @@ export default defineConfig({
       'tests/food-meal-timings.test.ts',
       // Special-meal choices (Phase 1).
       'tests/special-meal-schema.test.ts',
+      'tests/special-meal-rules.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
