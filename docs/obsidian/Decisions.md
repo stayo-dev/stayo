@@ -3572,3 +3572,17 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
   - **Unresolved, and needing a human:** the compliance posture on personal UPI IDs used for collection at scale. Owners already do this manually so Stayo is not creating the exposure, but facilitating it is a different posture. **This ADR does not resolve it.**
   - **The feature is inert until owners act:** 0 of 6 production hostels have `upi_id` set.
 - **Related:** [[Decisions#ADR-230|ADR-230]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Bugs]]
+
+### ADR-236 — Bulk import prefills the guardian at onboarding; an owner-supplied guardian skips the guardian OTP (2026-10-10)
+
+- **Status:** Accepted
+- **Context:** Bulk import created every tenancy through `createInvitation` (ADR-165) but carried only name, phone, email, room and money terms, so every imported tenant re-entered their guardian at onboarding. Owners asked that a guardian they supply not have to be verified again by OTP. A wider set of personal-detail columns (date of birth, gender, tenant type, guardian relation, college/office, address) was built and then removed at the owner's request — those stay with the tenant.
+- **Decision:**
+  - The Tenants sheet is reordered to Name, Phone, Email, Guardian Name, Guardian Phone, Room, Joining Date, Agreement Months, Monthly Rent, Security Deposit, Maintenance Type, Maintenance Charge, Amount Already Paid, Paid Includes Deposit. Guardian Name and Guardian Phone are optional, validated by onboarding's own rules, and written onto the tenancy at confirm. No schema change; no change to `createInvitation` or the single-invite path.
+  - The guardian OTP is skipped when — and only when — this tenancy's executed import row supplied both the guardian's name and that exact number. The owner is vouching for a guardian they named; this is provenance, not "a number exists in the database". Implemented once in `isGuardianPhoneVerifiedForTenant`, so the activation context, the GUARDIAN step and the owner's view agree.
+  - Imported data never signs, accepts, activates, completes a profile or verifies documents.
+  - Payment Method, Payment Reference and Notes are removed from the template. An imported Amount Already Paid with no method is recorded as `CASH` rather than blocking the row (previously `PAYMENT_METHOD_MISSING`). Collections reports therefore show imported back-payments as cash even when they arrived by UPI or bank — accepted for simplicity of the sheet.
+- **Consequences:**
+  - An owner who enters a wrong guardian number skips that guardian's OTP; the cover sheet says so ("you are vouching for it"). The guardian's own WhatsApp access still requires a challenge.
+  - Pre-existing, unchanged: `isGuardianPhoneVerifiedForTenant` also accepts a legacy `ParentVerify` proof with `tenant_id = null` (pre-ADR-212 rows).
+- **Related:** [[Decisions#ADR-165|ADR-165]], [[Decisions#ADR-182|ADR-182]], [[Decisions#ADR-212|ADR-212]], [[Decisions#ADR-213|ADR-213]], [[Business-Rules]], [[Features]], [[Changelog]]

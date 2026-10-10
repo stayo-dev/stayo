@@ -283,6 +283,10 @@ export default defineConfig({
       'tests/bulk-import-deposit-flag.test.ts',
       'tests/bulk-import-query-shapes.test.ts',
       'tests/bulk-import-dispatch-delivery.test.ts',
+      // Owner-supplied tenant details carried to onboarding; Excel-supplied
+      // guardian skips the OTP by provenance. Mocks `@/lib/db` (2026-10-10).
+      'tests/bulk-import-onboarding-prefill.test.ts',
+      'tests/bulk-import-prefill-confirm.test.ts',
       'tests/placeholder-email.test.ts',
       'tests/floor-rename.test.ts',
       'tests/email-otp-service.test.ts',

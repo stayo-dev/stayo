@@ -1,7 +1,13 @@
 import type { MaintenanceType } from "../hostel-billing-preferences-service";
 import type { RowIssue } from "./issues";
+import type { ImportedProfileFields } from "./profile-fields";
 
-export interface TenantImportRow {
+/**
+ * One tenant row. Extends the owner-supplied onboarding details
+ * (`profile-fields.ts`): guardian name and phone —
+ * prefilled for the tenant at onboarding.
+ */
+export interface TenantImportRow extends ImportedProfileFields {
   name: string;
   phone: string;
   email: string;

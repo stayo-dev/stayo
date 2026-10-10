@@ -34,6 +34,10 @@ export const ISSUE_CODES = [
   "ROOM_SHEET_DUPLICATE",
   "ROOM_CAPACITY_BELOW_OCCUPANCY",
   "ROOM_SHEET_NUMBER_INVALID",
+  // Tenant details the owner supplied for onboarding (profile-fields.ts).
+  "GUARDIAN_PHONE_INVALID",
+  "GUARDIAN_PHONE_IS_TENANT",
+  "TEXT_TOO_LONG",
 ] as const;
 
 export type IssueCode = (typeof ISSUE_CODES)[number];
@@ -109,6 +113,12 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   OVERPAID: "BLOCKER",
   BACKFILL_CAPPED: "NEEDS_CHOICE",
   RENT_BACKDATED: "NEEDS_CHOICE",
+  // A detail the owner gave must be one onboarding would accept, or the
+  // tenant would be shown a prefilled value their own screen then refuses.
+  // Clearing the cell is always a valid fix — the tenant fills it in instead.
+  GUARDIAN_PHONE_INVALID: "BLOCKER",
+  GUARDIAN_PHONE_IS_TENANT: "BLOCKER",
+  TEXT_TOO_LONG: "BLOCKER",
 };
 
 /**
@@ -289,6 +299,23 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     field: "joining_date",
     fix: { kind: "PICK_DATE" },
   }),
+  GUARDIAN_PHONE_INVALID: (c) => ({
+    title: `"${c.value ?? ""}" isn't a 10-digit mobile number.`,
+    detail: `Enter the guardian's 10-digit mobile, with or without +91. Or clear it and the tenant adds their guardian themselves.`,
+    field: "guardian_phone",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  GUARDIAN_PHONE_IS_TENANT: () => ({
+    title: `The guardian's number is the tenant's own number.`,
+    detail: `A guardian has to be someone else. Enter the parent's or guardian's mobile, or clear the cell.`,
+    field: "guardian_phone",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  TEXT_TOO_LONG: (c) => ({
+    title: `The ${c.fieldLabel ?? "text"} is too long.`,
+    detail: `Shorten it to 200 characters or fewer.`,
+    fix: { kind: "EDIT_FIELD" },
+  }),
   HOSTEL_STAMP_MISMATCH: (c) => ({
     title: `This file was made for ${c.expectedHostelName ?? "a different hostel"}.`,
     detail: `Room numbers repeat across hostels, so importing it here could put tenants in the wrong rooms. Switch to that hostel, or download a fresh template for ${c.hostelName ?? "this one"}.`,
@@ -343,6 +370,9 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   FORMULA_IN_CELL: (n) => `${n} rows contain a spreadsheet formula.`,
   DATE_UNREADABLE: (n) => `${n} rows have a missing or unreadable joining date.`,
   HOSTEL_STAMP_MISMATCH: () => `This file was made for a different hostel.`,
+  GUARDIAN_PHONE_INVALID: (n) => `${n} rows have a guardian phone that isn't a mobile number.`,
+  GUARDIAN_PHONE_IS_TENANT: (n) => `${n} rows give the tenant's own number as the guardian's.`,
+  TEXT_TOO_LONG: (n) => `${n} rows have a detail that's too long.`,
 };
 
 /**
