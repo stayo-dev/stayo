@@ -3582,6 +3582,7 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
   4. **Per-send quick-reply payloads** (`MEAL:<occasion>:<date>:<tenant>:<choice>`). This is the first template in this account whose buttons carry ids, not keywords. A new `MEAL_CHOICE` intent at the front of the router handles them, and self-authorises against the sender's *own* residency so guardians and strangers fall through silently.
   5. **Fixed daily slots** (asks 18:00 IST for tomorrow, reminders 08:00 IST for today), because Vercel Hobby crons are once-daily ±59 min. The cutoff is checked when a reply arrives, not by a cron.
   6. **`STOP` is untouched** ([[Decisions#ADR-234|ADR-234]] owns it). Phase 2's opt-out word is `ASK ME`.
+  7. **"Food's ready" is a cook-triggered bell, not a broadcast** (added 2026-10-10). Only residents the dish was cooked for, once per dish per serving (a row inserted before sending makes the unique key the guard), three wordings rotating weekly with a fallback to the first, and an [I'm on my way] quick reply. Submitted as Utility because it is a status update on a meal the resident chose; Meta may re-classify it as Marketing.
 - **Consequences:**
   - Nothing works until the template is approved and migration 096 is applied.
   - With 5 of 29 tenants ever messaging the number, expect a large "No answer" group early. The owner screen's per-resident correction is the mitigation.

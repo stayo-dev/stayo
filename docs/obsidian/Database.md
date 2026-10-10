@@ -835,7 +835,8 @@ What the kitchen actually served — the ground truth every meal forecast is lea
 
 - `special_meal_occasions`: one row per hostel × weekday (0 = Sunday) × meal (`UNIQUE`). Optional `veg_dish` / `non_veg_dish` (≤ 60 chars), `cutoff_minutes_before` (0–1440, default 180), `no_answer_policy` (`LAST_CHOICE` | `LEAVE_OUT`), `is_active`.
 - `special_meal_answers`: one row per occasion × `serve_date` × tenant (`UNIQUE`; the latest answer replaces the earlier one). `choice` CHECK `VEG|NON_VEG|AWAY|SKIP`, `source` CHECK `WHATSAPP|OWNER`, `recorded_by` (owner profile, null for a tenant's tap). History index `(occasion_id, tenant_id, serve_date DESC)`.
-- **No Prisma relation fields** on either model, so no existing model changed. The SQL still declares the foreign keys (cascade from hostels / tenants / occasions).
+- `special_meal_ready_alerts`: one row per occasion × `serve_date` × `choice` (`VEG|NON_VEG`, `UNIQUE`), with `sent_by` and `recipients`. **Inserted before any message is sent**, so its unique key is what stops a double-tapped Ready button from pinging residents twice. Same migration file (096), same RLS and revokes.
+- **No Prisma relation fields** on any of the three models, so no existing model changed. The SQL still declares the foreign keys (cascade from hostels / tenants / occasions).
 - RLS enabled and `REVOKE ALL … FROM anon, authenticated` in the same file, because dietary choice is sensitive.
 
 ## Migration 082 — `activity_logs` gains the indexes it never had (2026-09-14)

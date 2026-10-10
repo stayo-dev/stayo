@@ -12,6 +12,8 @@
 > 4. No "Welcome back" copy for residents returning on the meal day. They get the ordinary question, because the template is fixed.
 > 5. No manual "Remind the 4" button; the 08:00 reminder covers it. No "skip this week" control; pausing the occasion covers it.
 > 6. Served counts per option (Phase 3) are not built.
+>
+> **Addendum (2026-10-10): the "food's ready" bell.** Asked for by the user: on Sundays residents skip breakfast and keep checking the kitchen for the biryani. On the serving day the cook taps *Non-veg / Veg / Both is ready* on the kitchen sheet (or the special-meals page), and only residents that dish was cooked for get a WhatsApp, once per dish per serving. Three Zomato-style wordings rotate weekly; each has an *I'm on my way* quick reply that gets a warm answer and opens the 24-hour window.
 
 ## Context
 

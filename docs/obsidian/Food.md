@@ -610,5 +610,6 @@ Replaces the warden's door-to-door veg/non-veg round before a hostel's recurring
 - The count locks at the cutoff for WhatsApp answers. The owner can still edit any resident's answer afterwards (labelled `OWNER`).
 - The cook's numbers are confirmed answers plus, under the default `LAST_CHOICE` policy, each silent resident's last explicit veg/non-veg for that occasion. The screen labels which is which. Leave always wins over an answer.
 - The kitchen sheet shows one line per special meal served today or tomorrow.
+- **"Food's ready" bell** (added the same day): on the serving day, the kitchen sheet and the special-meals page show **Non-veg is ready · tell N**, **Veg is ready · tell N** and **Both**. One tap (after a confirm naming the number) WhatsApps only the residents that dish was cooked for, once per dish per serving, with one of three wordings that rotate weekly (`stayo_meal_ready_hot` / `_wait_over` / `_ding`). Each carries an **I'm on my way** quick reply that gets a friendly answer. The idea is Zomato's: a ping people enjoy is one they keep opening.
 
 **Separate from food polls** (§ polls), which stay the tool for one-off questions, and from the [[Decisions#ADR-195|ADR-195]] forecast, which this does not read or change.

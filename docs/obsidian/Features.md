@@ -1620,7 +1620,7 @@ Built on [[Decisions#ADR-195|ADR-195]]; reads the occupancy engine from [[Decisi
 
 ## Special-meal choices — veg / non-veg on WhatsApp (Phase 1, 2026-10-10)
 
-Built on [[Decisions#ADR-238|ADR-238]]; see [[Food]] for the flow. Owner screen `/owner/food/special-meals` (occasion setup, the cook numbers with where they came from, per-group name lists by room, and a per-resident correction). One line on the kitchen sheet. Tenants answer on WhatsApp only; there is no tenant-app surface. **Unexercised:** migration 096 unapplied, template unsubmitted, the page never rendered in a browser.
+Built on [[Decisions#ADR-238|ADR-238]]; see [[Food]] for the flow. Owner screen `/owner/food/special-meals` (occasion setup, the cook numbers with where they came from, per-group name lists by room, and a per-resident correction). One line on the kitchen sheet. Tenants answer on WhatsApp only; there is no tenant-app surface. On the serving day the kitchen sheet and the special-meals page also carry the **"food's ready" bell** (Non-veg / Veg / Both), which WhatsApps the residents that dish was cooked for with a rotating, playful wording and an **I'm on my way** reply button. **Unexercised:** migration 096 unapplied, template unsubmitted, the page never rendered in a browser.
 
 **Not built (Phase 2+):** standing orders ("make non-veg your usual?"), the heads-up template, `MEALS` / `ASK ME` commands, served counts per option, counted-vs-served accuracy.
 

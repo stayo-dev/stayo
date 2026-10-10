@@ -13,7 +13,7 @@ Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-ch
 - [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
 - [x] ~~Submit the two templates early~~ — Phase 1 needs only the question template (also the reminder); the heads-up is Phase 2.
 - [x] Phase 1 built on `feat/special-meal-choices` ([[Decisions#ADR-238|ADR-238]]).
-- [ ] **Submit `stayo_special_meal_question`** to Meta exactly as `docs/design/special-meal-whatsapp-template.md` says. Nothing sends until it is approved.
+- [ ] **Submit the four templates** (`stayo_special_meal_question` + `stayo_meal_ready_hot` / `_wait_over` / `_ding`) exactly as `docs/design/special-meal-whatsapp-template.md` says. Nothing sends until they are approved.
 - [ ] **Apply `migrations/096_special_meals.sql`** to production after the code deploys.
 - [ ] **One real test:** one occasion, one phone. Tap each button, type "veg", tap after the cutoff, and check the owner screen and the kitchen sheet.
 - [ ] Phase 2: standing orders, the heads-up template, `MEALS` / `ASK ME`.
