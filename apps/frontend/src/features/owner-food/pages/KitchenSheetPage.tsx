@@ -12,6 +12,8 @@ import { HostelSwitcher } from '../components/HostelSwitcher';
 import { useFoodSchedule } from '../hooks/useFoodSchedule';
 import { useMealTimings } from '../hooks/useMealTimings';
 import { useMealForecast } from '../hooks/useMealForecast';
+import { useSpecialMeals } from '../hooks/useSpecialMeals';
+import { SpecialMealKitchenLine } from '../components/SpecialMealKitchenLine';
 import { canLogNow, entryFor, expectedLabel, honestyLine, SLOT_TO_MEAL_TYPE } from '../mealForecast';
 import { ServedCountRow } from '../components/ServedCountRow';
 import { parseApiError } from '@lib/errors';
@@ -67,6 +69,11 @@ export function KitchenSheetPage() {
 
   // How many to cook for, and the measurement it learns from (ADR-195).
   const meals = useMealForecast(hostelId ?? undefined);
+  // Special meals served today or tomorrow get one line each (spec 2026-10-10).
+  const special = useSpecialMeals(hostelId ?? undefined);
+  const istDate = (d: Date) => new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(d);
+  const todayIst = istDate(now);
+  const tomorrowIst = istDate(new Date(now.getTime() + 86_400_000));
   const todayDate = meals.forecast?.today ?? '';
   const tomorrowDate = meals.forecast?.days[1]?.date ?? '';
   const nowHHmm = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}`;
@@ -130,6 +137,10 @@ export function KitchenSheetPage() {
           </div>
         )}
       </div>
+
+      {hostelId && special.occasions
+        .filter((o) => o.isActive && (o.nextServeDate === todayIst || o.nextServeDate === tomorrowIst))
+        .map((o) => <SpecialMealKitchenLine key={o.id} hostelId={hostelId} occasion={o} />)}
 
       <div className="flex flex-col divide-y divide-border border-y border-border">
         {served.map((slot) => {

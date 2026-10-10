@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
-import { CalendarRange, ChefHat, Vote } from 'lucide-react';
+import { CalendarRange, ChefHat, Vote, UtensilsCrossed } from 'lucide-react';
 import type { MealSlotKey } from '@shared/mocks/food';
 import { useOwnerSession } from '@features/owner-session/useOwnerSession';
 import { useSelectedHostel } from '@features/owner-session/useSelectedHostel';
@@ -64,6 +64,13 @@ export function FoodPage() {
             className="flex h-12 w-12 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_6px_16px_rgba(180,106,85,0.32)]"
           >
             <Vote className="h-6 w-6" />
+          </Link>
+          <Link
+            to={hostelId ? `/owner/food/special-meals?hostelId=${encodeURIComponent(hostelId)}` : '/owner/food/special-meals'}
+            aria-label="Special meals"
+            className="flex h-12 w-12 items-center justify-center rounded-full bg-muted text-foreground"
+          >
+            <UtensilsCrossed className="h-6 w-6" />
           </Link>
           {!isDesktop && <HostelSwitcher hostels={session.hostels} selectedId={hostelId} onSelect={setLocalHostelId} />}
         </div>
