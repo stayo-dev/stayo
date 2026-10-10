@@ -337,7 +337,7 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
   }),
   TEXT_TOO_LONG: (c) => ({
     title: `The ${c.fieldLabel ?? "text"} is too long.`,
-    detail: `Shorten it — an address can be up to 500 characters, other details up to 200.`,
+    detail: `Shorten it to 200 characters or fewer.`,
     fix: { kind: "EDIT_FIELD" },
   }),
   HOSTEL_STAMP_MISMATCH: (c) => ({

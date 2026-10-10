@@ -2,7 +2,7 @@
  * Bulk import carries the tenant's details through to onboarding (2026-10-10).
  *
  * An owner can now give each tenant's date of birth, gender, tenant type,
- * guardian and permanent address in the import workbook. Onboarding
+ * and guardian in the import workbook. Onboarding
  * already prefills from the tenancy record, so these land there; a guardian
  * the owner supplied with a name and number for this tenancy skips the
  * guardian OTP — keyed to the import row, never to a number merely being on
@@ -78,7 +78,6 @@ describe("the workbook columns", () => {
       "Guardian Name",
       "Guardian Phone",
       "Guardian Relation",
-      "Permanent Address",
     ]);
   });
 
@@ -99,7 +98,6 @@ describe("the workbook columns", () => {
           guardian_name: "Ramesh Reddy",
           guardian_phone: "9876500001",
           guardian_relation: "Father",
-          permanent_address: "12 MG Road, Hyderabad",
         },
       ],
     });
@@ -112,7 +110,6 @@ describe("the workbook columns", () => {
       guardian_name: "Ramesh Reddy",
       guardian_phone: "9876500001",
       guardian_relation: "Father",
-      permanent_address: "12 MG Road, Hyderabad",
     });
   });
 
@@ -131,17 +128,19 @@ describe("the workbook columns", () => {
   });
 
   it("accepts owners' own spellings of the headers", () => {
-    expect(readProfileCells({ DOB: "01/01/2003", "Parent Phone": "9876500002", Relation: "Mother", Address: "Pune" })).toEqual({
+    expect(readProfileCells({ DOB: "01/01/2003", "Parent Phone": "9876500002", Relation: "Mother" })).toEqual({
       date_of_birth: "01/01/2003",
       guardian_phone: "9876500002",
       guardian_relation: "Mother",
-      permanent_address: "Pune",
     });
   });
 
-  it("does not read college, course, roll number, company, office or job role — the tenant gives those", () => {
+  it("does not read college, course, roll number, company, office, job role or address — the tenant gives those", () => {
     expect(
-      readProfileCells({ College: "ABC", Course: "BSc", "Roll Number": "R1", Company: "Infosys", "Office Location": "HYD", "Job Role": "Dev" }),
+      readProfileCells({
+        College: "ABC", Course: "BSc", "Roll Number": "R1", Company: "Infosys", "Office Location": "HYD", "Job Role": "Dev",
+        "Permanent Address": "12 MG Road", Address: "Pune",
+      }),
     ).toEqual({});
   });
 
@@ -184,7 +183,7 @@ describe("profileProblems — only values onboarding itself would accept", () =>
 
   it("rejects over-long text", () => {
     expect(codes({ guardian_name: "x".repeat(201) })).toEqual(["TEXT_TOO_LONG"]);
-    expect(codes({ permanent_address: "x".repeat(500) })).toEqual([]);
+    expect(codes({ guardian_relation: "x".repeat(200) })).toEqual([]);
   });
 });
 
@@ -201,10 +200,10 @@ describe("what lands on the tenancy", () => {
   it("is normalised exactly as onboarding stores it", () => {
     expect(
       normalizeProfileFields(
-        { date_of_birth: "15/08/2004", gender: "m", profile_type: "student", guardian_phone: "98765 00001", permanent_address: " Pune " },
+        { date_of_birth: "15/08/2004", gender: "m", profile_type: "student", guardian_phone: "98765 00001", guardian_name: " Ramesh " },
         TODAY,
       ),
-    ).toEqual({ date_of_birth: "2004-08-15", gender: "Male", profile_type: "STUDENT", guardian_phone: "+919876500001", permanent_address: "Pune" });
+    ).toEqual({ date_of_birth: "2004-08-15", gender: "Male", profile_type: "STUDENT", guardian_phone: "+919876500001", guardian_name: "Ramesh" });
   });
 
   it("writes the guardian phone to both columns onboarding reads", () => {
@@ -212,15 +211,15 @@ describe("what lands on the tenancy", () => {
     expect(data).toEqual({ guardian_name: "Ramesh", guardian_relation: "Father", guardian_phone: "+919876500001", phone_2: "+919876500001" });
   });
 
-  it("never writes college, course, roll number, company, office or job role", () => {
-    const sneaked = { college_name: "ABC", course: "BSc", roll_number: "R1", office_name: "Infosys", office_location: "HYD", job_role: "Dev" } as any;
+  it("never writes college, course, roll number, company, office, job role or address", () => {
+    const sneaked = { college_name: "ABC", course: "BSc", roll_number: "R1", office_name: "Infosys", office_location: "HYD", job_role: "Dev", permanent_address: "Pune" } as any;
     expect(tenantPrefillData(normalizeProfileFields({ ...sneaked, profile_type: "Student" }, TODAY))).toEqual({ profile_type: "STUDENT" });
   });
 
   it("never touches agreement, signature, acceptance, activation, completion or documents", () => {
     const data = tenantPrefillData({
       date_of_birth: "2004-08-15", gender: "Male", profile_type: "STUDENT", guardian_name: "R", guardian_phone: "+919876500001",
-      guardian_relation: "Father", permanent_address: "A",
+      guardian_relation: "Father",
     });
     const forbidden = /agreement|signature|signed|accept|status|activation|profile_completed|document|photo|verified/i;
     expect(Object.keys(data).filter((k) => forbidden.test(k))).toEqual([]);
@@ -303,8 +302,8 @@ describe("validateRows with the new columns", () => {
     expect(result.validRows).toHaveLength(1);
   });
 
-  it("college and office columns in an owner's own sheet are ignored, not validated or stored", async () => {
-    const result = await validate([row({ roll_number: "SAME", college_name: "x".repeat(500) }), row({ roll_number: "SAME" })]);
+  it("college, office and address columns in an owner's own sheet are ignored, not validated or stored", async () => {
+    const result = await validate([row({ roll_number: "SAME", college_name: "x".repeat(500), permanent_address: "x".repeat(900) }), row({ roll_number: "SAME" })]);
     expect(result.validRows).toHaveLength(2);
   });
 

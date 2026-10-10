@@ -41,7 +41,6 @@ const FIELD_LABELS: Record<string, string> = {
   guardian_name: "guardian name",
   guardian_phone: "guardian phone",
   guardian_relation: "guardian relation",
-  permanent_address: "permanent address",
 };
 
 type NumberProblem = { field: string; label: string; value: unknown; message: string; hint: string };

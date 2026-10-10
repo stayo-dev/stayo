@@ -52,7 +52,6 @@ const WITH_DETAILS = {
   guardian_name: "Ramesh Reddy",
   guardian_phone: "91234 00001",
   guardian_relation: "Father",
-  permanent_address: "12 MG Road, Hyderabad",
 };
 const PLAIN = { name: "Ravi", phone: "+919876500002", email: "", room_no: "101", room_id: "room-101", monthly_rent: 8500, joining_date: "2026-10-01" };
 
@@ -127,7 +126,6 @@ describe("confirm writes the owner's details onto the new tenancy", () => {
       guardian_relation: "Father",
       guardian_phone: "+919123400001",
       phone_2: "+919123400001",
-      permanent_address: "12 MG Road, Hyderabad",
     });
     expect(rows[0].execution_status).toBe("SUCCESS");
   });
@@ -136,7 +134,7 @@ describe("confirm writes the owner's details onto the new tenancy", () => {
     seed([WITH_DETAILS]);
     await confirm();
     const sent = mockLifecycle.createInvitation.mock.calls[0][0];
-    for (const key of ["date_of_birth", "gender", "profile_type", "guardian_name", "guardian_phone", "guardian_relation", "permanent_address"]) {
+    for (const key of ["date_of_birth", "gender", "profile_type", "guardian_name", "guardian_phone", "guardian_relation"]) {
       expect(sent).not.toHaveProperty(key);
     }
     expect(sent).toMatchObject({ name: "Akhil Reddy", room_id: "room-101", dispatch: "DEFERRED", batch_id: BATCH_ID });

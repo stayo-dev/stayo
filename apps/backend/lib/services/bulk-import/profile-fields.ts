@@ -1,6 +1,6 @@
 /**
  * Tenant details an owner can supply in the import workbook — date of birth,
- * gender, tenant type, guardian and permanent address — so the tenant is not
+ * gender, tenant type and guardian — so the tenant is not
  * asked for them again at onboarding.
  *
  * Onboarding already prefills every screen from the tenancy record — the
@@ -18,8 +18,8 @@
  * - touch agreement, signature, rules-acceptance, activation or KYC fields —
  *   the tenant still reviews and signs the agreement themselves;
  * - collect a photo or documents (they cannot come from a spreadsheet), or
- *   college/course/roll-number and company/office/job-role details — those
- *   stay with the tenant at onboarding (product decision, 2026-10-10);
+ *   college/course/roll-number, company/office/job-role or address details —
+ *   those stay with the tenant at onboarding (product decision, 2026-10-10);
  * - mark anything verified. The one consequence of import data for
  *   verification is the guardian rule in `guardianSuppliedByImport`, which is
  *   keyed to *this tenancy's own import row*, never to a number merely being
@@ -58,7 +58,6 @@ export interface ImportedProfileFields {
   guardian_name?: string;
   guardian_phone?: string;
   guardian_relation?: string;
-  permanent_address?: string;
 }
 
 export const PROFILE_FIELD_KEYS = [
@@ -68,7 +67,6 @@ export const PROFILE_FIELD_KEYS = [
   "guardian_name",
   "guardian_phone",
   "guardian_relation",
-  "permanent_address",
 ] as const satisfies readonly (keyof ImportedProfileFields)[];
 
 /**
@@ -83,7 +81,6 @@ export const PROFILE_COLUMNS: Record<keyof ImportedProfileFields, string[]> = {
   guardian_name: ["Guardian Name", "guardian_name", "Parent Name", "parent_name"],
   guardian_phone: ["Guardian Phone", "guardian_phone", "Parent Phone", "parent_phone", "Guardian Mobile"],
   guardian_relation: ["Guardian Relation", "guardian_relation", "Relation", "relation"],
-  permanent_address: ["Permanent Address", "permanent_address", "Address", "address"],
 };
 
 /** Labels the template prints for these columns, in template order. */
@@ -94,7 +91,6 @@ export const GENDER_VALUES = ["Male", "Female", "Other", "Prefer not to say"] as
 export const TENANT_TYPE_VALUES = ["Student", "Working Professional"] as const;
 
 const TEXT_LIMIT = 200;
-const ADDRESS_LIMIT = 500;
 
 function readCell(row: Record<string, any>, keys: string[]): string {
   for (const key of keys) {
@@ -185,8 +181,7 @@ export function profileProblems(
   }
   for (const key of PROFILE_FIELD_KEYS) {
     const value = fields[key];
-    const limit = key === "permanent_address" ? ADDRESS_LIMIT : TEXT_LIMIT;
-    if (value && value.length > limit) problems.push({ code: "TEXT_TOO_LONG", field: key, value });
+    if (value && value.length > TEXT_LIMIT) problems.push({ code: "TEXT_TOO_LONG", field: key, value });
   }
   return problems;
 }
@@ -206,7 +201,7 @@ export function normalizeProfileFields(fields: ImportedProfileFields, today: Dat
   if (type) out.profile_type = type;
   const guardianPhone = fields.guardian_phone ? normalizeIndianPhone(fields.guardian_phone) : null;
   if (guardianPhone) out.guardian_phone = guardianPhone;
-  for (const key of ["guardian_name", "guardian_relation", "permanent_address"] as const) {
+  for (const key of ["guardian_name", "guardian_relation"] as const) {
     const value = String(fields[key] ?? "").trim();
     if (value) out[key] = value;
   }
@@ -242,7 +237,6 @@ export function tenantPrefillData(fields: ImportedProfileFields): Record<string,
     data.guardian_phone = fields.guardian_phone;
     data.phone_2 = fields.guardian_phone;
   }
-  if (fields.permanent_address) data.permanent_address = fields.permanent_address;
   return data;
 }
 

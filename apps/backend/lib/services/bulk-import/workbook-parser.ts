@@ -184,7 +184,7 @@ function normalizeRows(rawData: any[]): TenantImportRow[] {
     joining_date: readCell(row, ["Joining Date", "joining_date", "Join Date", "join_date"]) || undefined,
     notes: readCell(row, ["Notes", "notes"]) || undefined,
     emergency_contact: readCell(row, ["emergency_contact", "emergency"]) || undefined,
-    // Date of birth, gender, tenant type, guardian and permanent address.
+    // Date of birth, gender, tenant type and guardian.
     // Raw text here; validated and normalised like onboarding's own fields.
     // Tenant type no longer defaults to STUDENT at parse time: a blank cell
     // means "the owner did not say", and nothing downstream read the default.

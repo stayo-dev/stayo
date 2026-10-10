@@ -135,8 +135,7 @@ const TENANT_HEADERS = [
   "Payment Method",
   "Payment Reference",
   "Notes",
-  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation,
-  // Permanent Address.
+  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation.
   ...PROFILE_HEADERS,
 ];
 
@@ -254,7 +253,7 @@ function buildRooms(sheet: ExcelJS.Worksheet, input: TemplateInput) {
 
 function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, input: TemplateInput) {
   sheet.columns = [...TENANT_HEADERS, PROBLEM_COLUMN].map((h) => ({
-    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" || h === "Permanent Address" ? 28 : Math.max(12, h.length + 3),
+    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" ? 28 : Math.max(12, h.length + 3),
   }));
   const anyProblems = (input.tenants ?? []).some((t) => (t.problems ?? []).length > 0);
   sheet.addRow(anyProblems ? [...TENANT_HEADERS, PROBLEM_COLUMN] : TENANT_HEADERS);
@@ -333,7 +332,6 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "Ramesh Kumar",
     "9876500001",
     "Father",
-    "12 MG Road, Hyderabad",
   ]);
   if (example) example.font = GREY;
 
