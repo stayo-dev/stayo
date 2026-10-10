@@ -744,7 +744,7 @@ export function ActivationPage() {
         <ActivationIntroScreen
           hostelName={ctx.hostel.name || 'Stayo'}
           hostelLogoUrl={ctx.hostel.logo_url}
-          tenantFirstName={(ctx.profile?.name || '').split(' ')[0]}
+          tenantName={(ctx.profile?.name || '').trim()}
           roomNumber={ctx.room_summary.room_number as any}
           monthlyRent={ctx.room_summary.monthly_rent as any}
           moveInLabel={ctx.room_summary.joining_date ? new Date(String(ctx.room_summary.joining_date)).toLocaleDateString('en-IN', { day: 'numeric', month: 'short' }) : undefined}
