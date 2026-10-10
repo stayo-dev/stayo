@@ -129,6 +129,9 @@ Why each one is in the MVP set — i.e. what is *wrong in the product* if it nev
   and both skip a serving whose cutoff has already passed (so a late fire
   sends nothing rather than a closed question). Inert until migration 096 is
   applied and `stayo_special_meal_question` is approved.
+  The owner can also run either round by hand for one meal (**Ask now** /
+  **Remind now** on `/owner/food/special-meals`); both share the crons'
+  idempotency keys, so a manual send and the cron never double up.
 
 ## Descheduled 2026-09-06 (ADR-177)
 
