@@ -34,6 +34,14 @@ export const ISSUE_CODES = [
   "ROOM_SHEET_DUPLICATE",
   "ROOM_CAPACITY_BELOW_OCCUPANCY",
   "ROOM_SHEET_NUMBER_INVALID",
+  // Tenant details the owner supplied for onboarding (profile-fields.ts).
+  "DOB_INVALID",
+  "GENDER_INVALID",
+  "TENANT_TYPE_INVALID",
+  "GUARDIAN_PHONE_INVALID",
+  "GUARDIAN_PHONE_IS_TENANT",
+  "TEXT_TOO_LONG",
+  "ROLL_NUMBER_TAKEN",
 ] as const;
 
 export type IssueCode = (typeof ISSUE_CODES)[number];
@@ -109,6 +117,19 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   OVERPAID: "BLOCKER",
   BACKFILL_CAPPED: "NEEDS_CHOICE",
   RENT_BACKDATED: "NEEDS_CHOICE",
+  // A detail the owner gave must be one onboarding would accept, or the
+  // tenant would be shown a prefilled value their own screen then refuses.
+  // Clearing the cell is always a valid fix — the tenant fills it in instead.
+  DOB_INVALID: "BLOCKER",
+  GENDER_INVALID: "BLOCKER",
+  TENANT_TYPE_INVALID: "BLOCKER",
+  GUARDIAN_PHONE_INVALID: "BLOCKER",
+  GUARDIAN_PHONE_IS_TENANT: "BLOCKER",
+  TEXT_TOO_LONG: "BLOCKER",
+  // Onboarding refuses a roll number another of the owner's tenants already
+  // has (`assertUniqueRollNumberForTenant`); prefilling one would strand the
+  // tenant on a screen they cannot submit.
+  ROLL_NUMBER_TAKEN: "BLOCKER",
 };
 
 /**
@@ -289,6 +310,49 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
     field: "joining_date",
     fix: { kind: "PICK_DATE" },
   }),
+  DOB_INVALID: (c) => ({
+    title: `"${c.value ?? ""}" isn't a date of birth we can use.`,
+    detail: `Use DD/MM/YYYY — 15/08/2004 means 15 August 2004 — and a date in the past. Or clear the cell and the tenant enters it themselves.`,
+    field: "date_of_birth",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  GENDER_INVALID: (c) => ({
+    title: `"${c.value ?? ""}" isn't one of the gender options.`,
+    detail: `Use Male, Female, Other or Prefer not to say. Or clear the cell and the tenant chooses it themselves.`,
+    field: "gender",
+    fix: { kind: "PICK_OPTION", options: ["Male", "Female", "Other", "Prefer not to say"] },
+  }),
+  TENANT_TYPE_INVALID: (c) => ({
+    title: `"${c.value ?? ""}" isn't a tenant type.`,
+    detail: `Use Student or Working Professional. It decides whether the tenant is asked for college or office details.`,
+    field: "profile_type",
+    fix: { kind: "PICK_OPTION", options: ["Student", "Working Professional"] },
+  }),
+  GUARDIAN_PHONE_INVALID: (c) => ({
+    title: `"${c.value ?? ""}" isn't a 10-digit mobile number.`,
+    detail: `Enter the guardian's 10-digit mobile, with or without +91. Or clear it and the tenant adds their guardian themselves.`,
+    field: "guardian_phone",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  GUARDIAN_PHONE_IS_TENANT: () => ({
+    title: `The guardian's number is the tenant's own number.`,
+    detail: `A guardian has to be someone else. Enter the parent's or guardian's mobile, or clear the cell.`,
+    field: "guardian_phone",
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  TEXT_TOO_LONG: (c) => ({
+    title: `The ${c.fieldLabel ?? "text"} is too long.`,
+    detail: `Shorten it — an address can be up to 500 characters, other details up to 200.`,
+    fix: { kind: "EDIT_FIELD" },
+  }),
+  ROLL_NUMBER_TAKEN: (c) => ({
+    title: c.otherRows?.length
+      ? `Roll number "${c.value ?? ""}" is also on row ${c.otherRows.join(", ")}.`
+      : `Roll number "${c.value ?? ""}" already belongs to another of your tenants.`,
+    detail: `Each tenant needs their own roll number. Correct it, or clear the cell and the tenant enters it themselves.`,
+    field: "roll_number",
+    fix: { kind: "EDIT_FIELD" },
+  }),
   HOSTEL_STAMP_MISMATCH: (c) => ({
     title: `This file was made for ${c.expectedHostelName ?? "a different hostel"}.`,
     detail: `Room numbers repeat across hostels, so importing it here could put tenants in the wrong rooms. Switch to that hostel, or download a fresh template for ${c.hostelName ?? "this one"}.`,
@@ -343,6 +407,13 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   FORMULA_IN_CELL: (n) => `${n} rows contain a spreadsheet formula.`,
   DATE_UNREADABLE: (n) => `${n} rows have a missing or unreadable joining date.`,
   HOSTEL_STAMP_MISMATCH: () => `This file was made for a different hostel.`,
+  DOB_INVALID: (n) => `${n} rows have a date of birth we can't use.`,
+  GENDER_INVALID: (n) => `${n} rows have a gender that isn't one of the options.`,
+  TENANT_TYPE_INVALID: (n) => `${n} rows have a tenant type we don't recognise.`,
+  GUARDIAN_PHONE_INVALID: (n) => `${n} rows have a guardian phone that isn't a mobile number.`,
+  GUARDIAN_PHONE_IS_TENANT: (n) => `${n} rows give the tenant's own number as the guardian's.`,
+  TEXT_TOO_LONG: (n) => `${n} rows have a detail that's too long.`,
+  ROLL_NUMBER_TAKEN: (n) => `${n} rows use a roll number that's already taken.`,
 };
 
 /**

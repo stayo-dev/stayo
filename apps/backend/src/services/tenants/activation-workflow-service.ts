@@ -11,7 +11,7 @@ function safeNormalizeWhatsApp(val: string | null | undefined): string {
     return "";
   }
 }
-import { isGuardianPhoneVerifiedForTenant } from "./guardian-verification-store";
+import { isGuardianPhoneVerifiedForTenant, isGuardianSuppliedByOwnerImport } from "./guardian-verification-store";
 import {
   guardianDeadline,
   isGuardianDeferralReason,
@@ -1800,6 +1800,32 @@ export class ActivationWorkflowService {
     await eventLog.log("rules_accepted", tenant.owner_id || null, { tenant_id: tenant.id, hostel_id: tenant.hostel_id, rule_version_id: ruleVersion.id }, tenant.id);
   }
 
+  /**
+   * A guardian the owner supplied in a bulk import makes the GUARDIAN step
+   * complete before the tenant reaches it, so `saveGuardian` — which sends the
+   * guardian their "access activated" notice once the number is proved — never
+   * runs. This sends that same notice once, at activation, for exactly that
+   * case: an import-supplied guardian (provenance, see
+   * `isGuardianSuppliedByOwnerImport`) and no `guardian_saved` event, i.e. the
+   * tenant never went through the step themselves. Runs inside the
+   * activation branch that matches exactly one row, so it cannot repeat.
+   * Never blocks activation.
+   */
+  private async announceImportedGuardian(tenant: any) {
+    const guardianPhone = tenant.phone_2 || tenant.guardian_phone;
+    if (!guardianPhone || !tenant.guardian_name) return;
+    if (!(await isGuardianSuppliedByOwnerImport(tenant.id, guardianPhone))) return;
+    const alreadySaved = await (prisma as any).systemEventLog.findFirst({
+      where: { tenant_id: tenant.id, event_type: "guardian_saved" },
+      select: { id: true },
+    });
+    if (alreadySaved) return;
+    const { sendGuardianActivation } = await import(
+      "@/lib/services/notifications/command-center/guardian-activation"
+    );
+    await sendGuardianActivation(tenant.id);
+  }
+
   private async activate(profile: any, tenant: any, data: any, invitation?: any | null) {
     if (!profile) throw new Error("INVALID_TRANSITION: Complete account setup before activation");
     if (data?.payment_frequency && !["MONTHLY", "QUARTERLY", "HALF_YEARLY", "ACADEMIC_YEARLY"].includes(data.payment_frequency)) {
@@ -1952,6 +1978,9 @@ export class ActivationWorkflowService {
       }, tenantNow.id);
 
       await allocationReconciliationService.reconcileTenant(tenantNow.id).catch(() => undefined);
+      await this.announceImportedGuardian(tenantNow).catch((error: any) => {
+        console.error("Imported guardian activation notice failed:", error);
+      });
     }
 
     // Single emission point for ALL activation paths through activate()

@@ -5,6 +5,10 @@ import { buildImportWorkbook, HOSTEL_ID_CELL } from "@/lib/services/bulk-import/
 import { EXAMPLE_ROW_NAME, parseTenantWorkbook } from "@/lib/services/bulk-import/workbook-parser";
 import { parseRoomsSheet } from "@/lib/services/bulk-import/rooms-sheet";
 import { COVER_SHEET, ROOMS_SHEET, TENANTS_SHEET } from "@/lib/services/bulk-import/workbook-parser";
+import { PROFILE_HEADERS } from "@/lib/services/bulk-import/profile-fields";
+
+/** 1-based column of "What to fix": after the 15 original columns and the tenant-detail columns. */
+const PROBLEM_COLUMN_INDEX = 15 + PROFILE_HEADERS.length + 1;
 
 const INPUT = {
   hostel: { id: "11111111-1111-1111-1111-111111111111", name: "Sri Adithya Boys Hostel" },
@@ -292,8 +296,10 @@ describe("marking the problems in the owner's own sheet", () => {
 
   it("adds a column saying what to fix, so nothing depends on hovering", async () => {
     const { sheet } = await annotated();
-    expect(sheet.getCell("P1").value).toBe("What to fix");
-    expect(String(sheet.getCell("P2").value)).toContain("Room 1O1 isn't in");
+    // Right after the last data column: the 15 original columns plus the
+    // tenant-detail columns added for onboarding prefill (2026-10-10).
+    expect(sheet.getRow(1).getCell(PROBLEM_COLUMN_INDEX).value).toBe("What to fix");
+    expect(String(sheet.getRow(2).getCell(PROBLEM_COLUMN_INDEX).value)).toContain("Room 1O1 isn't in");
   });
 
   it("explains the colours on the cover sheet", async () => {
@@ -310,7 +316,7 @@ describe("marking the problems in the owner's own sheet", () => {
     });
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as any);
-    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("P1").value).toBeNull();
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getRow(1).getCell(PROBLEM_COLUMN_INDEX).value).toBeNull();
   });
 
   it("is still a file our own parser reads back", async () => {

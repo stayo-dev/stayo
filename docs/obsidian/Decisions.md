@@ -3572,3 +3572,16 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
   - **Unresolved, and needing a human:** the compliance posture on personal UPI IDs used for collection at scale. Owners already do this manually so Stayo is not creating the exposure, but facilitating it is a different posture. **This ADR does not resolve it.**
   - **The feature is inert until owners act:** 0 of 6 production hostels have `upi_id` set.
 - **Related:** [[Decisions#ADR-230|ADR-230]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Bugs]]
+
+### ADR-236 — Bulk import prefills onboarding; an owner-supplied guardian skips the guardian OTP (2026-10-10)
+
+- **Status:** Accepted
+- **Context:** Bulk import created every tenancy through `createInvitation` (ADR-165), but carried only name, phone, email, room and money terms. Onboarding already prefills every screen from `tenants.*`, so owners who knew their residents' details still had each tenant re-enter them. Owners also asked that a guardian they supply not have to be verified again by OTP.
+- **Decision:**
+  - Thirteen optional workbook columns (Date of Birth, Gender, Tenant Type, Guardian Name, Guardian Phone, Guardian Relation, College, Course, Roll Number, Company, Office Location, Job Role, Permanent Address), validated by onboarding's own rules and written onto the tenancy at confirm. No schema change; no change to `createInvitation` or the single-invite path.
+  - The guardian OTP is skipped when — and only when — this tenancy's executed import row supplied both the guardian's name and that exact number. The owner is vouching for a guardian they named; this is provenance, not "a number exists in the database". Implemented once in `isGuardianPhoneVerifiedForTenant`, so the activation context, the GUARDIAN step and the owner's view agree.
+  - Imported data never signs, accepts, activates, completes a profile or verifies documents.
+- **Consequences:**
+  - An owner who enters a wrong guardian number skips that guardian's OTP; the cover sheet says so ("you are vouching for it"). The guardian's own WhatsApp access still requires a challenge.
+  - Pre-existing, unchanged: `isGuardianPhoneVerifiedForTenant` also accepts a legacy `ParentVerify` proof with `tenant_id = null` (pre-ADR-212 rows).
+- **Related:** [[Decisions#ADR-165|ADR-165]], [[Decisions#ADR-182|ADR-182]], [[Decisions#ADR-212|ADR-212]], [[Decisions#ADR-213|ADR-213]], [[Business-Rules]], [[Features]], [[Changelog]]

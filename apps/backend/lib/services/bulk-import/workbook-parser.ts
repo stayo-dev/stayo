@@ -1,6 +1,7 @@
 import * as XLSX from "xlsx";
 import { getLogger } from "../../logger";
 import type { TenantImportRow } from "./types";
+import { readProfileCells } from "./profile-fields";
 
 const logger = getLogger("bulk-import-validation");
 
@@ -182,9 +183,12 @@ function normalizeRows(rawData: any[]): TenantImportRow[] {
     security_deposit: parseImportNumber(readCell(row, ["Deposit", "deposit", "Advance Deposit", "advance_deposit", "Security Deposit", "security_deposit"])),
     joining_date: readCell(row, ["Joining Date", "joining_date", "Join Date", "join_date"]) || undefined,
     notes: readCell(row, ["Notes", "notes"]) || undefined,
-    profile_type: readCell(row, ["profile_type", "type"]) || "STUDENT",
     emergency_contact: readCell(row, ["emergency_contact", "emergency"]) || undefined,
-    gender: readCell(row, ["gender", "Gender"]) || undefined,
+    // Date of birth, gender, tenant type, guardian and college/office/address.
+    // Raw text here; validated and normalised like onboarding's own fields.
+    // Tenant type no longer defaults to STUDENT at parse time: a blank cell
+    // means "the owner did not say", and nothing downstream read the default.
+    ...readProfileCells(row),
     agreement_duration_months: parseImportNumber(
       readCell(row, ["Agreement Months", "agreement_months", "agreement_duration_months"])
     ),

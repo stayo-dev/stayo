@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { COVER_SHEET, EXAMPLE_ROW_NAME, ROOMS_SHEET, TENANTS_SHEET } from "./workbook-parser";
+import { GENDER_VALUES, PROFILE_FIELD_KEYS, PROFILE_HEADERS, TENANT_TYPE_VALUES, type ImportedProfileFields } from "./profile-fields";
 
 /**
  * The import workbook, built for one hostel.
@@ -40,7 +41,7 @@ export type RowProblem = {
   detail: string;
 };
 
-export type TenantRowValues = {
+export type TenantRowValues = ImportedProfileFields & {
   /** Problems still outstanding on this row, marked in the sheet. */
   problems?: RowProblem[];
   name?: string;
@@ -109,6 +110,8 @@ const FIELD_COLUMN: Record<string, number> = {
   payment_method: 13,
   payment_reference: 14,
   notes: 15,
+  // The tenant's onboarding details, after Notes, in PROFILE_FIELD_KEYS order.
+  ...Object.fromEntries(PROFILE_FIELD_KEYS.map((key, i) => [key, 16 + i])),
 };
 
 /** Red for something that stops the row, amber for something to decide. */
@@ -132,6 +135,9 @@ const TENANT_HEADERS = [
   "Payment Method",
   "Payment Reference",
   "Notes",
+  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation, College,
+  // Course, Roll Number, Company, Office Location, Job Role, Permanent Address.
+  ...PROFILE_HEADERS,
 ];
 
 /** Appended only when something is wrong, so a clean sheet keeps its shape. */
@@ -177,6 +183,13 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "• Leave Monthly Rent blank to use the room's own rent.",
     "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
+    "",
+    "Tenant details (optional — every column from Date of Birth onwards)",
+    "• Whatever you fill in here is already filled in when the tenant opens their invitation, so they are not asked for it again. Leave a cell blank and the tenant fills it in themselves.",
+    "• Date of Birth is DD/MM/YYYY. Gender is Male, Female, Other or Prefer not to say. Tenant Type is Student or Working Professional.",
+    "• College, Course and Roll Number are for students; Company, Office Location and Job Role for working professionals.",
+    "• Guardian: if you give both the Guardian Name and Guardian Phone, the tenant is not asked to verify that number with a code — you are vouching for it. Only fill it in if you are sure it is right.",
+    "• The tenant still adds their own photo and ID documents, and reads and signs the agreement themselves. Nothing here signs anything for them.",
     "",
     "Do not edit this sheet. It tells Stayo which hostel this file belongs to.",
   ];
@@ -242,7 +255,7 @@ function buildRooms(sheet: ExcelJS.Worksheet, input: TemplateInput) {
 
 function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, input: TemplateInput) {
   sheet.columns = [...TENANT_HEADERS, PROBLEM_COLUMN].map((h) => ({
-    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" ? 28 : Math.max(12, h.length + 3),
+    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" || h === "Permanent Address" ? 28 : Math.max(12, h.length + 3),
   }));
   const anyProblems = (input.tenants ?? []).some((t) => (t.problems ?? []).length > 0);
   sheet.addRow(anyProblems ? [...TENANT_HEADERS, PROBLEM_COLUMN] : TENANT_HEADERS);
@@ -269,6 +282,7 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
         tenant.payment_method ?? "",
         tenant.payment_reference ?? "",
         tenant.notes ?? "",
+        ...PROFILE_FIELD_KEYS.map((key) => tenant[key] ?? ""),
         ...(anyProblems
           ? [problems.map((problem) => problem.title).join(" · ")]
           : []),
@@ -314,6 +328,19 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "CASH",
     "",
     "Already living here since January",
+    "15/08/2004",
+    "Male",
+    "Student",
+    "Ramesh Kumar",
+    "9876500001",
+    "Father",
+    "ABC Engineering College",
+    "B.Tech CSE",
+    "21CS045",
+    "",
+    "",
+    "",
+    "12 MG Road, Hyderabad",
   ]);
   if (example) example.font = GREY;
 
@@ -345,6 +372,16 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
       type: "list",
       allowBlank: true,
       formulae: ['"CASH,UPI,BANK_TRANSFER,CARD,CHEQUE"'],
+    };
+    sheet.getRow(r).getCell(FIELD_COLUMN.gender).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`"${GENDER_VALUES.join(",")}"`],
+    };
+    sheet.getRow(r).getCell(FIELD_COLUMN.profile_type).dataValidation = {
+      type: "list",
+      allowBlank: true,
+      formulae: [`"${TENANT_TYPE_VALUES.join(",")}"`],
     };
   }
 

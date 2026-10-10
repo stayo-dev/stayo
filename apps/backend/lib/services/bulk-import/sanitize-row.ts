@@ -1,4 +1,5 @@
 import type { TenantImportRow } from "./types";
+import { PROFILE_FIELD_KEYS } from "./profile-fields";
 
 /**
  * What is persisted for a validated row.
@@ -36,5 +37,19 @@ export function sanitizeImportRowForStorage(row: TenantImportRow): Partial<Tenan
     joining_date: row.joining_date,
     rent_source: row.rent_source,
     notes: row.notes,
+    // The owner's onboarding details, stored as typed (trimmed) — never
+    // normalised here. Normalising would silently drop an invalid value, and
+    // the next re-check would then pass a row the owner was told to fix.
+    // Confirm normalises (`normalizeProfileFields`) when it writes the tenant.
+    ...pickProfileFields(row),
   };
+}
+
+function pickProfileFields(row: TenantImportRow): Partial<TenantImportRow> {
+  const out: Partial<TenantImportRow> = {};
+  for (const key of PROFILE_FIELD_KEYS) {
+    const value = String(row[key] ?? "").trim();
+    if (value) out[key] = value;
+  }
+  return out;
 }
