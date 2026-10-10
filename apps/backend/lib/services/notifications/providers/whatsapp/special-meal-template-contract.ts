@@ -125,3 +125,104 @@ export function answeredReply(input: { choice: MealChoice; serveDate: string; me
 export function closedReply(input: { serveDate: string; mealType: string; cutoffAt: Date }): string {
   return `Answers for ${occasionLabel(input.serveDate, input.mealType)} closed at ${formatCutoff(input.cutoffAt)}. Please tell the warden.`;
 }
+
+// ─── "Food's ready" alerts ────────────────────────────────────────────────
+//
+// Sent when the cook taps Ready, only to residents the food was cooked for.
+// Three wordings rotate weekly so the ping never goes stale: the Zomato
+// lesson is that a push people *enjoy* reading is one they keep opening.
+// Each carries an [I'm on my way] quick reply whose per-send payload opens a
+// conversation, which is the point: a resident who answers once is a
+// resident who reads the next message.
+//
+// Names are hard-coded (ADR-196). All three must be approved at Meta; the
+// service falls back to the first if a rotated one is rejected.
+
+export interface MealReadyTemplate {
+  name: string;
+  language: "en";
+  parameters: readonly ["tenant_first_name", "dish", "hostel_name"];
+  quickReply: string;
+  body: string;
+}
+
+const READY_PARAMS = ["tenant_first_name", "dish", "hostel_name"] as const;
+
+export const MEAL_READY_TEMPLATES: readonly MealReadyTemplate[] = [
+  {
+    name: "stayo_meal_ready_hot",
+    language: "en",
+    parameters: READY_PARAMS,
+    quickReply: "I'm on my way",
+    body:
+      "🔥 It's ready, {{1}}! {{2}} is hot and being served now at {{3}}.\n\n" +
+      "Grab your plate before the first round runs out.",
+  },
+  {
+    name: "stayo_meal_ready_wait_over",
+    language: "en",
+    parameters: READY_PARAMS,
+    quickReply: "I'm on my way",
+    body:
+      "The wait is over, {{1}} 🍽️ {{2}} just came off the stove at {{3}}.\n\n" +
+      "Your plate is waiting. Come and get it!",
+  },
+  {
+    name: "stayo_meal_ready_ding",
+    language: "en",
+    parameters: READY_PARAMS,
+    quickReply: "I'm on my way",
+    body:
+      "Ding ding! 🔔 {{1}}, {{2}} is ready to serve at {{3}}.\n\n" +
+      "Hungry? This one's for you. See you at the counter!",
+  },
+];
+
+/** 1970-01-04 was a Sunday: weeks run Sunday–Saturday, so a hostel's Wednesday and Sunday specials share a wording. */
+const FIRST_SUNDAY_DAYS = 3;
+
+export function readyTemplateFor(serveDate: string): MealReadyTemplate {
+  const days = Math.floor(Date.parse(`${serveDate}T00:00:00.000Z`) / 86_400_000);
+  const week = Math.floor((days - FIRST_SUNDAY_DAYS) / 7);
+  const n = MEAL_READY_TEMPLATES.length;
+  return MEAL_READY_TEMPLATES[((week % n) + n) % n];
+}
+
+export function buildReadyParameters(input: {
+  tenantName: string | null | undefined;
+  dish: string | null | undefined;
+  choice: "VEG" | "NON_VEG";
+  hostelName: string | null | undefined;
+}): string[] {
+  const first = String(input.tenantName || "").trim().split(/\s+/)[0];
+  const dish = String(input.dish || "").trim() || (input.choice === "VEG" ? "Today's veg special" : "Today's non-veg special");
+  return [first || "there", dish, String(input.hostelName || "").trim() || "the hostel"];
+}
+
+const READY_PREFIX = "MEALREADY";
+
+export function encodeReadyPayload(p: { occasionId: string; serveDate: string; tenantId: string }): string {
+  return [READY_PREFIX, p.occasionId, p.serveDate, p.tenantId].join(":");
+}
+
+export function decodeReadyPayload(raw: string) {
+  const parts = String(raw || "").trim().split(":");
+  if (parts.length !== 4 || parts[0] !== READY_PREFIX) return null;
+  const [, occasionId, serveDate, tenantId] = parts;
+  if (!UUID.test(occasionId) || !UUID.test(tenantId) || !ISO_DATE.test(serveDate)) return null;
+  return { occasionId, serveDate, tenantId };
+}
+
+const ON_MY_WAY_LINES = [
+  "🏃 See you at the counter, {name}! Enjoy every bite.",
+  "🍽️ Plate's on its way to you, {name}. Enjoy!",
+  "😋 Go go go, {name}! Enjoy your meal.",
+];
+
+/** The reply to [I'm on my way]. Picked by resident, so one person always gets the same line in a day. */
+export function onMyWayReply(tenantName: string | null | undefined, tenantId: string): string {
+  const first = String(tenantName || "").trim().split(/\s+/)[0] || "friend";
+  let h = 0;
+  for (const ch of tenantId) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return ON_MY_WAY_LINES[h % ON_MY_WAY_LINES.length].replace("{name}", first);
+}

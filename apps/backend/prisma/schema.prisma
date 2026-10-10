@@ -4753,6 +4753,21 @@ model special_meal_answers {
   @@index([occasion_id, tenant_id, serve_date(sort: Desc)], map: "special_meal_answers_history_idx")
 }
 
+/// One "food's ready" alert per occasion, serving and choice. Inserted before
+/// sending, so the unique key blocks a double-tapped button.
+model special_meal_ready_alerts {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occasion_id String   @db.Uuid
+  hostel_id   String   @db.Uuid
+  serve_date  DateTime @db.Date
+  choice      String
+  sent_by     String?  @db.Uuid
+  recipients  Int      @default(0)
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+
+  @@unique([occasion_id, serve_date, choice], map: "special_meal_ready_alerts_occasion_date_choice_key")
+}
+
 /// Projection of `stay_events`: one row per leave. Rebuildable by replay.
 /// "One ACTIVE leave per tenant" is a partial unique index in the migration
 /// (`stay_leaves_one_active_per_tenant`) — Prisma cannot express it.

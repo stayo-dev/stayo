@@ -76,3 +76,55 @@ describe("copy", () => {
     expect(closedReply({ serveDate: "2026-10-11", mealType: "LUNCH", cutoffAt })).toContain("warden");
   });
 });
+
+import {
+  MEAL_READY_TEMPLATES,
+  buildReadyParameters,
+  decodeReadyPayload,
+  encodeReadyPayload,
+  onMyWayReply,
+  readyTemplateFor,
+} from "@/lib/services/notifications/providers/whatsapp/special-meal-template-contract";
+
+describe("food's-ready templates", () => {
+  it("has three wordings, each with three parameters, none starting or ending on a variable", () => {
+    expect(MEAL_READY_TEMPLATES).toHaveLength(3);
+    for (const t of MEAL_READY_TEMPLATES) {
+      expect(t.parameters).toEqual(["tenant_first_name", "dish", "hostel_name"]);
+      [1, 2, 3].forEach((n) => expect(t.body).toContain(`{{${n}}}`));
+      expect(t.body).not.toContain("{{4}}");
+      expect(t.body.trim().startsWith("{{")).toBe(false);
+      expect(t.body.trim().endsWith("}}")).toBe(false);
+      expect(t.quickReply.length).toBeLessThanOrEqual(25);
+    }
+    expect(new Set(MEAL_READY_TEMPLATES.map((t) => t.name)).size).toBe(3);
+  });
+
+  it("uses one wording for a whole week and rotates the next week", () => {
+    const sun = readyTemplateFor("2026-10-11").name;
+    expect(readyTemplateFor("2026-10-14").name).toBe(readyTemplateFor("2026-10-15").name);
+    const weeks = ["2026-10-11", "2026-10-18", "2026-10-25"].map((d) => readyTemplateFor(d).name);
+    expect(new Set(weeks).size).toBe(3);
+    expect(weeks[0]).toBe(sun);
+  });
+
+  it("names the dish, falling back to the choice when the owner gave none", () => {
+    expect(buildReadyParameters({ tenantName: "Rahul Kumar", dish: "Chicken Biryani", choice: "NON_VEG", hostelName: "Sri" }))
+      .toEqual(["Rahul", "Chicken Biryani", "Sri"]);
+    expect(buildReadyParameters({ tenantName: "", dish: null, choice: "VEG", hostelName: null }))
+      .toEqual(["there", "Today's veg special", "the hostel"]);
+  });
+
+  it("round-trips the On-my-way payload and rejects junk", () => {
+    const raw = encodeReadyPayload({ occasionId: OCC, serveDate: "2026-10-11", tenantId: TEN });
+    expect(raw.length).toBeLessThanOrEqual(128);
+    expect(decodeReadyPayload(raw)).toEqual({ occasionId: OCC, serveDate: "2026-10-11", tenantId: TEN });
+    expect(decodeReadyPayload("MEALREADY:x")).toBeNull();
+    expect(decodeReadyPayload(encodeMealPayload({ occasionId: OCC, serveDate: "2026-10-11", tenantId: TEN, choice: "VEG" }))).toBeNull();
+    expect(decodeMealPayload(raw)).toBeNull();
+  });
+
+  it("answers On-my-way with a short, warm line using the first name", () => {
+    expect(onMyWayReply("Rahul Kumar", TEN)).toContain("Rahul");
+  });
+});

@@ -58,7 +58,26 @@ CREATE TABLE IF NOT EXISTS public.special_meal_answers (
 CREATE INDEX IF NOT EXISTS special_meal_answers_history_idx
   ON public.special_meal_answers (occasion_id, tenant_id, serve_date DESC);
 
+-- "Food's ready" WhatsApp alerts. One row per occasion, serving and choice,
+-- inserted BEFORE any message goes out: the unique key is what stops a
+-- double-tapped button (or two devices) from pinging residents twice.
+CREATE TABLE IF NOT EXISTS public.special_meal_ready_alerts (
+  id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+  occasion_id  uuid NOT NULL REFERENCES public.special_meal_occasions(id) ON DELETE CASCADE,
+  hostel_id    uuid NOT NULL REFERENCES public.hostels(id) ON DELETE CASCADE,
+  serve_date   date NOT NULL,
+  choice       text NOT NULL CHECK (choice IN ('VEG', 'NON_VEG')),
+  -- The owner profile that pressed the button.
+  sent_by      uuid,
+  -- How many residents were messaged; filled in once the sends finish.
+  recipients   integer NOT NULL DEFAULT 0,
+  created_at   timestamptz NOT NULL DEFAULT now(),
+  CONSTRAINT special_meal_ready_alerts_occasion_date_choice_key UNIQUE (occasion_id, serve_date, choice)
+);
+
 ALTER TABLE public.special_meal_occasions ENABLE ROW LEVEL SECURITY;
 ALTER TABLE public.special_meal_answers ENABLE ROW LEVEL SECURITY;
 REVOKE ALL ON public.special_meal_occasions FROM anon, authenticated;
 REVOKE ALL ON public.special_meal_answers FROM anon, authenticated;
+ALTER TABLE public.special_meal_ready_alerts ENABLE ROW LEVEL SECURITY;
+REVOKE ALL ON public.special_meal_ready_alerts FROM anon, authenticated;

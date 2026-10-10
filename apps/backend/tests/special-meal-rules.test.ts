@@ -117,3 +117,25 @@ describe("cutoffInstant", () => {
     expect(cutoffInstant(SUN, "07:00", 180).toISOString()).toBe("2026-10-10T22:30:00.000Z");
   });
 });
+
+import { readyRecipients } from "@/src/services/meals/special-meal-rules";
+
+describe("readyRecipients", () => {
+  it("pings only residents cooked for with that choice, who have a phone", () => {
+    const residents = [r("a"), r("b"), r("c"), r("d", { phone: null }), r("e"), r("f")];
+    const count = buildMealCount({
+      serveDate: SUN, policy: "LAST_CHOICE", residents,
+      leaves: [{ tenantId: "f", startDate: "2026-10-10", expectedReturnDate: "2026-10-12" }],
+      answers: new Map([
+        ["a", { choice: "NON_VEG" as const, source: "WHATSAPP" as const }],
+        ["c", { choice: "AWAY" as const, source: "WHATSAPP" as const }],
+        ["d", { choice: "NON_VEG" as const, source: "WHATSAPP" as const }],
+        ["e", { choice: "VEG" as const, source: "WHATSAPP" as const }],
+        ["f", { choice: "NON_VEG" as const, source: "WHATSAPP" as const }],
+      ]),
+      lastChoices: new Map([["b", "NON_VEG"]]),
+    });
+    expect(readyRecipients(count.people, residents, "NON_VEG").map((p) => p.tenantId)).toEqual(["a", "b"]);
+    expect(readyRecipients(count.people, residents, "VEG").map((p) => p.tenantId)).toEqual(["e"]);
+  });
+});

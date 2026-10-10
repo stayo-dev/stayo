@@ -157,3 +157,21 @@ export function cutoffInstant(serveDate: string, mealStart: string, minutesBefor
   const utcMs = Date.UTC(y, m - 1, d, hh, mm) - IST_OFFSET_MINUTES * 60_000 - minutesBefore * 60_000;
   return new Date(utcMs);
 }
+
+/**
+ * Who hears "food's ready" for one choice: residents the kitchen cooked that
+ * choice for (a confirmed answer or, under LAST_CHOICE, their last choice) who
+ * have a phone. Never anyone away, skipping, unanswered or on leave: a dinner
+ * bell for food that isn't yours is noise, and noise is what gets muted.
+ */
+export function readyRecipients(
+  people: CountPerson[],
+  residents: MealResident[],
+  choice: "VEG" | "NON_VEG",
+): Array<{ tenantId: string; name: string; phone: string }> {
+  const phoneOf = new Map(residents.map((r) => [r.tenantId, (r.phone || "").trim()]));
+  return people
+    .filter((p) => p.choice === choice && (p.basis === "CONFIRMED" || p.basis === "LAST_CHOICE"))
+    .map((p) => ({ tenantId: p.tenantId, name: p.name, phone: phoneOf.get(p.tenantId) || "" }))
+    .filter((p) => p.phone);
+}

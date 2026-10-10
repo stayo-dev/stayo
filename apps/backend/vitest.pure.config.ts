@@ -55,6 +55,8 @@ export default defineConfig({
       'tests/special-meal-service.test.ts',
       'tests/special-meal-reply.test.ts',
       'tests/special-meal-rounds.test.ts',
+      'tests/special-meal-ready.test.ts',
+      'tests/special-meal-intent.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',

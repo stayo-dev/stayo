@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const db = vi.hoisted(() => ({
   special_meal_occasions: { findMany: vi.fn(), findFirst: vi.fn(), create: vi.fn(), update: vi.fn() },
   special_meal_answers: { findMany: vi.fn(), upsert: vi.fn(), deleteMany: vi.fn() },
+  special_meal_ready_alerts: { findMany: vi.fn() },
   roomAllocation: { findMany: vi.fn() },
   stay_leaves: { findMany: vi.fn() },
   hostels: { findUnique: vi.fn() },
@@ -23,6 +24,7 @@ beforeEach(() => {
   vi.resetAllMocks();
   db.hostels.findUnique.mockResolvedValue({ name: "Sri", preferences_config: null }); // default LUNCH 12:30
   db.stay_leaves.findMany.mockResolvedValue([]);
+  db.special_meal_ready_alerts.findMany.mockResolvedValue([]);
 });
 
 describe("getCount", () => {
@@ -39,6 +41,8 @@ describe("getCount", () => {
     expect(out.cutoffAt).toBe("2026-10-11T04:00:00.000Z");
     expect(out.count.cook).toEqual({ veg: 1, nonVeg: 1 });
     expect(out.count.noAnswer).toBe(1);
+    expect(out.isToday).toBe(false);
+    expect(out.readyAlerts).toEqual([]);
   });
 
   it("refuses an occasion from another hostel", async () => {

@@ -41,8 +41,19 @@ describe("special meal schema", () => {
     expect(MIGRATION).toContain("CHECK (source IN ('WHATSAPP', 'OWNER'))");
   });
 
-  it("locks both tables away from the public API", () => {
-    for (const t of ["special_meal_occasions", "special_meal_answers"]) {
+  it("declares the ready-alerts table, one alert per occasion, date and choice", () => {
+    const alerts = modelOf("special_meal_ready_alerts");
+    for (const c of ["occasion_id", "hostel_id", "serve_date", "choice", "sent_by", "recipients"]) {
+      expect(alerts).toContain(` ${c} `);
+      expect(MIGRATION).toContain(c);
+    }
+    expect(alerts).not.toContain("@relation");
+    expect(MIGRATION).toMatch(/special_meal_ready_alerts_occasion_date_choice_key UNIQUE \(occasion_id, serve_date, choice\)/);
+    expect(MIGRATION).toContain("CHECK (choice IN ('VEG', 'NON_VEG'))");
+  });
+
+  it("locks every table away from the public API", () => {
+    for (const t of ["special_meal_occasions", "special_meal_answers", "special_meal_ready_alerts"]) {
       expect(MIGRATION).toContain(`ALTER TABLE public.${t} ENABLE ROW LEVEL SECURITY`);
       expect(MIGRATION).toContain(`REVOKE ALL ON public.${t} FROM anon, authenticated`);
     }

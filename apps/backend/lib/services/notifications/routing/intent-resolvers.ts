@@ -2,7 +2,7 @@ import { Intent, IntentResolutionInput, IntentResolver } from "./types";
 import { resolveCommand } from "../command-center/commands";
 import { looksLikeOtp } from "../command-center/guardian-access";
 import { decodePayload } from "../command-center/menu";
-import { decodeMealPayload, parseTypedChoice } from "../providers/whatsapp/special-meal-template-contract";
+import { decodeMealPayload, decodeReadyPayload, parseTypedChoice } from "../providers/whatsapp/special-meal-template-contract";
 
 /** Registry keys, so resolvers and the registry can't drift apart on strings. */
 export const INTENTS = {
@@ -20,8 +20,8 @@ export const INTENTS = {
 } as const;
 
 /**
- * A special-meal answer: a tapped template button (`MEAL:` payload, which
- * arrives as text) or a whole-message typed answer ("veg", "nv", "skip",
+ * A special-meal answer: a tapped template button (`MEAL:` choice or
+ * `MEALREADY:` on-my-way payload, both arriving as text) or a whole-message typed answer ("veg", "nv", "skip",
  * "I'm away"). First in the chain because its payloads are ours and exact. The
  * handler declines anything that is not an open serving for the sender's own
  * residency, so a guardian's "veg" falls through untouched.
@@ -29,7 +29,8 @@ export const INTENTS = {
 export const mealChoiceIntentResolver: IntentResolver = {
   name: "meal-choice",
   async resolve({ message }: IntentResolutionInput): Promise<Intent[]> {
-    if (!decodeMealPayload(message.body) && !parseTypedChoice(message.body)) return [];
+    const body = message.body;
+    if (!decodeMealPayload(body) && !decodeReadyPayload(body) && !parseTypedChoice(body)) return [];
     return [{ name: INTENTS.MEAL_CHOICE, source: "KEYWORD", confidence: 0.9, metadata: { resolver: "meal-choice" } }];
   },
 };

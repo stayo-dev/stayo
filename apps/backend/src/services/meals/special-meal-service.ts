@@ -7,9 +7,15 @@ import { whatsAppTemplateDeliveryService, type WhatsAppTemplateDeliveryInput } f
 import { MetaWhatsAppProvider } from "@/lib/services/notifications/providers/whatsapp";
 import type { SenderIdentity } from "@/lib/services/notifications/routing/types";
 import {
+  MEAL_READY_TEMPLATES,
   SPECIAL_MEAL_QUESTION_TEMPLATE,
   answeredReply,
   buildQuestionParameters,
+  buildReadyParameters,
+  decodeReadyPayload,
+  encodeReadyPayload,
+  onMyWayReply,
+  readyTemplateFor,
   closedReply,
   decodeMealPayload,
   encodeMealPayload,
@@ -22,6 +28,7 @@ import { conflict, invalidRequest, notFound } from "./meal-errors";
 import {
   askAudience,
   buildMealCount,
+  readyRecipients,
   cutoffInstant,
   isMealChoice,
   isNoAnswerPolicy,
@@ -41,6 +48,8 @@ const logger = getLogger("meals.special");
 
 const ISO_DATE = /^\d{4}-\d{2}-\d{2}$/;
 const DISH_MAX = 60;
+/** Parallel sends per batch for the ready alert: quick enough for 50+ residents, gentle on Meta's rate limit. */
+const READY_BATCH = 5;
 
 export interface OccasionView {
   id: string;
@@ -233,7 +242,116 @@ export function createSpecialMealService(deps: {
       cutoffFor(occasion, serveDate),
     ]);
     const count = buildMealCount({ serveDate, policy: occasion.no_answer_policy, residents, leaves, answers, lastChoices });
-    return { occasion: viewOf(occasion, today), serveDate, cutoffAt: cutoffAt.toISOString(), isOpen: now < cutoffAt, count };
+    const readyAlerts = await readyAlertsFor(occasionId, serveDate);
+    return {
+      occasion: viewOf(occasion, today),
+      serveDate,
+      cutoffAt: cutoffAt.toISOString(),
+      isOpen: now < cutoffAt,
+      isToday: serveDate === today,
+      count,
+      readyAlerts,
+    };
+  }
+
+  async function readyAlertsFor(occasionId: string, serveDate: string) {
+    const rows = await db.special_meal_ready_alerts.findMany({
+      where: { occasion_id: occasionId, serve_date: toDbDate(serveDate) },
+      select: { choice: true, created_at: true, recipients: true },
+    });
+    return (rows as any[]).map((r) => ({ choice: r.choice as "VEG" | "NON_VEG", sentAt: new Date(r.created_at).toISOString(), recipients: r.recipients }));
+  }
+
+  /** Meta's "template name does not exist / not approved" — the cue to fall back to the first wording. */
+  function isMissingTemplate(error: any): boolean {
+    return String(error?.providerCode ?? error?.code ?? "") === "132001" || String(error?.message ?? "").includes("132001");
+  }
+
+  /**
+   * "Food's ready" (the cook's button). Only on the day it is served, at most
+   * once per choice per serving (the row is inserted before any send, so its
+   * unique key wins a double tap), and only to residents it was cooked for.
+   */
+  async function sendReadyAlert(
+    input: { hostelId: string; occasionId: string; choice: unknown; sentBy: string },
+    now: Date = new Date(),
+  ) {
+    if (input.choice !== "VEG" && input.choice !== "NON_VEG" && input.choice !== "BOTH") {
+      throw invalidRequest("choice must be VEG, NON_VEG or BOTH");
+    }
+    const occasion = await occasionOf(input.hostelId, input.occasionId);
+    const today = istDateOf(now);
+    if (nextServeDate(occasion.weekday, today) !== today) throw invalidRequest("This special meal isn't being served today");
+    const serveDate = today;
+    const choices: Array<"VEG" | "NON_VEG"> = input.choice === "BOTH" ? ["NON_VEG", "VEG"] : [input.choice];
+
+    const [residents, leaves, answers, lastChoices, hostel] = await Promise.all([
+      residentsOf(input.hostelId),
+      leavesAround(input.hostelId, serveDate),
+      answersFor(occasion.id, serveDate),
+      lastChoicesBefore(occasion.id, serveDate),
+      db.hostels.findUnique({ where: { id: input.hostelId }, select: { name: true } }),
+    ]);
+    const count = buildMealCount({ serveDate, policy: occasion.no_answer_policy, residents, leaves, answers, lastChoices });
+    const template = readyTemplateFor(serveDate);
+    const fallback = MEAL_READY_TEMPLATES[0];
+
+    const alerts: Array<{ choice: "VEG" | "NON_VEG"; sent: number; failed: number; alreadySent: boolean }> = [];
+    for (const choice of choices) {
+      let alert: any;
+      try {
+        alert = await db.special_meal_ready_alerts.create({
+          data: { occasion_id: occasion.id, hostel_id: input.hostelId, serve_date: toDbDate(serveDate), choice, sent_by: input.sentBy },
+        });
+      } catch (error: any) {
+        if (error?.code === "P2002") {
+          alerts.push({ choice, sent: 0, failed: 0, alreadySent: true });
+          continue;
+        }
+        throw error;
+      }
+
+      const dish = choice === "VEG" ? occasion.veg_dish : occasion.non_veg_dish;
+      const recipients = readyRecipients(count.people, residents, choice);
+      let sent = 0;
+      let failed = 0;
+      for (let i = 0; i < recipients.length; i += READY_BATCH) {
+        await Promise.all(
+          recipients.slice(i, i + READY_BATCH).map(async (person) => {
+            const base = {
+              phone: person.phone,
+              bodyParameters: buildReadyParameters({ tenantName: person.name, dish, choice, hostelName: hostel?.name }),
+              quickReplyPayloads: [encodeReadyPayload({ occasionId: occasion.id, serveDate, tenantId: person.tenantId })],
+              tenantId: person.tenantId,
+              hostelId: input.hostelId,
+              ownerId: occasion.owner_id,
+            };
+            const key = `special_meal_ready:${occasion.id}:${serveDate}:${choice}:${person.tenantId}`;
+            try {
+              const outcome = await sendTemplate({ ...base, templateName: template.name, languageCode: template.language, idempotencyKey: key });
+              if (outcome.sent) sent += 1;
+            } catch (error: any) {
+              if (template.name !== fallback.name && isMissingTemplate(error)) {
+                try {
+                  const outcome = await sendTemplate({ ...base, templateName: fallback.name, languageCode: fallback.language, idempotencyKey: `${key}:fallback` });
+                  if (outcome.sent) sent += 1;
+                  return;
+                } catch (retryError: any) {
+                  error = retryError;
+                }
+              }
+              failed += 1;
+              logger.warn("special_meal.ready_send_failed", { occasion_id: occasion.id, tenant_id: person.tenantId, error: error?.message || String(error) });
+            }
+          }),
+        );
+      }
+      await db.special_meal_ready_alerts.update({ where: { id: alert.id }, data: { recipients: sent } });
+      alerts.push({ choice, sent, failed, alreadySent: false });
+    }
+
+    if (alerts.every((a) => a.alreadySent)) throw conflict("Residents were already told it's ready");
+    return { alerts };
   }
 
   /** The warden's correction. Allowed after the cutoff, and labelled OWNER. */
@@ -272,6 +390,14 @@ export function createSpecialMealService(deps: {
     const guardianOf = new Set(identity.guardianResidents.map((g) => g.tenantId));
     const own = identity.residents.filter((r) => !guardianOf.has(r.tenantId));
     if (own.length === 0) return { handled: false };
+
+    const onMyWay = decodeReadyPayload(body);
+    if (onMyWay) {
+      const mine = own.find((r) => r.tenantId === onMyWay.tenantId);
+      if (!mine) return { handled: false };
+      await sendText(phone, onMyWayReply(mine.name, mine.tenantId));
+      return { handled: true, outcome: "ON_MY_WAY" };
+    }
 
     const decoded = decodeMealPayload(body);
     if (decoded) {
@@ -383,7 +509,7 @@ export function createSpecialMealService(deps: {
     return result;
   }
 
-  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound };
+  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound, sendReadyAlert };
 }
 
 export const specialMealService = createSpecialMealService();
