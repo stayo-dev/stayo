@@ -242,7 +242,16 @@ export function createSpecialMealService(deps: {
       cutoffFor(occasion, serveDate),
     ]);
     const count = buildMealCount({ serveDate, policy: occasion.no_answer_policy, residents, leaves, answers, lastChoices });
-    const readyAlerts = await readyAlertsFor(occasionId, serveDate);
+    const [readyAlerts, contacted] = await Promise.all([readyAlertsFor(occasionId, serveDate), contactedFor(occasionId, serveDate)]);
+    const audience = askAudience({ serveDate, residents, leaves, answered: new Set(answers.keys()) });
+    const reached = new Set(Array.from(contacted.askOk).concat(Array.from(contacted.remindOk)));
+    const outreach = {
+      asked: contacted.askOk.size,
+      reminded: contacted.remindOk.size,
+      unreachable: Array.from(contacted.failed).filter((t) => !reached.has(t)).length,
+      toAsk: audience.filter((p) => !contacted.anyAsk.has(p.tenantId) && !contacted.anyRemind.has(p.tenantId)).length,
+      toRemind: audience.filter((p) => contacted.anyAsk.has(p.tenantId) && !contacted.anyRemind.has(p.tenantId)).length,
+    };
     return {
       occasion: viewOf(occasion, today),
       serveDate,
@@ -251,6 +260,7 @@ export function createSpecialMealService(deps: {
       isToday: serveDate === today,
       count,
       readyAlerts,
+      outreach,
     };
   }
 
@@ -456,60 +466,122 @@ export function createSpecialMealService(deps: {
   }
 
   /**
+   * Who has already been messaged for one serving, read from the delivery
+   * log's idempotency keys (`special_meal_{ask|remind}:{occasion}:{date}:{tenant}`).
+   * The keys are shared by the crons and the owner's buttons, which is what
+   * stops either from repeating the other. A key is final even when the send
+   * FAILED (the reservation insert is ON CONFLICT DO NOTHING), so a failed
+   * ask is reported as unreachable rather than offered again; a reminder is
+   * its one second try.
+   */
+  async function contactedFor(occasionId: string, serveDate: string) {
+    const prefix = (kind: string) => `special_meal_${kind}:${occasionId}:${serveDate}:`;
+    const rows = await db.whatsapp_logs.findMany({
+      where: { OR: [{ idempotency_key: { startsWith: prefix("ask") } }, { idempotency_key: { startsWith: prefix("remind") } }] },
+      select: { idempotency_key: true, status: true },
+    });
+    const out = { anyAsk: new Set<string>(), anyRemind: new Set<string>(), askOk: new Set<string>(), remindOk: new Set<string>(), failed: new Set<string>() };
+    for (const r of (rows ?? []) as any[]) {
+      const key = String(r.idempotency_key || "");
+      const tenantId = key.split(":").pop() || "";
+      const ok = String(r.status || "").toUpperCase() !== "FAILED";
+      if (key.startsWith(prefix("ask"))) {
+        out.anyAsk.add(tenantId);
+        if (ok) out.askOk.add(tenantId);
+      } else {
+        out.anyRemind.add(tenantId);
+        if (ok) out.remindOk.add(tenantId);
+      }
+      if (!ok) out.failed.add(tenantId);
+    }
+    return out;
+  }
+
+  /**
+   * Send the question for one serving. ASK reaches residents nobody has
+   * messaged yet; REMIND reaches every resident still silent who hasn't had a
+   * reminder. Both skip the away, the moved out and the already answered.
+   */
+  async function sendRoundFor(occasion: any, serveDate: string, kind: "ASK" | "REMIND", cutoffAt: Date) {
+    const [residents, leaves, answers, contacted] = await Promise.all([
+      residentsOf(occasion.hostel_id),
+      leavesAround(occasion.hostel_id, serveDate),
+      answersFor(occasion.id, serveDate),
+      contactedFor(occasion.id, serveDate),
+    ]);
+    const audience = askAudience({ serveDate, residents, leaves, answered: new Set(answers.keys()) }).filter((p) =>
+      kind === "ASK" ? !contacted.anyAsk.has(p.tenantId) && !contacted.anyRemind.has(p.tenantId) : !contacted.anyRemind.has(p.tenantId),
+    );
+    const result = { sent: 0, skipped: 0, failed: 0 };
+    for (const person of audience) {
+      try {
+        const outcome = await sendTemplate({
+          phone: person.phone,
+          templateName: SPECIAL_MEAL_QUESTION_TEMPLATE.name,
+          languageCode: SPECIAL_MEAL_QUESTION_TEMPLATE.language,
+          bodyParameters: buildQuestionParameters({
+            tenantName: person.name, serveDate, mealType: occasion.meal_type,
+            vegDish: occasion.veg_dish, nonVegDish: occasion.non_veg_dish, cutoffAt,
+          }),
+          quickReplyPayloads: SPECIAL_MEAL_QUESTION_TEMPLATE.quickReplies.map((q) =>
+            encodeMealPayload({ occasionId: occasion.id, serveDate, tenantId: person.tenantId, choice: q.choice }),
+          ),
+          idempotencyKey: `special_meal_${kind.toLowerCase()}:${occasion.id}:${serveDate}:${person.tenantId}`,
+          tenantId: person.tenantId,
+          hostelId: occasion.hostel_id,
+          ownerId: occasion.owner_id,
+        });
+        if (outcome.sent) result.sent += 1;
+        else result.skipped += 1;
+      } catch (error: any) {
+        result.failed += 1;
+        logger.warn("special_meal.send_failed", { kind, occasion_id: occasion.id, tenant_id: person.tenantId, error: error?.message || String(error) });
+      }
+    }
+    return result;
+  }
+
+  /**
    * One daily round. ASK (≈18:00 IST) covers tomorrow's servings, REMIND
    * (≈08:00 IST) covers today's. Vercel Hobby fires each anywhere in its hour,
    * so a serving whose cutoff has already passed is skipped, never asked.
-   * Idempotent per tenant per serving per kind via whatsapp_logs.idempotency_key.
    */
   async function runRound(kind: "ASK" | "REMIND", now: Date = new Date()) {
     const today = istDateOf(now);
     const serveDate = kind === "ASK" ? addDaysIso(today, 1) : today;
     const occasions = await db.special_meal_occasions.findMany({ where: { weekday: weekdayOfIso(serveDate), is_active: true } });
     const result = { occasions: (occasions as any[]).length, sent: 0, skipped: 0, failed: 0, closed: 0 };
-
     for (const occasion of occasions as any[]) {
       const cutoffAt = await cutoffFor(occasion, serveDate);
       if (now >= cutoffAt) {
         result.closed += 1;
         continue;
       }
-      const [residents, leaves, answers] = await Promise.all([
-        residentsOf(occasion.hostel_id),
-        leavesAround(occasion.hostel_id, serveDate),
-        answersFor(occasion.id, serveDate),
-      ]);
-      const audience = askAudience({ serveDate, residents, leaves, answered: new Set(answers.keys()) });
-      for (const person of audience) {
-        try {
-          const outcome = await sendTemplate({
-            phone: person.phone,
-            templateName: SPECIAL_MEAL_QUESTION_TEMPLATE.name,
-            languageCode: SPECIAL_MEAL_QUESTION_TEMPLATE.language,
-            bodyParameters: buildQuestionParameters({
-              tenantName: person.name, serveDate, mealType: occasion.meal_type,
-              vegDish: occasion.veg_dish, nonVegDish: occasion.non_veg_dish, cutoffAt,
-            }),
-            quickReplyPayloads: SPECIAL_MEAL_QUESTION_TEMPLATE.quickReplies.map((q) =>
-              encodeMealPayload({ occasionId: occasion.id, serveDate, tenantId: person.tenantId, choice: q.choice }),
-            ),
-            idempotencyKey: `special_meal_${kind.toLowerCase()}:${occasion.id}:${serveDate}:${person.tenantId}`,
-            tenantId: person.tenantId,
-            hostelId: occasion.hostel_id,
-            ownerId: occasion.owner_id,
-          });
-          if (outcome.sent) result.sent += 1;
-          else result.skipped += 1;
-        } catch (error: any) {
-          result.failed += 1;
-          logger.warn("special_meal.send_failed", { kind, occasion_id: occasion.id, tenant_id: person.tenantId, error: error?.message || String(error) });
-        }
-      }
+      const r = await sendRoundFor(occasion, serveDate, kind, cutoffAt);
+      result.sent += r.sent;
+      result.skipped += r.skipped;
+      result.failed += r.failed;
     }
     logger.info("special_meal.round_done", { kind, serve_date: serveDate, ...result });
     return result;
   }
 
-  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound, sendReadyAlert };
+  /**
+   * The owner's "Ask now" / "Remind now" — the same send as the crons, for the
+   * occasion's next serving, whenever the owner chooses, while answers are open.
+   */
+  async function sendNow(input: { hostelId: string; occasionId: string; kind: unknown }, now: Date = new Date()) {
+    if (input.kind !== "ASK" && input.kind !== "REMIND") throw invalidRequest("kind must be ASK or REMIND");
+    const occasion = await occasionOf(input.hostelId, input.occasionId);
+    const serveDate = nextServeDate(occasion.weekday, istDateOf(now));
+    const cutoffAt = await cutoffFor(occasion, serveDate);
+    if (now >= cutoffAt) throw invalidRequest("Answers for this meal have closed");
+    const r = await sendRoundFor(occasion, serveDate, input.kind, cutoffAt);
+    logger.info("special_meal.send_now", { kind: input.kind, occasion_id: occasion.id, serve_date: serveDate, ...r });
+    return { serveDate, ...r };
+  }
+
+  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound, sendReadyAlert, sendNow };
 }
 
 export const specialMealService = createSpecialMealService();

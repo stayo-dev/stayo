@@ -57,6 +57,7 @@ export default defineConfig({
       'tests/special-meal-rounds.test.ts',
       'tests/special-meal-ready.test.ts',
       'tests/special-meal-intent.test.ts',
+      'tests/special-meal-send-now.test.ts',
       // The menu persists across months; mocks `@/lib/db` (2026-10-10).
       'tests/food-month-carry-forward.test.ts',
       'tests/food-poll-edit-validation.test.ts',
