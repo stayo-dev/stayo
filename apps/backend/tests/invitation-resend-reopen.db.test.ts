@@ -370,3 +370,71 @@ describe_("reopened without a bed, and the new link lapses too", () => {
     expect(await prisma.roomAllocation.count({ where: { room_id: ROOM3, is_active: true } })).toBe(1);
   }, 90_000);
 });
+
+describe_("stuck state left by the pre-ADR-237 refresh: tenant EXPIRED, invitation live", () => {
+  async function stuckTenancy(room: string, phone: string, joining: Date) {
+    await prisma.rooms.create({ data: { id: room, hostel_id: HOSTEL, room_no: room.slice(0, 6), capacity: 1 } as any });
+    const created: any = await svc.createInvitation({
+      name: "Stuck", phone, room_id: room, monthly_rent: 8500, advance_deposit: 17000, maintenance_type: "NONE",
+      joining_date: joining.toISOString().slice(0, 10), paid_amount: 17000, paid_includes_deposit: true,
+      payment_method: "CASH", dispatch: "DEFERRED",
+    }, OWNER);
+    tenantId = created.tenant_id;
+    await rentGenerationService.generateMonthlyRent(nextMonth, OWNER, "manual", HOSTEL);
+    await prisma.tenant_invitations.update({ where: { id: created.invitation_id }, data: { status: "PENDING" } });
+    await sweep();
+    // What the old refresh did: new token, PENDING, a fresh week — tenant left EXPIRED.
+    await prisma.tenant_invitations.update({
+      where: { id: created.invitation_id },
+      data: { token: crypto.randomBytes(32).toString("hex"), status: "PENDING", expires_at: new Date(Date.now() + 7 * 86_400_000), cancelled_at: null },
+    });
+    return created;
+  }
+
+  it("Nudge on WhatsApp reopens it; the link opens onboarding", async () => {
+    await stuckTenancy(crypto.randomUUID(), "+919876500055", nextMonth);
+    expect((await snapshot()).tenant.status).toBe("EXPIRED");
+    const r: any = await svc.resendInvitationByEmail("+919876500055", actor, { identifier: "+919876500055" });
+    const s = await snapshot();
+    expect(s.tenant.status).toBe("ACTIVE");
+    expect(r).toMatchObject({ reopened: true, bed_held: true });
+    await expect(svc.resolveByToken(tokenOf(r.activation_link))).resolves.toMatchObject({ tenant: { id: tenantId } });
+    expect(s.obligations.filter((o) => o.waived_reason === AUTO_EXPIRE_WAIVER_REASON)).toHaveLength(0);
+  }, 90_000);
+
+  it("Cancel invitation closes it instead of refusing; payments are kept", async () => {
+    await stuckTenancy(crypto.randomUUID(), "+919876500066", nextMonth);
+    const before = await snapshot();
+    await expect(tenantService.cancelInvitation(tenantId, OWNER)).resolves.toMatchObject({ new_status: "CANCELLED" });
+    const s = await snapshot();
+    expect(s.tenant.status).toBe("CANCELLED");
+    expect(s.inv.every((i) => i.status === "CANCELLED")).toBe(true);
+    expect(s.payments).toHaveLength(before.payments.length);
+    await expect(svc.resolveByToken(s.inv[0].token)).rejects.toThrow(/CANCELLED/);
+  }, 90_000);
+});
+
+describe_("cancelling a tenancy reopened without a bed", () => {
+  it("closes it like any unaccepted tenancy — this month's rent is kept for settlement, not waived", async () => {
+    const room = crypto.randomUUID();
+    await prisma.rooms.create({ data: { id: room, hostel_id: HOSTEL, room_no: "105", capacity: 1 } as any });
+    const created: any = await svc.createInvitation({
+      name: "Now", phone: "+919876500077", room_id: room, monthly_rent: 8000, advance_deposit: 8000, maintenance_type: "NONE",
+      joining_date: firstOfMonth.toISOString().slice(0, 10), dispatch: "DEFERRED",
+    }, OWNER);
+    tenantId = created.tenant_id;
+    await prisma.tenant_invitations.update({ where: { id: created.invitation_id }, data: { status: "PENDING" } });
+    await sweep();
+    await svc.createInvitation({ name: "Taker2", phone: "+919876500088", room_id: room, monthly_rent: 8000, advance_deposit: 8000, maintenance_type: "NONE", dispatch: "DEFERRED" }, OWNER);
+    await svc.resendInvitationByEmail("+919876500077", actor, { identifier: "+919876500077" });
+    const reopened = await snapshot();
+    expect(reopened.tenant.status).toBe("INVITED");
+    const currentRent = reopened.obligations.find((o) => o.obligation_type === "RENT" && o.status === "PENDING");
+    expect(currentRent, "this month's rent is a current due").toBeTruthy();
+
+    await tenantService.cancelInvitation(tenantId, OWNER);
+    const s = await snapshot();
+    expect(s.tenant.status).toBe("CANCELLED");
+    expect(s.obligations.find((o) => o.id === currentRent.id).status).toBe("PENDING");
+  }, 90_000);
+});

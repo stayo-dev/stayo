@@ -1392,6 +1392,7 @@ export class TenantService {
         owner_id: true,
         status: true,
         acceptance_status: true,
+        access_mode: true,
         tenant_invitations: {
           where: { status: { in: ["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"] as any } },
           select: { id: true },
@@ -1408,8 +1409,20 @@ export class TenantService {
     //   - a new-model tenancy that is ACTIVE but `acceptance_status = PENDING`.
     // An accepted tenant, or a grandfathered owner-managed one, must go through
     // the move-out workflow so settlement is enforced.
+    //   - (ADR-237) one a resend reopened while its room was full — INVITED,
+    //     owner-managed, still unaccepted: it may carry past dues and
+    //     payments, so it closes like any unaccepted tenancy, not like a
+    //     legacy INVITED one (which waives every pending due);
+    //   - (ADR-237) one the expiry sweep closed while an invitation of it is
+    //     still live (the pre-ADR-237 link refresh left these): cancelling
+    //     closes that invitation.
+    const invitationIds = (tenant.tenant_invitations || []).map((invitation: any) => invitation.id);
+    const acceptancePending = (tenant as any).acceptance_status === "PENDING";
     const isNewModelPending =
-      tenant.status === "ACTIVE" && (tenant as any).acceptance_status === "PENDING";
+      acceptancePending &&
+      (tenant.status === "ACTIVE" ||
+        (tenant.status === "INVITED" && (tenant as any).access_mode === "OWNER_MANAGED") ||
+        (tenant.status === "EXPIRED" && invitationIds.length > 0));
     if (tenant.status !== "INVITED" && !isNewModelPending) {
       throw new Error(
         "VALIDATION: Only an unaccepted invitation can be cancelled. Use the move-out workflow for an accepted tenant."
@@ -1417,7 +1430,6 @@ export class TenantService {
     }
 
     const now = new Date();
-    const invitationIds = (tenant.tenant_invitations || []).map((invitation: any) => invitation.id);
     let releasedReservationCount = 0;
 
     if (isNewModelPending) {

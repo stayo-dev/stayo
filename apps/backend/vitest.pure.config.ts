@@ -294,6 +294,7 @@ export default defineConfig({
       'tests/invitation-nudge.test.ts',
       'tests/invitation-resend-reopens-link.test.ts',
       'tests/resend-invitation-route-link.test.ts',
+      'tests/cancel-invitation-route-message.test.ts',
       'tests/build-without-env.test.ts',
       // ADR-212 — guardian verification as a hostel policy. Pure: takes the
       // database's answers as arguments and reads nothing itself.

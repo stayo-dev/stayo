@@ -8,6 +8,14 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Nudge said "This tenancy has ended" on a link showing 7 days left; Cancel refused it (2026-10-10)
+
+**Symptom.** After the first fix shipped, an owner's invited tenant showed "Expires in 7 days · Room held", yet **Nudge on WhatsApp** answered "This tenancy has ended — send a new invitation instead" and **Cancel invitation** answered "VALIDATION: Only an unaccepted invitation can be cancelled…".
+
+**Cause.** Rows the pre-[[Decisions#ADR-237|ADR-237]] link refresh had already touched: it gave the invitation a new token, `PENDING` and a fresh week but left the tenancy `EXPIRED`. ADR-237 reopened only when the *invitation* was `EXPIRED`, so a live invitation went to the nudge path, which refuses an ended tenancy; cancel accepted only `INVITED` or `ACTIVE`+`PENDING`. Verifying on a real database also showed the tenant's own still-live invitation counted as a held bed, so even an empty room read as full for the reopen. And cancelling a tenancy reopened without a bed (`INVITED`, owner-managed) took the legacy branch, which waives every pending due instead of keeping past dues for settlement.
+
+**Fix.** Nudge on an `EXPIRED` tenancy reopens it through the resend path. Cancel treats an `EXPIRED` tenancy with a live invitation, and an owner-managed `INVITED` unaccepted one, like any unaccepted tenancy (`closeUnacceptedTenancy`). `hasBedFreeFor` never counts a tenant's own hold against them (reopen and activation). The cancel route no longer shows its `VALIDATION:` prefix. No data repair is needed: the stuck rows heal on the next Nudge, or can be cancelled. Tests: `tests/invitation-resend-reopens-link.test.ts`, `tests/cancel-invitation-route-message.test.ts`, `tests/invitation-resend-reopen.db.test.ts`. See [[Business-Rules]].
+
 ## "Send again" sent a link that still said expired (2026-10-10)
 
 **Symptom.** An owner pressed "Send new link" for a tenant who hadn't accepted; the tenant opened it and was told the invitation had expired. Re-sending again changed nothing.

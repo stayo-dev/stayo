@@ -8,7 +8,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { hostelBillingPreferencesService, type MaintenanceType } from "../../../lib/services/hostel-billing-preferences-service";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { ensureActiveAllocation } from "./tenancy-allocation";
-import { reopenExpiredTenancy, restoreSweptObligations } from "./reopen-expired-tenancy";
+import { hasBedFreeFor, reopenExpiredTenancy, restoreSweptObligations } from "./reopen-expired-tenancy";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
 import { financialPaymentFacade } from "../payments/financial-payment-facade";
 import { financialService } from "../payments/financial-service";
@@ -1387,8 +1387,14 @@ export class TenantInvitationLifecycleService {
     if (!["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"].includes(String(invitation.status))) {
       throw new Error("BAD_REQUEST: This invitation can't be re-sent — send a new one");
     }
-    // The tenancy itself must still be live. A closed one (cancelled, or ended
-    // by the expiry sweep) must not get a working link back.
+    // Ended by the expiry sweep behind a still-live invitation — the state the
+    // pre-ADR-237 link refresh left (new token, tenant still EXPIRED). Nudging
+    // that link can never work, so reopen it the way "Send again" does.
+    if (invitation.tenant.status === "EXPIRED") {
+      return this.resendInvitation(invitation.id, actor, options.email ? { email: options.email } : undefined);
+    }
+    // The tenancy itself must still be live. A cancelled one must not get a
+    // working link back.
     if (!["INVITED", "ACTIVE"].includes(String(invitation.tenant.status))) {
       throw new Error("BAD_REQUEST: This tenancy has ended — send a new invitation instead");
     }
@@ -1945,12 +1951,9 @@ export class TenantInvitationLifecycleService {
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
       if (reopenedWithoutBed) {
         // Nothing was held for this tenant, so a bed reserved for someone
-        // else's pending invitation is not free either. `reserved` includes
-        // this tenant's own still-live invitation — it must not count
-        // against itself.
-        const capacity = await this.getRoomCapacitySnapshot(tx, roomId);
-        const heldByOthers = Math.max(0, capacity.reserved - 1);
-        if (capacity.occupied + heldByOthers >= capacity.capacity) {
+        // else's pending invitation is not free either — but the tenant's own
+        // still-live invitation must not count against itself.
+        if (!(await hasBedFreeFor(tx, roomId, tenant.id))) {
           throw new Error("CAPACITY_EXCEEDED: Your room is full right now — please ask the owner to assign you a room");
         }
       }
