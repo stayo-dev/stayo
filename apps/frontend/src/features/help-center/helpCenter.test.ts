@@ -6,6 +6,7 @@ import {
   canSubmitReport,
   classifyProblem,
   guidesFor,
+  reportBlocker,
   hostelChannel,
   searchGuides,
   suggestCategory,
@@ -206,5 +207,19 @@ describe('accepting a report', () => {
 
   it('does not count whitespace as an answer', () => {
     expect(canSubmitReport('   ', '                     ')).toBe(false);
+  });
+});
+
+describe('reportBlocker', () => {
+  it('asks for a title first', () => {
+    expect(reportBlocker('  ', 'a perfectly long description')).toMatch(/title/);
+  });
+  it('says how many more characters the detail needs', () => {
+    expect(reportBlocker('hi', 'hii')).toMatch(/12 more characters needed/);
+    expect(reportBlocker('hi', 'fourteen chars')).toMatch(/1 more character needed/);
+  });
+  it('is null exactly when the report can be sent', () => {
+    expect(reportBlocker('Payment stuck', 'Paid via UPI but it still shows due')).toBeNull();
+    expect(canSubmitReport('Payment stuck', 'Paid via UPI but it still shows due')).toBe(true);
   });
 });

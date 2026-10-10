@@ -337,13 +337,17 @@ export function MoneyPage() {
           {/* No export button here any more. Each tab exports its own data from
               its own row, so "which export?" is answered by where he tapped and
               never asked (ADR-197). */}
-          <button
-            type="button"
-            onClick={() => (money.tab === 'expenses' ? handleOpenAddExpense() : money.openModal(null))}
-            className="flex h-11 items-center whitespace-nowrap rounded-xl bg-primary px-4 font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_4px_12px_rgba(180,106,85,0.28)]"
-          >
-            {money.tab === 'expenses' ? '+ Add expense' : 'Collect rent'}
-          </button>
+          {/* Overview and Collections have no header action: rent is collected
+              from each tenant's own Collect button in the lists below. */}
+          {money.tab === 'expenses' && (
+            <button
+              type="button"
+              onClick={handleOpenAddExpense}
+              className="flex h-11 items-center whitespace-nowrap rounded-xl bg-primary px-4 font-display text-[13.5px] font-bold text-primary-foreground shadow-[0_4px_12px_rgba(180,106,85,0.28)]"
+            >
+              + Add expense
+            </button>
+          )}
         </div>
       </div>
 

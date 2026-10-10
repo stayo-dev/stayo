@@ -19,7 +19,8 @@ import { hostelInitials, INTRO_CARD_INK, skyEnv, THEME_CYCLE, type ThemePhase } 
 interface ActivationIntroScreenProps {
   hostelName: string;
   hostelLogoUrl?: string;
-  tenantFirstName?: string;
+  /** Full name, shown whole. The first word alone was often just an initial ("P."). */
+  tenantName?: string;
   roomNumber?: string | number | null;
   monthlyRent?: string | number | null;
   moveInLabel?: string;
@@ -120,7 +121,7 @@ function useSceneAudio(enabled: boolean) {
 export function ActivationIntroScreen({
   hostelName,
   hostelLogoUrl,
-  tenantFirstName,
+  tenantName,
   roomNumber,
   monthlyRent,
   moveInLabel,
@@ -218,11 +219,12 @@ export function ActivationIntroScreen({
         </div>
 
         <div
-          className="ob-up mt-[13px] inline-flex items-center gap-[7px] rounded-full border backdrop-blur-sm"
+          className="ob-up mt-[13px] inline-flex max-w-full items-center gap-[7px] rounded-[18px] border backdrop-blur-sm"
           style={{ background: sky.pillBg, borderColor: sky.pillBorder, padding: '6px 13px', animationDelay: '.34s' }}
         >
-          <span className="text-xs font-bold" style={{ color: sky.pillText }}>
-            {tenantFirstName ? `Hello, ${tenantFirstName}` : 'Hello'} <span className="opacity-60">·</span> <span style={{ color: sky.greetAccent }}>{sky.greeting}</span>
+          {/* A long name wraps onto a second line rather than being cut. */}
+          <span className="break-words text-center text-xs font-bold" style={{ color: sky.pillText }}>
+            {tenantName ? `Hello, ${tenantName}` : 'Hello'} <span className="opacity-60">·</span> <span style={{ color: sky.greetAccent }}>{sky.greeting}</span>
           </span>
         </div>
 

@@ -49,6 +49,15 @@ export interface RealTenantAgreement {
   pdfUrl: string | null;
 }
 
+export interface TenantReceipt {
+  /** Payment id — what `GET /payments/:id/receipt` takes. */
+  id: string;
+  amount: number;
+  date: string;
+  method: string | null;
+  reference: string | null;
+}
+
 export interface RealTenantDetail {
   id: string;
   hostelId: string;
@@ -92,6 +101,8 @@ export interface RealTenantDetail {
    * payment id — see `recent_activity` in `getOwnerTenantOverview`.
    */
   activity: Array<TenantActivityItem & { type: string }>;
+  /** Recorded payments (newest first, up to 25) — each one has a receipt PDF. */
+  receipts: TenantReceipt[];
   documents: RealTenantDocument[];
   agreement: RealTenantAgreement | null;
   /** Needed by any room-scoped action; without it the room picker can't exclude the current room. */
@@ -209,6 +220,16 @@ export function useTenantDetail(tenantId: string | undefined) {
           sub: String(a.detail ?? ''),
           date: formatDate(a.date),
           tone: activityTone(String(a.type ?? '')),
+        }))
+      : [];
+
+    const receipts: TenantReceipt[] = Array.isArray(o.payment_history)
+      ? o.payment_history.map((p: any) => ({
+          id: String(p.id),
+          amount: Number(p.amount ?? 0),
+          date: formatDate(p.date),
+          method: p.method ? String(p.method) : null,
+          reference: p.reference_number ? String(p.reference_number) : null,
         }))
       : [];
 
@@ -373,6 +394,7 @@ export function useTenantDetail(tenantId: string | undefined) {
       paymentSchedule,
       nextPayment: describeNextPayment(paymentSchedule.next, new Date()),
       activity,
+      receipts,
       documents,
       agreement: agreementRaw
         ? {

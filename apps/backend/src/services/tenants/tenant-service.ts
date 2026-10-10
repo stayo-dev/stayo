@@ -1223,6 +1223,15 @@ export class TenantService {
       current_payable_amount: currentPayableAmount,
       advance_balance: advanceBalance,
       recent_payments: recentPayments,
+      // The 25 most recent payments, newest first — each has a receipt
+      // (GET /api/payments/:id/receipt). Backs the owner's "View Receipts".
+      payment_history: allPayments.map((p) => ({
+        id: p.id,
+        amount: Number(p.amount_paid),
+        date: p.payment_date,
+        method: p.payment_method,
+        reference_number: p.reference_number,
+      })),
       recent_activity: recentActivity,
       current_room: currentRoom
         ? {

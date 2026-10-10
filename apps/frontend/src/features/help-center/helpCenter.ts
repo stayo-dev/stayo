@@ -397,6 +397,21 @@ export function canSubmitReport(subject: string, description: string): boolean {
 }
 
 /**
+ * Why a report can't be sent yet, in words the sender can act on — or null
+ * when it can. The Send button used to just sit disabled with a faint hint
+ * below it (often behind the bottom nav), so a short message looked like a
+ * button that did nothing.
+ */
+export function reportBlocker(subject: string, description: string): string | null {
+  if (!String(subject ?? '').trim()) return 'Add a short title for the problem.';
+  const missing = MIN_DESCRIPTION_LENGTH - String(description ?? '').trim().length;
+  if (missing > 0) {
+    return `Describe what happened in a little more detail — ${missing} more character${missing === 1 ? '' : 's'} needed.`;
+  }
+  return null;
+}
+
+/**
  * Where a tenant should take a hostel problem, and where an owner should.
  *
  * The owner case is not a redirect to someone else — the owner *is* the hostel
