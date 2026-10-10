@@ -131,7 +131,7 @@ A tenant who joins between ask time and cutoff (asked on joining). Opted out of 
 - [x] Two Meta templates, with per-meal button payloads.
 - [x] New special-meal tables; existing food polls untouched.
 - [x] Third button **I'm away**, a meal-specific declaration that does not create a leave record; Skip as a typed reply.
-- [ ] Production data validation (aggregates only, audit §6) before finalising the messaging and caretaker workflows. It decides whether the first release leans on **tenant self-service or caretaker-assisted collection**.
+- [x] Production data validated 2026-10-10 (audit §7): **tenant self-service first** (29/29 tenants have phones); warden edit is the correction path. Leave reporting is near zero (2 leaves ever), so "I'm away" carries absence. Only 5 tenants messaged the number in 30 days, so expect many no-answers early.
 
 ## Next steps
 1. ~~Save this design~~ — done (this file), with a TODO entry and a link from `docs/obsidian/Food.md`.

@@ -2299,6 +2299,9 @@ export function SpecialMealsPage() {
   );
 }
 
+/** Mirrors the backend's DEFAULT_MEAL_TIMINGS starts. Audit §7: no hostel has set its own timings yet. */
+const DEFAULT_START: Record<string, string> = { BREAKFAST: '7:00 AM', LUNCH: '12:30 PM', SNACKS: '5:00 PM', DINNER: '7:00 PM' };
+
 function AddOccasionForm({ onSave, onCancel }: { onSave: (b: { weekday: number; mealType: string; vegDish: string | null; nonVegDish: string | null; cutoffMinutesBefore: number }) => void; onCancel?: () => void }) {
   const [weekday, setWeekday] = useState(0);
   const [mealType, setMealType] = useState('LUNCH');
@@ -2319,6 +2322,9 @@ function AddOccasionForm({ onSave, onCancel }: { onSave: (b: { weekday: number; 
       </div>
       <input className={field} placeholder="Non-veg dish (optional), e.g. Chicken Biryani" maxLength={60} value={nonVegDish} onChange={(e) => setNonVegDish(e.target.value)} />
       <input className={field} placeholder="Veg dish (optional), e.g. Veg Biryani" maxLength={60} value={vegDish} onChange={(e) => setVegDish(e.target.value)} />
+      <p className="text-[12.5px] text-muted-foreground">
+        Counted from the hostel's {mealType.toLowerCase()} time in Meal Plan (default {DEFAULT_START[mealType]} if never set).
+      </p>
       <label className="text-[12.5px] font-medium text-muted-foreground">
         Answers close
         <select className={`${field} mt-1`} value={cutoff} onChange={(e) => setCutoff(Number(e.target.value))}>

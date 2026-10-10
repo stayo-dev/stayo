@@ -107,3 +107,29 @@ What each answer decides:
 - **Leave reporting near zero** → the [I'm away] button (§4.2) becomes essential.
 - **Few phones** → the warden-entry path is the main path, not a fallback.
 - **Zero poll votes** → tenants have never answered a food question in-app. WhatsApp is then the only realistic channel, which supports the design.
+
+## 7. Production results (run by the user, 2026-10-10)
+
+| # | Metric | Value |
+|---|---|---|
+| 1 | Active tenants | 29 |
+| 2 | … with a phone number | 29 |
+| 3 | … with an app login | 29 |
+| 4 | Hostels with active tenants | 2 |
+| 5 | Largest hostel | 27 |
+| 6 | Hostels with meal timings set | **0** |
+| 7 | Hostels with a published food schedule | 2 |
+| 8 | Food polls (total / 60 days) | 0 / 0 |
+| 9 | Poll votes / voters | 0 / 0 |
+| 10 | Stay events (total / 30 days) | 5 / 5 |
+| 11 | Stay events by source | APP=2, OWNER=1, QR=… (truncated in the screenshot) |
+| 12 | Leaves (total / active) | **2 / 0** |
+| 13 | Inbound WhatsApp messages, 30 days | 66 |
+| 14 | Distinct WhatsApp senders, 30 days | **5** |
+
+**What this decides:**
+- **Tenant self-service is the primary path.** Every active tenant has a phone, so everyone can be asked. Warden entry stays as the correction path, not the main one.
+- **"I'm away" is essential, as predicted.** Two leaves have ever been recorded across 29 tenants. Stay's leave data will almost never exclude anyone yet, so the meal-specific "I'm away" is what will actually keep away tenants out of the count.
+- **Expect a large "No answer" group at first.** Only 5 of 29 tenants have ever messaged the WhatsApp number in 30 days, and nobody has answered a food poll. `LAST_CHOICE` has no history in week one, so the owner screen must make the No-answer list easy to act on (warden edit). Response rate is the metric to watch in the first two weeks.
+- **No hostel has set meal timings**, so every cutoff will come from the defaults (lunch 12:30, dinner 19:00). The setup form must show which serving time the cutoff is counted from, and point to Meal Plan to change it. Added to Task 9.
+- **Scale is tiny:** 2 hostels, 27 tenants max. Per-occasion queries need no batching or optimisation in Phase 1.
