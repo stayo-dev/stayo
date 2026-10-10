@@ -25,7 +25,7 @@ ADR-195 (D1) **rejected "tenant-declared skips"** on the grounds that a daily de
 
 ## Where I'd change the pasted design
 
-1. **Add a third answer: "Skipping this one."** With only veg and non-veg, a tenant who is in the hostel but eating out gets counted anyway. That is where most of the over-cooking comes from. The buttons should be **Veg · Non-veg · Skip**.
+1. **Add a third answer: "I'm away".** With only veg and non-veg, a tenant who is out for that meal gets counted anyway, and if they don't reply they look the same as someone who ignored the message. The buttons are **Veg · Non-veg · I'm away** (decided 2026-10-10, see Decisions). "I'm away" is a **meal-specific declaration**: it removes the tenant from *that* meal's count and is recorded as such. It does **not** create a `stay_leaves` record, because missing one meal is not a hostel leave. Right after the tap, inside the 24-hour window, Stayo can *offer* to record a longer absence (*"Away for a few days? Record it so we don't ask"*), and the tenant chooses. **Skip** stays as a *typed* reply ("skip") for someone who is here but won't eat the special meal. It is counted as *Skipping*, never as *Away*.
 2. **Make it a standing order the tenant agrees to, not a prediction.** The pasted doc's hardest problem is that silence isn't consent, so predictions can never be trusted. The fix is to have the tenant set the default themselves:
    > After 3 matching answers for the same occasion: *"You've picked Non-veg for the last 3 Sundays. Make it your usual?"* **[Yes, my usual] [Keep asking me]**
 
@@ -38,15 +38,15 @@ ADR-195 (D1) **rejected "tenant-declared skips"** on the grounds that a daily de
 ## The flow
 
 ### Owner setup (once)
-In Food, under **Special meals**, the owner adds an occasion: *day* (Wed / Sun), *meal* (lunch / dinner), *options* (Veg / Non-veg, renameable), *ask time* (default: 6 pm the evening before), *cutoff* (default: 3 hours before the meal timing). A hostel can have several occasions, and each is learned separately.
+In Food, under **Special meals**, the owner adds an occasion: *day* (Wed / Sun), *meal* (lunch / dinner), *options* (Veg / Non-veg, renameable), *cutoff* (default: 3 hours before the meal timing). There is no per-owner ask time: the question goes out from a fixed daily slot (≈ 18:00 IST the day before) and the reminder from another (≈ 08:00 IST), because Vercel Hobby crons run once a day ±59 min (audit A1). A hostel can have several occasions, and each is learned separately.
 
 ### Ask time: who gets a message
 For each live tenant of the hostel, checked in this order:
 1. **Moved out by the meal date, or leaving before it** → no message, not counted.
 2. **On leave covering the meal date** (`start ≤ date < expected_return`) → no message, listed as *Away*. The tenant is never bothered.
 3. **Returning on the meal day** → asked, with a note: *"Welcome back Sunday — will you be here for lunch?"* This case is uncertain, so the tenant is asked even if they have a standing order.
-4. **Has a standing order for this occasion** → a heads-up only (the user's message): *"Sunday lunch is Chicken Biryani — we've got you down for Non-veg 🍗. Change?"* **[Switch to Veg] [Skipping this one]**. No reply needed.
-5. **Everyone else** → the question: **[Veg] [Non-veg] [Skip]**.
+4. **Has a standing order for this occasion** → a heads-up only (the user's message): *"Sunday lunch is Chicken Biryani — we've got you down for Non-veg 🍗. Change?"* **[Switch to Veg] [I'm away]**. No reply needed.
+5. **Everyone else** → the question: **[Veg] [Non-veg] [I'm away]**.
 
 ### Between ask time and cutoff
 - One tap records the answer and sends a short ✓ reply. A later tap replaces the earlier one, so the latest answer wins.
@@ -77,7 +77,7 @@ Each tenant's history is kept **separately for each occasion** (Wed dinner ≠ S
 | **Drifting** | Tenant switches away from the standing order in 2 of the last 4 weeks | Standing order paused, back to asking: *"You've switched a few times lately — we'll ask each week for now."* |
 | **Back from long absence** | Away ≥ 2 consecutive occasions | Asked once before the standing order resumes |
 
-Only **explicit taps** count as evidence. Away weeks, no-answers, and silent standing-order weeks teach the system nothing. A "Skip" counts as an answer but never becomes a standing order. The tenant app gets a small **My meals** card where the tenant can see and cancel each standing order. The same can be done over WhatsApp: `MEALS` → list, `STOP` → ask every time.
+Only **explicit taps** count as evidence. Away weeks, no-answers, and silent standing-order weeks teach the system nothing. "I'm away" and a typed "skip" are answers for that meal only. They never count as evidence of a preference and never become a standing order. The tenant app gets a small **My meals** card where the tenant can see and cancel each standing order. The same can be done over WhatsApp: `MEALS` → list, `ASK ME` → ask every time. (`STOP` is taken: it stops guardian stay updates, ADR-234, and stays that way.)
 
 ---
 
@@ -88,7 +88,7 @@ Sunday lunch · Chicken Biryani / Veg Biryani      locks 10:00 am
   Non-veg 57      Veg 28                 ← the numbers to cook
   ─────────────────────────────────────────
   Confirmed 61 · Usual 20 · No answer 4 (counted as last choice)
-  Skipping 6 · Away 15 · Moved out —
+  Skipping 6 · Away 15 (11 on leave · 4 said "I'm away") · Moved out —
   [Remind the 4]  [View by room]  [Edit a tenant]
 ```
 - Every number opens the list of names behind it. The room view helps the warden or the serving counter.
@@ -110,8 +110,8 @@ A tenant who joins between ask time and cutoff (asked on joining). Opted out of 
 ---
 
 ## Phasing
-- **Phase 1: Collect.** Occasion setup, ask with Veg / Non-veg / Skip, leave and move-out filtering, one reminder, cutoff lock, the owner count with names and rooms, warden edits, the no-answer policy (default *last choice*), and the kitchen-sheet line. *By itself this already ends the door-to-door round.*
-- **Phase 2: Standing orders.** The "Make it your usual?" offer, the heads-up message, drift detection, the My meals card, and `MEALS`/`STOP`.
+- **Phase 1: Collect.** Occasion setup, ask with Veg / Non-veg / I'm away (typed skip), leave and move-out filtering, one reminder, cutoff lock, the owner count with names and rooms, warden edits, the no-answer policy (default *last choice*), and the kitchen-sheet line. *By itself this already ends the door-to-door round.*
+- **Phase 2: Standing orders.** The "Make it your usual?" offer, the heads-up message, drift detection, the My meals card, and `MEALS`/`ASK ME`.
 - **Phase 3: Accuracy.** Served counts per option, counted-vs-served trends, and per-occasion over/under hints for the owner.
 
 **Success metrics:** share of eligible tenants with a confirmed or usual answer at cutoff (target ≥ 90%), messages per tenant per month going down *without* the counted-vs-served gap growing, warden time saved, and fewer "no answer" tenants over time.
@@ -121,9 +121,17 @@ A tenant who joins between ask time and cutoff (asked on joining). Opted out of 
 ## Fit with the architecture (for the spec, not decided yet)
 - Answers are per tenant per dated occasion, and corrections replace earlier answers. That points to their own table (like `meal_service_logs`), plus a standing-order table. Both are **new tables only**, with RLS on, under the root `migrations/` (next number 096 — 095 is taken; see the audit). No new column on an existing model.
 - Eligibility comes from composing `stayService` residents/leaves (occupying allocations + leaves) plus `tenants.exit_date`. It is not a new presence formula.
-- A cron at each occasion's ask time and cutoff. WhatsApp templates (question / heads-up / reminder / "make it usual?") need **Meta approval**. That is the long pole, so templates should be submitted early.
-- **Must verify in the audit:** whether a template quick-reply can carry a **per-send payload** (occasion + date). The Stay Status memory flagged this as the blocker for the earlier WhatsApp slice.
+- Two daily crons (ask, reminder), idempotent on `whatsapp_logs.idempotency_key`. The cutoff is checked when a reply arrives, not by a cron.
+- **Two Meta templates:** *question* (also used as the reminder) and *heads-up*. Both carry per-send quick-reply payloads (`MEAL:<occasion-date id>:<choice>`). The ✓ reply, "Make it your usual?" and the "record a longer absence?" offer are interactive messages inside the 24-hour window, so they need no Meta review. Submit the templates early; approval is the long pole.
 - ADR: the next free number on `origin/main` (currently 235 is the latest), claimed at merge time.
+
+## Decisions (2026-10-10)
+- [x] Fixed daily ask and reminder slots; cutoff validated when a response arrives.
+- [x] `ASK ME` for meal preferences; existing `STOP` behaviour preserved.
+- [x] Two Meta templates, with per-meal button payloads.
+- [x] New special-meal tables; existing food polls untouched.
+- [x] Third button **I'm away**, a meal-specific declaration that does not create a leave record; Skip as a typed reply.
+- [ ] Production data validation (aggregates only, audit §6) before finalising the messaging and caretaker workflows. It decides whether the first release leans on **tenant self-service or caretaker-assisted collection**.
 
 ## Next steps
 1. ~~Save this design~~ — done (this file), with a TODO entry and a link from `docs/obsidian/Food.md`.

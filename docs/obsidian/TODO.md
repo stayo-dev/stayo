@@ -8,8 +8,8 @@ tags: [todo, backlog]
 
 Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`.
 - [x] **Code audit** — `docs/audits/special-meal-choices-audit.md` (2026-10-10).
-- [ ] **Production half of the audit** — the read-only queries in the audit's §6 (blocked from the dev session). Leave-reporting volume decides whether the question needs an [I'm away] button.
-- [ ] **Decide:** buttons `Veg · Non-veg · I'm away` (Skip typed) vs `Veg · Non-veg · Skip` — audit §4.2.
+- [ ] **Production half of the audit** — the read-only queries in the audit's §6 (aggregates only, run by an authorised account in the Supabase SQL editor). Decides tenant self-service vs caretaker-assisted collection for the first release.
+- [x] **Decided:** buttons `Veg · Non-veg · I'm away`. "I'm away" is meal-specific and creates no leave record; Skip is a typed reply.
 - [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
 - [ ] **Submit the two templates early** (question — also the reminder — and heads-up); the rest go inside the 24h window as interactive messages (audit A4). Meta approval is the long pole.
 - [ ] Then: Phase 1 plan → TDD → verification.

@@ -47,7 +47,7 @@ The design holds, but the audit changes it in four places:
 ## 4. Constraints the spec must state
 
 1. **Scheduling granularity (A1).** Proposed slots: **ask ≈ 18:00 IST** for the next day's occasions, and a **reminder ≈ 08:00 IST** for that day's lunch/dinner occasions. Each fires anywhere in its hour. Two crons, both idempotent on `whatsapp_logs.idempotency_key` (the `stay-guardian-sweep` pattern). The owner chooses only the cutoff. Its default is 3 hours before the serving window opens.
-2. **Leave is only as good as reporting.** The design is only as good as how reliably tenants record leave. ADR-195 §10 said this already. As of the 2026-09-23 memory note, prod held 5 `stay_events` rows (2 QR, both leaves RETURNED). **This needs re-checking (§6).** If leave reporting stays near zero, "away" tenants get messaged and stay silent. The design then degrades into "No answer", which is honest but weaker. A **[I'm away]** button on the question (it records a leave, and absence then wins) would make the meal message help fill in leave records too. Recommend adding it, with three buttons max: **Veg · Non-veg · I'm away**. "Skip" then becomes a typed reply / heads-up button. *This one needs the user's decision.*
+2. **Leave is only as good as reporting.** The design is only as good as how reliably tenants record leave. ADR-195 §10 said this already. As of the 2026-09-23 memory note, prod held 5 `stay_events` rows (2 QR, both leaves RETURNED). **This needs re-checking (§6).** If leave reporting stays near zero, "away" tenants get messaged and stay silent. The design then degrades into "No answer", which is honest but weaker. **Decided 2026-10-10:** the third button is **I'm away**, a *meal-specific* declaration that removes the tenant from that meal's count. It does **not** create a `stay_leaves` record, because one missed meal is not a hostel leave. Stayo may offer to record a longer absence inside the 24-hour window. **Skip** is a typed reply meaning "here, but not eating".
 3. **WhatsApp's 3-button ceiling.** Quick replies allow up to 10 buttons on a template, but interactive (non-template) messages allow 3. The heads-up template needs 2 (switch, skip/away). Fine.
 4. **Sensitive data.** No RLS policy and no anon read (follow [[rls-disabled-tables-prod]]'s lesson: `ENABLE ROW LEVEL SECURITY` in the same migration file). Owner and admin read only. Excluded from tenant exports.
 5. **Migrations** go in the root `migrations/` directory (`095_tenant_payment_claims.sql` is taken on `origin/main`, so next is **096**. Re-check at merge). The test DB is dead ([[stayo-test-db-dead]]), so DB-backed tests won't run. Logic stays in pure modules under `vitest.pure.config.ts`'s **explicit include list**.
@@ -61,7 +61,7 @@ The design holds, but the audit changes it in four places:
 
 ## 6. Production checks still to run (blocked here)
 
-Read-only. Run them through the raw `pg` recipe or the Supabase SQL editor against `qgfyfbdccjnibdhhvnsr`:
+Read-only and **aggregate only**: no phone numbers or tenant-level rows are returned or needed. Run them by an authorised account in the Supabase SQL editor against `qgfyfbdccjnibdhhvnsr`:
 
 ```sql
 -- live tenants, phones, logins
