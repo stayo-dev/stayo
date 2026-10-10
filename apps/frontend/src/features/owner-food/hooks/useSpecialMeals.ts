@@ -38,5 +38,16 @@ export function useSpecialMealCount(hostelId: string | null | undefined, occasio
       foodService.setSpecialMealAnswer(hostelId as string, occasionId as string, body),
     onSuccess: () => qc.invalidateQueries({ queryKey: key }),
   });
-  return { data: query.data, isLoading: query.isLoading, setAnswer: mutation.mutateAsync, isSaving: mutation.isPending };
+  const ready = useMutation({
+    mutationFn: (choice: 'VEG' | 'NON_VEG' | 'BOTH') => foodService.sendSpecialMealReady(hostelId as string, occasionId as string, choice),
+    onSettled: () => qc.invalidateQueries({ queryKey: key }),
+  });
+  return {
+    data: query.data,
+    isLoading: query.isLoading,
+    setAnswer: mutation.mutateAsync,
+    isSaving: mutation.isPending,
+    sendReady: ready.mutateAsync,
+    isSendingReady: ready.isPending,
+  };
 }

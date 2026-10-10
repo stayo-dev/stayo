@@ -40,3 +40,33 @@ describe('special meal display', () => {
     ]);
   });
 });
+
+import { readyButtons } from './specialMeals';
+
+describe('ready buttons', () => {
+  it('shows nothing on a day the meal is not served', () => {
+    expect(readyButtons(count, [], false)).toBeNull();
+  });
+
+  it('offers non-veg first, veg, and both while neither is sent', () => {
+    const r = readyButtons(count, [], true)!;
+    expect(r.buttons.map((b) => [b.choice, b.label, b.sent])).toEqual([
+      ['NON_VEG', 'Non-veg is ready · tell 57', null],
+      ['VEG', 'Veg is ready · tell 28', null],
+    ]);
+    expect(r.bothLabel).toBe('Both are ready · tell 85');
+  });
+
+  it('turns a sent choice into a receipt and drops the both button', () => {
+    const r = readyButtons(count, [{ choice: 'NON_VEG', sentAt: '2026-10-11T07:11:00.000Z', recipients: 55 }], true)!;
+    expect(r.buttons[0].sent).toBe('Told 55 at 12:41 PM');
+    expect(r.buttons[1].sent).toBeNull();
+    expect(r.bothLabel).toBeNull();
+  });
+
+  it('does not offer a choice nobody is eating', () => {
+    const r = readyButtons({ ...count, cook: { veg: 0, nonVeg: 12 } }, [], true)!;
+    expect(r.buttons.map((b) => b.choice)).toEqual(['NON_VEG']);
+    expect(r.bothLabel).toBeNull();
+  });
+});

@@ -25,11 +25,20 @@ export interface SpecialCountPerson {
   source: 'WHATSAPP' | 'OWNER' | null;
 }
 
+export interface ReadyAlert {
+  choice: 'VEG' | 'NON_VEG';
+  sentAt: string;
+  recipients: number;
+}
+
 export interface SpecialCount {
   occasion: SpecialOccasion;
   serveDate: string;
   cutoffAt: string;
   isOpen: boolean;
+  /** True only on the serving day itself: the only day "food's ready" can be sent. */
+  isToday: boolean;
+  readyAlerts: ReadyAlert[];
   count: {
     cook: { veg: number; nonVeg: number };
     confirmed: number; lastChoice: number; noAnswer: number; skipping: number; awaySaid: number; onLeave: number;
@@ -94,4 +103,29 @@ const GROUPS: Array<{ key: string; label: string; match: (p: SpecialCountPerson)
 /** Drill-down groups, in the order the owner needs them. People keep the server's room order. */
 export function peopleGroups(people: SpecialCountPerson[]) {
   return GROUPS.map((g) => ({ key: g.key, label: g.label, people: people.filter(g.match) })).filter((g) => g.people.length > 0);
+}
+
+/**
+ * The cook's "food's ready" buttons. Only on the serving day; non-veg first
+ * (it is usually the one people are queueing for); a choice nobody is eating
+ * is not offered; a sent choice becomes a receipt; "Both" only while neither
+ * has gone out.
+ */
+export function readyButtons(c: SpecialCount['count'], alerts: ReadyAlert[], isToday: boolean) {
+  if (!isToday) return null;
+  const sentOf = (choice: ReadyAlert['choice']) => alerts.find((a) => a.choice === choice) ?? null;
+  const options = [
+    { choice: 'NON_VEG' as const, word: 'Non-veg', n: c.cook.nonVeg },
+    { choice: 'VEG' as const, word: 'Veg', n: c.cook.veg },
+  ].filter((o) => o.n > 0);
+  const buttons = options.map((o) => {
+    const sent = sentOf(o.choice);
+    return {
+      choice: o.choice,
+      label: `${o.word} is ready · tell ${o.n}`,
+      sent: sent ? `Told ${sent.recipients} at ${istTime(sent.sentAt)}` : null,
+    };
+  });
+  const bothOpen = buttons.length === 2 && buttons.every((b) => b.sent === null);
+  return { buttons, bothLabel: bothOpen ? `Both are ready · tell ${c.cook.nonVeg + c.cook.veg}` : null };
 }

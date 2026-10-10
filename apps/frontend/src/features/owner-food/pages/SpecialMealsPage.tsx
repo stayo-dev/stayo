@@ -6,6 +6,7 @@ import { useIsDesktop } from '@/app/components/ui/use-desktop';
 import { stayoToast } from '@shared/ui-patterns/Toast';
 import { parseApiError } from '@lib/errors';
 import { HostelSwitcher } from '../components/HostelSwitcher';
+import { SpecialMealReadyPanel } from '../components/SpecialMealReadyPanel';
 import { useSpecialMealCount, useSpecialMeals } from '../hooks/useSpecialMeals';
 import {
   absentLine, breakdownLine, choiceLabel, cookLine, CUTOFF_OPTIONS, lockLine, occasionTitle, peopleGroups, WEEKDAYS,
@@ -121,7 +122,7 @@ function AddOccasionForm({ onSave, onCancel }: { onSave: (b: { weekday: number; 
 }
 
 function OccasionCount({ hostelId, occasion, onUpdate }: { hostelId: string; occasion: SpecialOccasion; onUpdate: (b: Partial<SpecialOccasion>) => Promise<unknown> }) {
-  const { data, isLoading, setAnswer, isSaving } = useSpecialMealCount(hostelId, occasion.id);
+  const { data, isLoading, setAnswer, isSaving, sendReady, isSendingReady } = useSpecialMealCount(hostelId, occasion.id);
   const [open, setOpen] = useState<string | null>(null);
   const [editing, setEditing] = useState<SpecialCountPerson | null>(null);
   if (isLoading || !data) return <p className="text-[13px] text-muted-foreground">Loading…</p>;
@@ -143,6 +144,8 @@ function OccasionCount({ hostelId, occasion, onUpdate }: { hostelId: string; occ
         <p className="mt-3 text-[12.5px] text-muted-foreground">{breakdownLine(c, occasion.noAnswerPolicy)}</p>
         <p className="text-[12.5px] text-muted-foreground">{absentLine(c)}</p>
       </div>
+
+      <SpecialMealReadyPanel data={data} onSend={sendReady} isSending={isSendingReady} />
 
       {peopleGroups(c.people).map((g) => (
         <div key={g.key} className="rounded-xl border border-border">
