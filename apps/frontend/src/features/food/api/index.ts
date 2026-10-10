@@ -1,4 +1,5 @@
 import api from '@lib/api-client';
+import type { MealChoice, SpecialCount, SpecialOccasion } from '@features/owner-food/specialMeals';
 
 function unwrap(response: { data: any }) {
   if (response.data && response.data.success !== undefined) {
@@ -17,6 +18,26 @@ export const foodService = {
   recordMealServed: async (hostelId: string, body: { serveDate: string; mealType: string; servedCount: number }) => {
     const response = await api.put(`/hostels/${hostelId}/meals/served`, body);
     return (response.data as any)?.entry;
+  },
+  listSpecialMeals: async (hostelId: string) => {
+    const response = await api.get(`/hostels/${hostelId}/meals/special`);
+    return (unwrap(response).occasions ?? []) as SpecialOccasion[];
+  },
+  createSpecialMeal: async (hostelId: string, body: { weekday: number; mealType: string; vegDish?: string | null; nonVegDish?: string | null; cutoffMinutesBefore?: number }) => {
+    const response = await api.post(`/hostels/${hostelId}/meals/special`, body);
+    return unwrap(response).occasion as SpecialOccasion;
+  },
+  updateSpecialMeal: async (hostelId: string, occasionId: string, body: Partial<Pick<SpecialOccasion, 'vegDish' | 'nonVegDish' | 'cutoffMinutesBefore' | 'noAnswerPolicy' | 'isActive'>>) => {
+    const response = await api.patch(`/hostels/${hostelId}/meals/special/${occasionId}`, body);
+    return unwrap(response).occasion as SpecialOccasion;
+  },
+  getSpecialMealCount: async (hostelId: string, occasionId: string, date?: string) => {
+    const response = await api.get(`/hostels/${hostelId}/meals/special/${occasionId}/count`, { params: date ? { date } : undefined });
+    const { success: _success, ...rest } = (response.data ?? {}) as any;
+    return rest as SpecialCount;
+  },
+  setSpecialMealAnswer: async (hostelId: string, occasionId: string, body: { tenantId: string; serveDate: string; choice: MealChoice | null }) => {
+    await api.put(`/hostels/${hostelId}/meals/special/${occasionId}/answers`, body);
   },
   getMenuItems: async (hostelId: string, params: { mealType?: string; includeInactive?: boolean } = {}) => {
     const response = await api.get('/food/menu-items', { params: { hostelId, ...params } });
