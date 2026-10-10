@@ -8,6 +8,20 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Money tab cashflow card read one level too deep and showed ₹0 every day (2026-10-10)
+
+- **Symptom:** "Cashflow forecast" on Money → Overview showed ₹0 for every day of every week, while the same screen reported lakhs collected this month.
+- **Cause:** `dashboardService.getCashflow()` returns `response.data?.data`, which is already the inner `{ daily_collection, … }` object. `useRealMoney` then read `.data.daily_collection` on that, got `undefined`, and fell back to `[]`. Its local `CashflowResult` type described the wrapped shape, so TypeScript could not catch it.
+- **Fix:** `owner-money/hooks/cashflowSeries.ts` (`sumDailyCollections`, `lastNDays`) reads the unwrapped shape and is unit-tested. No backend change.
+- **Note:** the card is titled "forecast" but plots *past* daily collections (the last 28 days, newest week first). The title was left unchanged; it should probably be renamed. See [[Features]].
+
+## Signed rental agreements opened as "This document is no longer available" (2026-10-10)
+
+- **Symptom:** On a tenant's profile, the Rental agreement card said **Signed**, but View & download showed "This document is no longer available." In production on 2026-10-10, 32 of 38 SIGNED agreements had `pdf_url = null`.
+- **Cause:** `AgreementGenerationService.generatePdfBuffer` calls `formatAgreementDateTime` to print each signature date, but the file only *re-exported* it and never imported it (it moved to `agreements/agreement-dates.ts` to break an import cycle). So rendering any signed agreement threw a "not defined" error. Signing generates the PDF after the agreement is committed and only logs a failure, so the agreement stayed SIGNED with no file. `GET /api/tenants/[id]/documents/[docId]/download` then answered 404. Treating the import as the cause is an inference from the code and the type error; the production logs were not checked.
+- **Fix:** Import added. The download route now renders a missing agreement PDF from the agreement's snapshot after its access checks, stores it best-effort (`storePdf`), and serves it. Existing agreements without a file heal the first time someone opens them. Test: `tests/agreement-download-render-on-demand.test.ts`.
+- **Still open:** signing still swallows a PDF failure silently. No backfill of the 32 agreements has been run, because they heal on first view.
+
 ## Nudge said "This tenancy has ended" on a link showing 7 days left; Cancel refused it (2026-10-10)
 
 **Symptom.** After the first fix shipped, an owner's invited tenant showed "Expires in 7 days · Room held", yet **Nudge on WhatsApp** answered "This tenancy has ended — send a new invitation instead" and **Cancel invitation** answered "VALIDATION: Only an unaccepted invitation can be cancelled…".
