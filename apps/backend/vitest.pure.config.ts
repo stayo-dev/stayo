@@ -50,6 +50,7 @@ export default defineConfig({
       // Special-meal choices (Phase 1).
       'tests/special-meal-schema.test.ts',
       'tests/special-meal-rules.test.ts',
+      'tests/special-meal-template.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
