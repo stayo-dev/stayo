@@ -28,6 +28,8 @@ export type WhatsAppTemplateDeliveryInput = {
    * that needed a document header until the owner-invoice WhatsApp flow.
    */
   headerDocument?: { mediaId?: string; link?: string; filename?: string };
+  /** Per-send quick-reply payloads, in button order. Passed straight to the provider. */
+  quickReplyPayloads?: string[];
   idempotencyKey: string;
   tenantId?: string;
   hostelId?: string;
@@ -93,6 +95,7 @@ export class WhatsAppTemplateDeliveryService {
         templateName: input.templateName,
         bodyParameters: input.bodyParameters,
         buttonParameters: input.buttonParameters,
+        quickReplyPayloads: input.quickReplyPayloads,
         headerDocument: input.headerDocument,
         language: input.languageCode ? { code: input.languageCode } : undefined,
       });

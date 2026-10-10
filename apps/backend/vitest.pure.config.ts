@@ -51,6 +51,7 @@ export default defineConfig({
       'tests/special-meal-schema.test.ts',
       'tests/special-meal-rules.test.ts',
       'tests/special-meal-template.test.ts',
+      'tests/whatsapp-template-components.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
