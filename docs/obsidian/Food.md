@@ -600,3 +600,7 @@ Two things this page previously recorded as absent now exist:
 The old inline `eligibleCount` (ACTIVE tenants, repeated per poll/publish route) is untouched and still does its own job — the forecast does **not** use it, because a resident on leave is not a diner.
 
 Related: [[Decisions#ADR-195|ADR-195]], [[Features]], [[Database]]
+
+## Proposed: special-meal choices — veg / non-veg (2026-10-10, not built)
+
+A product design for replacing the warden's door-to-door veg/non-veg round before special meals (e.g. Wednesday and Sunday) with WhatsApp questions, tenant-agreed standing orders, and leave-aware counts. **Design only — nothing is audited or built.** It narrowly departs from [[Decisions#ADR-195|ADR-195]]'s D1 (no tenant-declared skips), and says so. Spec: `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`. Open items in [[TODO]].

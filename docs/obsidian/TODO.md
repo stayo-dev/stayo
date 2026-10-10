@@ -4,6 +4,14 @@ tags: [todo, backlog]
 
 # TODO / Backlog
 
+## Special-meal choices — veg / non-veg (2026-10-10, [[Food]])
+
+Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`.
+- [ ] **Audit first:** against prod, how many hostels have Food meal timings, how many live tenants have a WhatsApp number, whether `stay_leaves` is used at all.
+- [ ] **Verify a Meta template quick-reply can carry a per-send payload** (occasion + date) — the same blocker parked Stay Status's WhatsApp slice ([[Decisions#ADR-194|ADR-194]]).
+- [ ] **Submit the four templates early** (question / heads-up / reminder / "make it your usual?") — Meta approval is the long pole.
+- [ ] Then: Phase 1 plan → TDD → verification.
+
 ## Restore production's missing integrity guards (2026-09-14, [[Database]])
 
 - [ ] **Apply 075 and 082 to production.** Both additive and safe; 082's `CONCURRENTLY` must be dropped in the Supabase SQL editor (it runs in a transaction) — the table is small enough that a plain build is instant.
