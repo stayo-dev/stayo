@@ -11,7 +11,6 @@ import { useMoneyPage } from '../hooks/useMoneyPage';
 import { useRealMoney } from '../hooks/useRealMoney';
 import { useExpenseLedger, LEDGER_PAGE_SIZE } from '../hooks/useExpenseLedger';
 import { EMPTY_EXPENSE_FILTERS, type AddExpenseData } from '../types';
-import { StatusBanner } from '../components/pulse/StatusBanner';
 import { MoneyStatTiles } from '../components/pulse/MoneyStatTiles';
 import { CollectionRateCard } from '../components/pulse/CollectionRateCard';
 import { ActionQueueCard } from '../components/pulse/ActionQueueCard';
@@ -366,18 +365,12 @@ export function MoneyPage() {
       {money.tab === 'pulse' && (
         <div className={isDesktop ? 'grid grid-cols-1 gap-4 lg:grid-cols-12' : 'flex flex-col gap-3'}>
           <div className={isDesktop ? 'lg:col-span-12' : undefined}>
-            <StatusBanner
-              collectionRatePercent={real.overview.collectionRatePercent}
-              netCashFlow={real.overview.netCashFlow}
-              perTenant={real.overview.perTenant}
-            />
-          </div>
-          <div className={isDesktop ? 'lg:col-span-12' : undefined}>
             <MoneyStatTiles
               tiles={[
-                { key: 'collected', label: 'Collected', value: real.overview.collected, valueClassName: 'text-success', info: 'Payments received this month, across all hostels.' },
-                { key: 'due', label: 'Due', value: real.overview.due, valueClassName: 'text-destructive', info: 'Rent not yet collected for the current billing cycle.' },
-                { key: 'expenses', label: 'Expenses', value: `₹${real.totalExpenses.toLocaleString('en-IN')}`, info: 'Total business spend recorded so far this month.' },
+                // Compact (₹12.2L / ₹45k) so three figures fit side by side on a phone; the exact amount is in the info.
+                { key: 'collected', label: 'Collected', value: compactRupees(real.overview.collectedAmount), valueClassName: 'text-success', info: `${real.overview.collected} received this month, across all hostels.` },
+                { key: 'due', label: 'Due', value: compactRupees(real.overview.dueAmount), valueClassName: 'text-destructive', info: `${real.overview.due} of rent not yet collected for the current billing cycle.` },
+                { key: 'expenses', label: 'Expenses', value: compactRupees(real.totalExpenses), info: `₹${real.totalExpenses.toLocaleString('en-IN')} of business spend recorded so far this month.` },
               ]}
             />
           </div>
