@@ -1,5 +1,6 @@
 import ExcelJS from "exceljs";
 import { COVER_SHEET, EXAMPLE_ROW_NAME, ROOMS_SHEET, TENANTS_SHEET } from "./workbook-parser";
+import type { ImportedProfileFields } from "./profile-fields";
 
 /**
  * The import workbook, built for one hostel.
@@ -40,7 +41,7 @@ export type RowProblem = {
   detail: string;
 };
 
-export type TenantRowValues = {
+export type TenantRowValues = ImportedProfileFields & {
   /** Problems still outstanding on this row, marked in the sheet. */
   problems?: RowProblem[];
   name?: string;
@@ -86,53 +87,66 @@ export type TemplateInput = {
 const ROOM_HEADERS = ["Room No", "Floor", "Capacity", "Sharing Type", "Base Rent", "Currently Occupied"];
 
 /**
+ * The Tenants sheet, column by column, in the order the owner sees it.
+ *
+ * The one place the order lives. The header row, the problem-cell mapping,
+ * the rows written back into a corrected file, the worked example and the
+ * dropdowns are all derived from this list, so reordering or renaming a column
+ * is a change here and nowhere else. The parser reads columns by header name,
+ * so files made from an older template still import.
+ */
+type TenantColumn = {
+  header: string;
+  field: string;
+  /** The worked example's value; `"ROOM"` is replaced by the hostel's first room. */
+  example: string | number;
+  width?: number;
+};
+
+const TENANT_COLUMNS: TenantColumn[] = [
+  { header: "Name", field: "name", example: EXAMPLE_ROW_NAME, width: 22 },
+  { header: "Phone", field: "phone", example: "9876543210" },
+  { header: "Email", field: "email", example: "student@example.com" },
+  { header: "Guardian Name", field: "guardian_name", example: "Ramesh Kumar" },
+  { header: "Guardian Phone", field: "guardian_phone", example: "9876500001" },
+  { header: "Room", field: "room_no", example: "ROOM" },
+  { header: "Joining Date", field: "joining_date", example: "05/01/2026" },
+  { header: "Agreement Months", field: "agreement_duration_months", example: 11 },
+  { header: "Monthly Rent", field: "monthly_rent", example: 8500 },
+  { header: "Security Deposit", field: "security_deposit", example: 25500 },
+  { header: "Maintenance Type", field: "maintenance_type", example: "MONTHLY" },
+  { header: "Maintenance Charge", field: "maintenance_charge", example: 500 },
+  { header: "Amount Already Paid", field: "amount_paid", example: 76500 },
+  { header: "Paid Includes Deposit", field: "amount_includes_deposit", example: "YES" },
+];
+const TENANT_HEADERS = TENANT_COLUMNS.map((c) => c.header);
+
+/**
  * Which column a problem belongs to.
  *
  * The backend names the field on every issue, so a marked cell is always the
  * one the message is about — the owner never has to work out which column
  * "isn't a 10-digit mobile number" refers to.
  */
-const FIELD_COLUMN: Record<string, number> = {
-  name: 1,
-  phone: 2,
-  email: 3,
-  room_no: 4,
-  monthly_rent: 5,
-  joining_date: 6,
-  security_deposit: 7,
-  advance_deposit: 7,
-  maintenance_charge: 8,
-  maintenance_type: 9,
-  agreement_duration_months: 10,
-  amount_paid: 11,
-  amount_includes_deposit: 12,
-  payment_method: 13,
-  payment_reference: 14,
-  notes: 15,
-};
+const FIELD_COLUMN: Record<string, number> = Object.fromEntries(
+  TENANT_COLUMNS.map((c, i) => [c.field, i + 1]),
+);
+// The deposit is reported under either name; both mean the Security Deposit cell.
+FIELD_COLUMN.advance_deposit = FIELD_COLUMN.security_deposit;
+
+/** What one tenant row writes into a column. */
+function cellValue(tenant: TenantRowValues, field: string): unknown {
+  if (field === "amount_includes_deposit") {
+    return tenant.amount_includes_deposit === undefined ? "" : tenant.amount_includes_deposit ? "YES" : "NO";
+  }
+  return (tenant as Record<string, unknown>)[field] ?? "";
+}
 
 /** Red for something that stops the row, amber for something to decide. */
 const BLOCKER_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFD9D6" } };
 const CHOICE_FILL: ExcelJS.Fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FFFFF0CC" } };
 const BLOCKER_FONT = { color: { argb: "FF9B1C1C" }, bold: true } as const;
 
-const TENANT_HEADERS = [
-  "Name",
-  "Phone",
-  "Email",
-  "Room",
-  "Monthly Rent",
-  "Joining Date",
-  "Security Deposit",
-  "Maintenance Charge",
-  "Maintenance Type",
-  "Agreement Months",
-  "Amount Already Paid",
-  "Paid Includes Deposit",
-  "Payment Method",
-  "Payment Reference",
-  "Notes",
-];
 
 /** Appended only when something is wrong, so a clean sheet keeps its shape. */
 const PROBLEM_COLUMN = "What to fix";
@@ -175,8 +189,13 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "• Amounts are in ₹. Digits only, like 8500 — a ₹ sign and commas are fine.",
     "• Email is optional. We invite tenants on WhatsApp, so a mobile number is what we need.",
     "• Leave Monthly Rent blank to use the room's own rent.",
-    "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
+    "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid — it is recorded as a cash payment. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
+    "",
+    "Guardian (optional — Guardian Name and Guardian Phone)",
+    "• Whatever you fill in here is already filled in when the tenant opens their invitation, so they are not asked for it again. Leave it blank and the tenant adds their guardian themselves.",
+    "• If you give both the Guardian Name and Guardian Phone, the tenant is not asked to verify that number with a code — you are vouching for it. Only fill it in if you are sure it is right.",
+    "• The tenant still adds their own details, photo and ID documents, and reads and signs the agreement themselves. Nothing here signs anything for them.",
     "",
     "Do not edit this sheet. It tells Stayo which hostel this file belongs to.",
   ];
@@ -241,9 +260,10 @@ function buildRooms(sheet: ExcelJS.Worksheet, input: TemplateInput) {
 }
 
 function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, input: TemplateInput) {
-  sheet.columns = [...TENANT_HEADERS, PROBLEM_COLUMN].map((h) => ({
-    width: h === PROBLEM_COLUMN ? 52 : h === "Name" ? 22 : h === "Notes" ? 28 : Math.max(12, h.length + 3),
-  }));
+  sheet.columns = [
+    ...TENANT_COLUMNS.map((c) => ({ width: c.width ?? Math.max(12, c.header.length + 3) })),
+    { width: 52 },
+  ];
   const anyProblems = (input.tenants ?? []).some((t) => (t.problems ?? []).length > 0);
   sheet.addRow(anyProblems ? [...TENANT_HEADERS, PROBLEM_COLUMN] : TENANT_HEADERS);
   styleHeader(sheet.getRow(1));
@@ -254,21 +274,7 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     for (const tenant of input.tenants) {
       const problems = tenant.problems ?? [];
       const written = sheet.addRow([
-        tenant.name ?? "",
-        tenant.phone ?? "",
-        tenant.email ?? "",
-        tenant.room_no ?? "",
-        tenant.monthly_rent ?? "",
-        tenant.joining_date ?? "",
-        tenant.security_deposit ?? "",
-        tenant.maintenance_charge ?? "",
-        tenant.maintenance_type ?? "",
-        tenant.agreement_duration_months ?? "",
-        tenant.amount_paid ?? "",
-        tenant.amount_includes_deposit === undefined ? "" : tenant.amount_includes_deposit ? "YES" : "NO",
-        tenant.payment_method ?? "",
-        tenant.payment_reference ?? "",
-        tenant.notes ?? "",
+        ...TENANT_COLUMNS.map((c) => cellValue(tenant, c.field)),
         ...(anyProblems
           ? [problems.map((problem) => problem.title).join(" · ")]
           : []),
@@ -298,23 +304,7 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
   const exampleRoom = input.rooms[0]?.room_no ?? "101";
   const example = input.tenants?.length
     ? null
-    : sheet.addRow([
-    EXAMPLE_ROW_NAME,
-    "9876543210",
-    "student@example.com",
-    exampleRoom,
-    8500,
-    "05/01/2026",
-    25500,
-    500,
-    "MONTHLY",
-    11,
-    76500,
-    "YES",
-    "CASH",
-    "",
-    "Already living here since January",
-  ]);
+    : sheet.addRow(TENANT_COLUMNS.map((c) => (c.example === "ROOM" ? exampleRoom : c.example)));
   if (example) example.font = GREY;
 
   // The dropdown's source. The range runs past the rooms that exist today so
@@ -323,7 +313,8 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
   workbook.definedNames.add(`'${ROOMS_SHEET}'!$A$2:$A$${lastRoomRow}`, "RoomList");
 
   for (let r = 2; r <= TENANT_ROWS + 1; r++) {
-    sheet.getCell(`D${r}`).dataValidation = {
+    const row = sheet.getRow(r);
+    row.getCell(FIELD_COLUMN.room_no).dataValidation = {
       type: "list",
       allowBlank: false,
       formulae: ["RoomList"],
@@ -331,20 +322,15 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
       errorTitle: "Pick a room",
       error: `Choose a room from the ${ROOMS_SHEET} sheet. If the room isn't there yet, add it on that sheet first.`,
     };
-    sheet.getCell(`I${r}`).dataValidation = {
+    row.getCell(FIELD_COLUMN.maintenance_type).dataValidation = {
       type: "list",
       allowBlank: true,
       formulae: ['"MONTHLY,ONE_TIME,NONE"'],
     };
-    sheet.getCell(`L${r}`).dataValidation = {
+    row.getCell(FIELD_COLUMN.amount_includes_deposit).dataValidation = {
       type: "list",
       allowBlank: true,
       formulae: ['"YES,NO"'],
-    };
-    sheet.getCell(`M${r}`).dataValidation = {
-      type: "list",
-      allowBlank: true,
-      formulae: ['"CASH,UPI,BANK_TRANSFER,CARD,CHEQUE"'],
     };
   }
 

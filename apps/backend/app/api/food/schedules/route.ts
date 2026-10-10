@@ -7,9 +7,7 @@ import { resolveOwnerScope } from "@/lib/auth/resolve-operational-scope";
 import { assertOwnerSubscriptionActive, billingErrorResponse } from "@/src/services/platform-billing/subscription-http";
 import { requireHostelBelongsToOwner } from "@/lib/security/scoped-query";
 import { prisma } from "@/lib/db";
-
-const DAY_ORDER = ["MONDAY", "TUESDAY", "WEDNESDAY", "THURSDAY", "FRIDAY", "SATURDAY", "SUNDAY"] as const;
-const MEAL_TYPES = ["BREAKFAST", "LUNCH", "SNACKS", "DINNER"] as const;
+import { ensureMonthSchedule } from "@/lib/services/food/month-carry-forward";
 
 function firstOfMonth(value: unknown): Date | null {
   if (!value || typeof value !== "string") return null;
@@ -20,6 +18,10 @@ function firstOfMonth(value: unknown): Date | null {
 /**
  * GET /api/food/schedules?hostelId=&month=YYYY-MM
  * Fetch the (single, mutable) schedule row + its 28 meal cells for a month.
+ *
+ * A month with no menu of its own carries the owner's latest menu forward
+ * (`month-carry-forward.ts`), so the owner Home card, Kitchen Sheet and Food
+ * page keep showing it after the 1st. Never creates an empty row.
  */
 export async function GET(req: NextRequest) {
   const session = await getSession(req);
@@ -35,9 +37,11 @@ export async function GET(req: NextRequest) {
 
     const month = firstOfMonth(searchParams.get("month")) ?? firstOfMonth(new Date().toISOString());
 
-    const schedule = await prisma.food_schedules.findUnique({
-      where: { hostel_id_month: { hostel_id: hostelId!, month: month! } },
-      include: { food_schedule_meals: { include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } } } },
+    const schedule = await ensureMonthSchedule({
+      hostelId: hostelId!,
+      ownerId: scope.owner_id,
+      month: month!,
+      allowCreateEmpty: false,
     });
 
     return apiResponse({ schedule });
@@ -53,17 +57,15 @@ export async function GET(req: NextRequest) {
  * POST /api/food/schedules
  * Body: { hostelId, month: "YYYY-MM" }
  *
- * "Ensure exists" — idempotent create of an empty DRAFT schedule for a
- * hostel+month, called the first time the owner opens the Timetable for a
- * month with no schedule row yet. Creates the 28 empty
- * `food_schedule_meals` cells (no items, legacy fields left at their empty
- * default) so there is something for the owner to drop items into — this is
- * a plain structural scaffold, not automatic meal generation: it never picks
- * a dish and never copies content from any other month (see ADR-114).
+ * "Ensure exists" — called when the owner opens the Meal Plan for a month.
+ * If the month has no menu of its own, it inherits the owner's latest menu
+ * unchanged (`month-carry-forward.ts`); only when there is no earlier menu at
+ * all is an empty 28-cell DRAFT scaffold created. Never picks or ranks a dish
+ * — it reuses the week the owner already built (ADR-114, amended 2026-10-10).
  *
- * Returns the existing row unchanged (200) if one already exists — safe to
- * call on every page load/month navigation without risk of duplicating the
- * schedule.
+ * 200 when the month already had a row (an untouched carried copy is
+ * re-synced to the latest menu; an owner-edited month is never touched), 201
+ * when one was created. Idempotent — safe on every page load/month navigation.
  */
 export async function POST(req: NextRequest) {
   const session = await getSession(req);
@@ -81,34 +83,18 @@ export async function POST(req: NextRequest) {
     const month = firstOfMonth(body.month);
     if (!month) return apiError("month must be in YYYY-MM format", "VALIDATION_ERROR", 400);
 
-    const existing = await prisma.food_schedules.findUnique({
+    const existed = await prisma.food_schedules.findUnique({
       where: { hostel_id_month: { hostel_id: hostelId!, month } },
-      include: { food_schedule_meals: { include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } } } },
+      select: { id: true },
     });
-    if (existing) return apiResponse({ schedule: existing }, 200);
-
-    const created = await prisma.$transaction(async (tx) => {
-      const schedule = await tx.food_schedules.create({
-        data: { hostel_id: hostelId!, owner_id: scope.owner_id, month, status: "DRAFT", source: "MANUAL" },
-      });
-      await tx.food_schedule_meals.createMany({
-        data: DAY_ORDER.flatMap((day) =>
-          MEAL_TYPES.map((mealType) => ({
-            schedule_id: schedule.id,
-            day_of_week: day,
-            meal_type: mealType,
-            menu_item_id: null,
-            item_name: "Not set",
-          })),
-        ),
-      });
-      return tx.food_schedules.findUnique({
-        where: { id: schedule.id },
-        include: { food_schedule_meals: { include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } } } },
-      });
+    const schedule = await ensureMonthSchedule({
+      hostelId: hostelId!,
+      ownerId: scope.owner_id,
+      month,
+      allowCreateEmpty: true,
     });
 
-    return apiResponse({ schedule: created }, 201);
+    return apiResponse({ schedule }, existed ? 200 : 201);
   } catch (error: any) {
     const billing = billingErrorResponse(error);
     if (billing) return billing;

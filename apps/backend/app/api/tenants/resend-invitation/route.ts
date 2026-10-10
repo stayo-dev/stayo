@@ -30,12 +30,19 @@ export async function POST(req: NextRequest) {
     }, body);
 
     if (result?.whatsapp_sent === false && result?.email_sent === false) {
+      // The link was refreshed even though nothing delivered it — and a
+      // refresh can mint a new token, which makes the owner's cached link
+      // dead. Hand back the live one so they can share it themselves.
+      const r = result as any;
       return NextResponse.json(
         {
           error: {
-            message: result.whatsapp_error || result.email_error || (result as any).message || "Delivery failed",
+            message: result.whatsapp_error || result.email_error || r.message || "Delivery failed",
             code: result.needs_email ? "EMAIL_FALLBACK_REQUIRED" : "DELIVERY_FAILED",
           },
+          activation_link: r.activation_link ?? null,
+          expires_at: r.expires_at ?? null,
+          ...(r.reopened ? { reopened: true, bed_held: Boolean(r.bed_held) } : {}),
         },
         { status: result.needs_email ? 202 : 502 }
       );

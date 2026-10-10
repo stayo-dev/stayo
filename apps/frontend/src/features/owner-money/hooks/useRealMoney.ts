@@ -205,18 +205,14 @@ export function useRealMoney() {
 
   const collected = aggregate?.rent_collected_this_month ?? 0;
   const due = aggregate?.pending_dues ?? 0;
-  const activeTenants = aggregate?.active_tenants ?? 0;
 
   const overview = {
     month: new Date().toLocaleDateString('en-US', { month: 'long' }),
     collected: formatINR(collected),
     due: formatINR(due),
+    collectedAmount: collected,
+    dueAmount: due,
     collectionRatePercent: Math.round(aggregate?.collection_rate ?? 0),
-    // Real derived figures (collected minus this-month expenses; collected /
-    // active tenants) — not fabricated, but not a backend field either, same
-    // as useOwnerDashboard's honestly-labeled approximations.
-    netCashFlow: formatINR(collected - totalExpenses),
-    perTenant: activeTenants > 0 ? formatINR(collected / activeTenants) : formatINR(0),
     overdueCount: aggregate?.overdue_count ?? 0,
   };
 

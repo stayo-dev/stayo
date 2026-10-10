@@ -214,19 +214,6 @@ export function useOwnerDashboard() {
     spentShareOfCollected: cash.spentShareOfCollected,
   };
 
-  /**
-   * One line about spending, only in a month where something moved. Null the
-   * rest of the time — the Action Center is for work, and an ordinary spend
-   * month is not work.
-   */
-  const spendAnomaly = spend?.anomaly
-    ? {
-        category: String(spend.anomaly.category),
-        changePct: Number(spend.anomaly.changePct),
-        riseAmount: formatINR(Number(spend.anomaly.riseAmount)),
-      }
-    : null;
-
   const alerts = useAlerts();
   const alertCount = 
     alerts.adminMessages.filter(a => !a.read).length + 
@@ -246,7 +233,6 @@ export function useOwnerDashboard() {
     /** Tonight's answers: here tonight, back today, rooms to check. Null until someone lives here. */
     tonight: tonightCards(staySummaryQuery.data),
     collection,
-    spendAnomaly,
     alertCount,
     /**
      * Raw figures behind the new-owner walkthrough. Exposed as numbers rather

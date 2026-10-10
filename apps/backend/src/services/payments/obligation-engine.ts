@@ -269,6 +269,43 @@ export class ObligationEngine {
   // ═══════════════════════════════════════════════════════════════════════════
 
   /**
+   * Owner-initiated cancel/waive boundary, checked against the row already
+   * locked FOR UPDATE — so nothing can change between this check and the write.
+   *
+   * The obligation must carry this owner's id (a NULL `owner_id` never
+   * matches) AND sit in a hostel this owner owns: `rent_obligations.owner_id`
+   * is a denormalised, nullable column with no foreign key, while
+   * `hostels.owner_id` is the canonical, NOT NULL relationship.
+   *
+   * A foreign obligation fails exactly like a missing one, so the endpoint is
+   * not an oracle for which obligation ids exist under other owners.
+   */
+  private async assertOwnerMayManageInTx(
+    tx: any,
+    ob: any,
+    ownerId: string,
+    action: "cancel" | "waive",
+  ): Promise<void> {
+    let permitted = Boolean(ownerId) && ob.owner_id === ownerId;
+    if (permitted) {
+      const hostel = await tx.hostels.findUnique({
+        where: { id: ob.hostel_id },
+        select: { owner_id: true },
+      });
+      permitted = hostel?.owner_id === ownerId;
+    }
+    if (!permitted) {
+      logger.warn("obligation.cross_owner_denied", {
+        obligation_id: ob.id,
+        obligation_owner: ob.owner_id ?? null,
+        session_owner: ownerId,
+        action,
+      });
+      throw new Error("NOT_FOUND: Obligation not found");
+    }
+  }
+
+  /**
    * Cancel an obligation — voids it and generates a ledger correction.
    *
    * Rules:
@@ -277,6 +314,10 @@ export class ObligationEngine {
    *   - Does NOT generate a ledger correction (no money was owed yet)
    *
    * Must be called INSIDE a transaction.
+   *
+   * `ownerScope` is required for owner-initiated calls (the API route) and
+   * enforces assertOwnerMayManageInTx. System workflows that already resolved
+   * their obligations from scoped data (allocation reconciliation) omit it.
    */
   async cancelObligationInTx(
     tx: any,
@@ -284,9 +325,10 @@ export class ObligationEngine {
       obligationId: string;
       reason: string;
       actorId: string;
+      ownerScope?: { ownerId: string };
     }
   ): Promise<any> {
-    const { obligationId, reason, actorId } = params;
+    const { obligationId, reason, actorId, ownerScope } = params;
 
     // Lock the obligation row
     const rows = await tx.$queryRaw<any[]>`
@@ -296,6 +338,10 @@ export class ObligationEngine {
       throw new Error("NOT_FOUND: Obligation not found");
     }
     const ob = rows[0];
+
+    if (ownerScope) {
+      await this.assertOwnerMayManageInTx(tx, ob, ownerScope.ownerId, "cancel");
+    }
 
     if (!ACTIONABLE_STATUSES.includes(ob.status)) {
       throw new Error(
@@ -367,6 +413,10 @@ export class ObligationEngine {
    *   - Stores waiver metadata on the obligation row
    *
    * Must be called INSIDE a transaction.
+   *
+   * `ownerScope` is required for owner-initiated calls (the API route) and
+   * enforces assertOwnerMayManageInTx. System sweeps via bulkWaiveInTx omit it
+   * and keep the actorId check below.
    */
   async waiveObligationInTx(
     tx: any,
@@ -374,9 +424,10 @@ export class ObligationEngine {
       obligationId: string;
       reason: string;
       actorId: string;
+      ownerScope?: { ownerId: string };
     }
   ): Promise<{ obligation: any; waivedAmount: number }> {
-    const { obligationId, reason, actorId } = params;
+    const { obligationId, reason, actorId, ownerScope } = params;
 
     // Lock the obligation row
     const rows = await tx.$queryRaw<any[]>`
@@ -386,6 +437,10 @@ export class ObligationEngine {
       throw new Error("NOT_FOUND: Obligation not found");
     }
     const ob = rows[0];
+
+    if (ownerScope) {
+      await this.assertOwnerMayManageInTx(tx, ob, ownerScope.ownerId, "waive");
+    }
 
     if (ob.owner_id && ob.owner_id !== actorId) {
       throw new Error("FORBIDDEN: Access denied");

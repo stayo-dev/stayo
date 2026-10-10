@@ -831,7 +831,7 @@ What the kitchen actually served — the ground truth every meal forecast is lea
 
 **Applied 2026-09-14 to production `qgfyfbdccjnibdhhvnsr`**, verified directly: 9 columns, 3 indexes (pkey, the `(hostel_id, serve_date, meal_type)` unique key, the ratio index), RLS on, 0 rows — no probe rows were written. Nothing else reads this table, so deploy order only affects the meals endpoints.
 
-## `special_meal_occasions`, `special_meal_answers` ([[Decisions#ADR-238|ADR-238]], migration `096_special_meals.sql`, **not applied**)
+## `special_meal_occasions`, `special_meal_answers` ([[Decisions#ADR-238|ADR-238]], migration `096_special_meals.sql`, **applied 2026-10-11** per the user)
 
 - `special_meal_occasions`: one row per hostel × weekday (0 = Sunday) × meal (`UNIQUE`). Optional `veg_dish` / `non_veg_dish` (≤ 60 chars), `cutoff_minutes_before` (0–1440, default 180), `no_answer_policy` (`LAST_CHOICE` | `LEAVE_OUT`), `is_active`.
 - `special_meal_answers`: one row per occasion × `serve_date` × tenant (`UNIQUE`; the latest answer replaces the earlier one). `choice` CHECK `VEG|NON_VEG|AWAY|SKIP`, `source` CHECK `WHATSAPP|OWNER`, `recorded_by` (owner profile, null for a tenant's tap). History index `(occasion_id, tenant_id, serve_date DESC)`.

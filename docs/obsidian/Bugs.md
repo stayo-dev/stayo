@@ -8,6 +8,82 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Nudge said "This tenancy has ended" on a link showing 7 days left; Cancel refused it (2026-10-10)
+
+**Symptom.** After the first fix shipped, an owner's invited tenant showed "Expires in 7 days · Room held", yet **Nudge on WhatsApp** answered "This tenancy has ended — send a new invitation instead" and **Cancel invitation** answered "VALIDATION: Only an unaccepted invitation can be cancelled…".
+
+**Cause.** Rows the pre-[[Decisions#ADR-237|ADR-237]] link refresh had already touched: it gave the invitation a new token, `PENDING` and a fresh week but left the tenancy `EXPIRED`. ADR-237 reopened only when the *invitation* was `EXPIRED`, so a live invitation went to the nudge path, which refuses an ended tenancy; cancel accepted only `INVITED` or `ACTIVE`+`PENDING`. Verifying on a real database also showed the tenant's own still-live invitation counted as a held bed, so even an empty room read as full for the reopen. And cancelling a tenancy reopened without a bed (`INVITED`, owner-managed) took the legacy branch, which waives every pending due instead of keeping past dues for settlement.
+
+**Fix.** Nudge on an `EXPIRED` tenancy reopens it through the resend path. Cancel treats an `EXPIRED` tenancy with a live invitation, and an owner-managed `INVITED` unaccepted one, like any unaccepted tenancy (`closeUnacceptedTenancy`). `hasBedFreeFor` never counts a tenant's own hold against them (reopen and activation). The cancel route no longer shows its `VALIDATION:` prefix. No data repair is needed: the stuck rows heal on the next Nudge, or can be cancelled. Tests: `tests/invitation-resend-reopens-link.test.ts`, `tests/cancel-invitation-route-message.test.ts`, `tests/invitation-resend-reopen.db.test.ts`. See [[Business-Rules]].
+
+## "Send again" sent a link that still said expired (2026-10-10)
+
+**Symptom.** An owner pressed "Send new link" for a tenant who hadn't accepted; the tenant opened it and was told the invitation had expired. Re-sending again changed nothing.
+
+**Cause.** Two gaps. (1) Once the expiry sweep closed the tenancy (link expired + 7 days' grace), the resend minted a new token but never undid `tenants.status = EXPIRED`, and `resolveByToken` refuses any EXPIRED tenancy regardless of the invitation — so every new link was dead on arrival; the bed and the voided future rent stayed gone too. (2) When WhatsApp failed, `POST /api/tenants/resend-invitation` returned only `{ error }`, so the owner's screen shared its cached link, whose token the resend had just replaced.
+
+**Fix.** "Send again" reopens a swept tenancy in the same transaction that issues the new 7-day link (`reopenExpiredTenancy`): bed re-held only if free, voided rent restored in place with the ledger waiver reversed, payments untouched. The route returns the new link on 202/502 failures and the screen uses it. Regression tests: `tests/invitation-resend-reopens-link.test.ts`, `tests/resend-invitation-route-link.test.ts`, `inviteDelivery.test.ts`, and `tests/invitation-resend-reopen.db.test.ts` (real Postgres, local-only: repeated resends, old-link invalidation, onboarding completion, no double allocation, rent/ledger restoration with payments, sweep reclaim).
+
+**Found while verifying on a real database** (the mocked tests could not see either): a tenant reopened without a bed could never activate even once a bed freed, because room capacity counts every live invitation as a held bed — including the tenant's own; and restored future rent came back `UPCOMING` regardless of type, which would have left maintenance un-promotable. Both fixed before merge. Rule change: [[Decisions#ADR-237|ADR-237]]; see [[Business-Rules]].
+
+## The food menu reset every month (2026-10-10)
+
+**Symptom.** An owner built the weekly menu in September; on 1 October the Meal Plan was blank and had to be rebuilt, and the owner Home card, Kitchen Sheet and Food page showed nothing. (Tenants kept seeing September's menu, labelled September, because their view shows the latest published month.)
+
+**Cause.** Not a date bug: by design since [[Decisions#ADR-114|ADR-114]]. `food_schedules` is one row per `(hostel_id, month)`; the nightly carry-forward clone was removed and `POST /api/food/schedules` deliberately created every new month **empty**. Owner readers look up the exact current month, so a month without a row had no menu.
+
+**Fix.** `ensureMonthSchedule` (`lib/services/food/month-carry-forward.ts`) — a month without its own menu inherits the owner's latest authored menu unchanged; owner edits (already `source: MANUAL`) flow into later months; unedited copies re-sync; future months copy as drafts. Wired into the owner GET/POST, tenant history (current month) and menu PDF. No schema change, no cron, no frontend change.
+
+**Verified** by 16 pure tests (in-memory DB). **Not verified** against a real database or in a browser.
+
+**Open — needs a disposable Postgres (unknown / needs clarification until run):**
+- **Transaction safety.** `ensureMonthSchedule` reads, decides and writes inside one interactive `prisma.$transaction`. Verify a failure mid-copy (e.g. after the `deleteMany` of a carried copy's items) rolls back fully, leaving the previous cells intact, never a half-empty week.
+- **Concurrent first requests for the same month.** Two requests (owner Home card + Meal Plan, or owner + tenant) can both find no row. The loser's `create` should hit the `(hostel_id, month)` unique index (`P2002`), roll back, and return the winner's row via the re-read. Verify under real concurrency, including that a `P2002` raised inside the interactive transaction surfaces with `code: "P2002"` as caught.
+- **Concurrent re-syncs of an existing copy.** Two requests re-syncing the same `CARRIED_FORWARD` row both `deleteMany` then `createMany` items; under READ COMMITTED the second insert can collide on `(schedule_meal_id, display_order)`. Expected outcome is the same `P2002` → re-read path; verify the final row has exactly one copy of each item, in order.
+- **Owner edit racing a re-sync.** An owner `PATCH` (with its `expectedUpdatedAt` guard) landing while the same month is being re-synced: verify the edit is not lost, and that once it lands the month counts as authored and is never re-synced again.
+- **Initial writes.** The first materialisation of a hostel-month does ~31–33 writes (row + 28 cells, one bulk delete, one bulk insert, 28 legacy-field updates) in one transaction. Verify latency on the pooled connection (pgbouncer, port 6543) is acceptable for a GET, that it stays well inside the interactive-transaction timeout (Prisma default 5 s), and that every later read of that month writes nothing.
+- **Real query shapes.** `findMany` with `month: { lt }`, `source: { not: "CARRIED_FORWARD" }`, `take: 24` against the real `@db.Date` column; first-of-month UTC boundaries (an IST request between 00:00 and 05:30 on the 1st still resolves to the previous month, matching existing behaviour).
+
+**See:** [[Food]] · [[Business-Rules]] · [[Changelog]]
+
+## Reopening Stayo always looked signed out; homepage tenant login stayed on the homepage (2026-10-10)
+
+**Symptom.** Closing and reopening Stayo (tab, browser or the installed app) showed the homepage with "Log in" for every role, even with a valid session. A resident who signed in on the homepage stayed there instead of reaching the tenant dashboard.
+
+**Cause.** Not session loss: both idle timeouts are 7 days, nothing signs out on close, and the service worker has no `fetch` handler. The installed app's `start_url` is `/` (`public/site.webmanifest`), and reopening the site lands there too. `/` is a public page that never acted on a session: `HomePage` had no signed-in redirect (only `/login` did, in `AuthContext`), and `PublicHeader` always renders "Log in". Separately, `crossSurfaceHandoff(…, 'discovery')` deliberately returned `null` for residents ("a resident stays on the homepage"), so a homepage login never routed a tenant.
+
+**Fix.** `signedInEntryRedirect` (`lib/auth/sessionRestore.ts`) extends the `/login` rule to `/`: a restored owner, admin, manager or resident with a tenancy is sent to their app; a seeker stays to browse; a fresh homepage sign-in keeps its own announced hand-off. `/` shows the boot screen while a possible session is restored instead of flashing "Log in". A new `home` login surface sends a resident with a tenancy to `/tenant/home`. An app-owned boolean hint (`localStorage['stayo_session_hint']` = `"1"`, never a token) is set on sign-in/restore and cleared on logout, expiry and failed restore, so `/` loads Clerk to look for a session even if Clerk's `__client_uat` cookie is unreadable. Route guards and role checks are unchanged.
+
+**Verified** by 23 new node tests (5 fail on the pre-fix code). **Not verified** in a browser or the installed app. How long a session survives a closed browser is governed by the Clerk production instance's session settings, which are outside this repo — unknown / needs clarification.
+
+**See:** [[Frontend]] · [[Changelog]]
+
+## Signed-in users asked to log in again after the homepage, a refresh or a new tab (2026-10-09)
+
+**Symptom.** An owner signed in on the homepage was handed to `/owner/home` and immediately shown `/login`; signing in a second time worked. Refreshing any protected page, or opening one in a new tab, did the same. Tenants were worse: every reload of `/tenant/*` signed them out.
+
+**Cause.** A regression from [[Decisions#ADR-204|ADR-204]] (2026-09-15). Password sign-in used to leave a Supabase session in localStorage, which `AuthProvider` found instantly on any page load. Since ADR-204 it leaves only a Clerk session, and Clerk's SDK loads asynchronously. `AuthProvider` decided "signed out" as soon as Supabase reported nothing — `hasClerkSession()` read an empty `window.Clerk` — and attached its Clerk listener while `window.Clerk` did not exist, so `subscribeToClerkSession()` returned a no-op and the session arriving later was never heard. `ProtectedRoute` then redirected to `/login`. The homepage hand-off (`window.location.assign`, added 2026-09-18) is a full page load, which is why that path always hit it; `/owners` and `/login` navigate in-app with Clerk already loaded, which is why the second sign-in worked. The tenant shell mounts no `ClerkProvider` at all, so Clerk never loaded there. The same race had already been fixed once, for `/auth/callback` (entry below, 2026-09-09) — but not for session restore.
+
+**Fix.** `lib/auth/sessionRestore.ts`: three outcomes (`wait`, `hydrate`, `signed-out`), `wait` while Clerk is loading; the Clerk listener attached only after Clerk loads, exactly once, and removed on unmount; a 10 s timeout and load failures fail closed to signed-out; overlapping `/auth/me` results can no longer overwrite a newer sign-in or sign-out. Owner/admin shells wait for their `ClerkProvider`; tenant, `/payment-return`, `/stay` and `/onboarding` load Clerk themselves; public pages load it only when Clerk's `__client_uat` cookie is set. `/login` now also sends an already-signed-in tenant on (to `/tenant/home`, or `/discover` without a tenancy). Route guards are unchanged and still ignore Clerk — roles come only from `GET /auth/me`.
+
+**Also found:** `clerkBundleIsolation.test.ts` silently skipped every multi-line `import { … } from` (106 files), so the "no Clerk on the landing page" guard was under-checking. Fixed; no hidden leak surfaced.
+
+**Verified** by 72 new node tests. **Not verified** in a browser or against production Clerk — in particular, that `__client_uat` is readable on the production domain.
+
+**See:** [[Frontend]] · [[Changelog]]
+
+## Any owner could cancel another owner's obligation (2026-10-09)
+
+**Symptom.** Found by a read-only code audit, not reported in use. `POST /api/payments/obligations/:id/cancel` checked only `role === "OWNER"`, and `obligationEngine.cancelObligationInTx` never compared the obligation to the caller. Any owner (owner signup is public) holding another owner's obligation id could void it; the identity step-up only re-checked the *caller's* own password. Waive did compare `owner_id`, but as `ob.owner_id && ob.owner_id !== actorId`, so a NULL `owner_id` (the column is nullable, no FK) passed for anyone.
+
+**Cause.** Ownership is checked route by route, and each route did it differently: `record-offline` compares, `history` compares, waive compared leniently, cancel not at all.
+
+**Fix.** Both engine methods take an `ownerScope`, checked against the row locked `FOR UPDATE` inside the transaction, before any status check. The row's `owner_id` must equal the caller (NULL never matches) **and** its hostel's `hostels.owner_id` must too. A foreign obligation throws the same `NOT_FOUND` as a missing one (404, identical body), so the endpoint does not reveal which ids exist. The routes also require `owner_id === id` for an OWNER session, the `resolveOwnerScope` rule. System workflows (move-out, invitation expiry, allocation reconciliation, `bulkWaiveInTx`) pass no scope and are unchanged.
+
+**Verified** by `tests/obligation-owner-authorization.test.ts` (19 pure tests; 10 of them fail against the pre-fix code). **Not verified** against a real database or in a browser. **Open question:** an owner can no longer cancel or waive their *own* obligation if its `owner_id` is NULL. How many such rows exist in production is unknown / needs clarification.
+
+**See:** [[APIs]] · [[Business-Rules]] · [[Changelog]]
+
 ## "Send new link" failed for any tenant with a recorded payment (2026-10-07)
 
 **Symptom.** An owner added a tenant with the "rent paid" toggle, the 7-day invite link expired, and resending returned `VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded`. The invitation could never be re-issued.

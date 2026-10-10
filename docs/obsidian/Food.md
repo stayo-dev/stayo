@@ -12,6 +12,8 @@ The module's home page. Written 2026-08-05 against the code as it stands after t
 
 **Updated 2026-08-24 ([[Decisions#ADR-113|ADR-113]]):** a scheduled meal cell can now hold **multiple dishes**, ordered, instead of exactly one — new `food_schedule_meal_items` child table, checklist-style picker, no change to the weekly grain (§2) or to voting/polls/the marketing mess importer. See §17.
 
+**Updated 2026-10-10 — the menu now persists across months** ([[Decisions#ADR-114|ADR-114]] amendment). A month without its own menu inherits the owner's latest authored week unchanged via `ensureMonthSchedule` (`lib/services/food/month-carry-forward.ts`); statements below that "a newly created month is always empty" are historical. Rules in [[Business-Rules]].
+
 **Updated 2026-08-25 ([[Decisions#ADR-114|ADR-114]]) — the biggest change to this module's write paths since it existed.** Automatic schedule generation, cross-day swap-dragging, and the nightly carry-forward clone were all **removed**. The owner now builds every week entirely by hand — a single Timetable page, day tabs, drag-or-tap from a Food-Library panel scoped to whichever meal section is active. §5 (rebuild modes) and the swap-related parts of §7.1 describe code that **no longer exists** — kept below as historical record, not current behavior. See §18 for what replaced them, and read that section first if you're touching scheduling code today.
 
 **Updated 2026-08-08:** schedule generation decoupled from voting (deliberate product decision, not a bugfix — see [[Decisions]]). The owner Food tab no longer renders the Voting card, and generation is no longer gated on a voting period's status; the tenant Food tab's voting section is likewise hidden. Voting's code, DB tables and API routes are all left in place, simply unused by the current flow — reversible groundwork for a future, likely different, "polling" feature. §3, §5, §8, §10, §11, §12 and §13 below reflect this.
@@ -603,7 +605,7 @@ Related: [[Decisions#ADR-195|ADR-195]], [[Features]], [[Database]]
 
 ## Special-meal choices — veg / non-veg (Phase 1, 2026-10-10, [[Decisions#ADR-238|ADR-238]])
 
-Replaces the warden's door-to-door veg/non-veg round before a hostel's recurring special meal (e.g. Sunday lunch). **Built on `feat/special-meal-choices`, never run against a real database; migration 096 is not applied and the Meta template is not submitted.** Spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`, audit `docs/audits/special-meal-choices-audit.md`, plan `docs/superpowers/plans/2026-10-10-special-meal-choices-phase-1.md`.
+Replaces the warden's door-to-door veg/non-veg round before a hostel's recurring special meal (e.g. Sunday lunch). **Merged 2026-10-11. Migration 096 applied to production (2026-10-11, per the user); templates submitted 2026-10-10 (see `docs/design/special-meal-whatsapp-template.md` for their status). Not yet exercised end to end.** Spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`, audit `docs/audits/special-meal-choices-audit.md`, plan `docs/superpowers/plans/2026-10-10-special-meal-choices-phase-1.md`.
 
 - The owner adds an occasion (weekday + meal, optional dish names, cutoff) at `/owner/food/special-meals`.
 - At ≈18:00 IST the day before, every resident who is here, not moving out and has a phone gets `stayo_special_meal_question` with **Veg · Non-veg · I'm away** buttons. Anyone still silent gets the same message again at ≈08:00 IST on the day. A typed "veg" / "nv" / "skip" / "I'm away" also works.

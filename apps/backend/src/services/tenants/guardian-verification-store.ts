@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/db";
+import { guardianSuppliedByImport } from "@/lib/services/bulk-import/profile-fields";
 import { normalizeWhatsAppPhone } from "@/lib/services/notifications/providers/whatsapp/meta-provider";
 
 /** Normalization that answers "not a usable number" instead of throwing. */
@@ -62,6 +63,36 @@ export async function isGuardianPhoneVerifiedForTenant(
     },
     select: { id: true },
   });
+  if (proof) return true;
 
-  return Boolean(proof);
+  return isGuardianSuppliedByOwnerImport(tenantId, phone);
+}
+
+/**
+ * The owner supplied this exact guardian — name and number — for this exact
+ * tenancy, in a bulk import that ran (2026-10-10).
+ *
+ * The owner vouching for a guardian they entered in the import workbook
+ * stands in for the guardian OTP, so the tenant is not asked to verify a
+ * number their hostel already gave. It is provenance, not presence: the
+ * proof is the tenancy's own `bulk_import_rows` row (linked by `tenant_id`,
+ * executed SUCCESS) carrying that number with a guardian name. A guardian
+ * number that reached the tenancy any other way — the single invite,
+ * onboarding, support, a different number the tenant typed — has no such row
+ * and takes the ordinary OTP path. See `guardianSuppliedByImport`.
+ *
+ * Scope: this answers onboarding's "is the guardian proved" question only.
+ * The guardian's own WhatsApp access (`guardian-access.isGuardianVerified`)
+ * still challenges the person messaging, and is untouched.
+ */
+export async function isGuardianSuppliedByOwnerImport(
+  tenantId: string,
+  guardianPhone: string | null | undefined,
+): Promise<boolean> {
+  if (!tenantId || !guardianPhone) return false;
+  const rows = await prisma.bulk_import_rows.findMany({
+    where: { tenant_id: tenantId, execution_status: "SUCCESS" },
+    select: { execution_status: true, mapped_data: true },
+  });
+  return guardianSuppliedByImport(rows, guardianPhone);
 }

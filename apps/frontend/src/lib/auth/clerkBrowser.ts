@@ -41,6 +41,9 @@ export function pickSessionSource(input: {
 
 /** The bits of `window.Clerk` this app touches. */
 interface ClerkGlobal {
+  loaded?: boolean;
+  /** clerk-js's own status; `"error"` means it gave up loading. */
+  status?: string;
   session?: { getToken: () => Promise<string | null> } | null;
   addListener?: (cb: (resources: { session?: unknown | null }) => void) => () => void;
 }
@@ -48,6 +51,37 @@ interface ClerkGlobal {
 function clerkGlobal(): ClerkGlobal | null {
   if (typeof window === "undefined") return null;
   return (window as unknown as { Clerk?: ClerkGlobal }).Clerk ?? null;
+}
+
+/** True once Clerk has finished loading — with or without a session. */
+export function isClerkLoaded(): boolean {
+  return Boolean(clerkGlobal()?.loaded);
+}
+
+/**
+ * Resolves once a `ClerkProvider` mounted elsewhere has finished loading Clerk.
+ *
+ * For shells that mount the provider (`ProtectedAppProviders`): the provider
+ * owns the load, and calling `clerk.load()` here as well would start a second,
+ * concurrent one. Rejects if clerk-js reports it gave up; stops polling as
+ * soon as `signal` aborts, so an unmounted caller leaves no timer behind.
+ */
+export function waitForClerkLoaded(signal: AbortSignal, intervalMs = 50): Promise<void> {
+  return new Promise((resolve, reject) => {
+    const check = () => {
+      if (signal.aborted) return reject(new Error('aborted'));
+      const clerk = clerkGlobal();
+      if (clerk?.loaded) return resolve();
+      if (clerk?.status === 'error') return reject(new Error('Clerk failed to load'));
+      timer = setTimeout(check, intervalMs);
+    };
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    signal.addEventListener('abort', () => {
+      clearTimeout(timer);
+      reject(new Error('aborted'));
+    }, { once: true });
+    check();
+  });
 }
 
 /** True when Clerk is loaded *and* holds a session. Never throws. */

@@ -11,6 +11,7 @@ import type { TenantImportRow } from "@/lib/services/bulk-import-validation-serv
 import { tenantInvitationLifecycleService } from "@/src/services/tenants/tenant-invitation-lifecycle-service";
 import { applyRoomPlan } from "@/src/services/bulk-import/room-import-service";
 import type { RoomPlan } from "@/lib/services/bulk-import/room-plan";
+import { normalizeProfileFields, tenantPrefillData } from "@/lib/services/bulk-import/profile-fields";
 
 /**
  * Bulk import batch preview.
@@ -349,6 +350,30 @@ async function executeInvitationBatch(
         }
       }
 
+      // The owner's onboarding details (date of birth, gender, tenant type,
+      // guardian, college/office, address) go onto the new tenancy, so the
+      // tenant's onboarding screens open already filled in. Only what the
+      // owner supplied is written; nothing about agreements, signatures,
+      // acceptance, activation or documents (see profile-fields.ts).
+      //
+      // Never fatal, like the note above: the tenancy already exists, and a
+      // detail that failed to save is one the tenant simply enters themselves.
+      // Reported on the row so the owner can see it.
+      let prefillError: string | null = null;
+      const prefill = tenantPrefillData(normalizeProfileFields(data, new Date()));
+      if (Object.keys(prefill).length > 0 && invitationResult.tenant_id) {
+        try {
+          await prisma.tenants.update({ where: { id: invitationResult.tenant_id }, data: prefill });
+        } catch (prefillFailure: any) {
+          prefillError = "Tenant details from the sheet were not saved — the tenant will enter them at onboarding.";
+          logger.warn("bulk_import.prefill_not_saved", {
+            batch_id: batchId,
+            row: row.row_number,
+            error: String(prefillFailure?.message || prefillFailure),
+          });
+        }
+      }
+
       // A queued invitation was never sent, so it has not failed to send.
       // Counting it would report every imported row as an email failure.
       const queued = Boolean(invitationResult.queued);
@@ -362,7 +387,7 @@ async function executeInvitationBatch(
           reservation_id: invitationResult.reservation_id,
           execution_status: "SUCCESS",
           email_status: queued ? "QUEUED" : invitationResult.email_sent ? "SENT" : "FAILED",
-          error_message: invitationResult.email_error || null,
+          error_message: [invitationResult.email_error, prefillError].filter(Boolean).join(" ") || null,
           executed_at: new Date(),
         },
       });

@@ -57,6 +57,8 @@ export default defineConfig({
       'tests/special-meal-rounds.test.ts',
       'tests/special-meal-ready.test.ts',
       'tests/special-meal-intent.test.ts',
+      // The menu persists across months; mocks `@/lib/db` (2026-10-10).
+      'tests/food-month-carry-forward.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
@@ -217,6 +219,9 @@ export default defineConfig({
       // Which obligations bind to a room allocation — the rule behind a real
       // double-billing defect. ADR-149.
       'tests/obligation-linking.test.ts',
+      // Owner-initiated cancel/waive may touch only the caller's own
+      // obligations (2026-10-09 audit P1-1). Mocks `@/lib/db`.
+      'tests/obligation-owner-authorization.test.ts',
       // Who is holding which bed. The mock supplies allocation, reservation
       // and invitation rows as plain arrays — no client, no database.
       'tests/room-capacity-service.test.ts',
@@ -288,11 +293,18 @@ export default defineConfig({
       'tests/bulk-import-deposit-flag.test.ts',
       'tests/bulk-import-query-shapes.test.ts',
       'tests/bulk-import-dispatch-delivery.test.ts',
+      // Owner-supplied tenant details carried to onboarding; Excel-supplied
+      // guardian skips the OTP by provenance. Mocks `@/lib/db` (2026-10-10).
+      'tests/bulk-import-onboarding-prefill.test.ts',
+      'tests/bulk-import-prefill-confirm.test.ts',
       'tests/placeholder-email.test.ts',
       'tests/floor-rename.test.ts',
       'tests/email-otp-service.test.ts',
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
+      'tests/invitation-resend-reopens-link.test.ts',
+      'tests/resend-invitation-route-link.test.ts',
+      'tests/cancel-invitation-route-message.test.ts',
       'tests/build-without-env.test.ts',
       // ADR-212 — guardian verification as a hostel policy. Pure: takes the
       // database's answers as arguments and reads nothing itself.

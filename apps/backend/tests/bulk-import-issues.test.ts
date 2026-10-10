@@ -243,7 +243,7 @@ describe("validateRows emits issues", () => {
     expect(result.summary.choices).toBeGreaterThanOrEqual(1);
   });
 
-  it("blocks a row that already-paid an amount but named no payment method", async () => {
+  it("records an already-paid amount with no payment method as cash, without blocking the row", async () => {
     const { bulkImportValidationService } = await import(
       "@/lib/services/bulk-import-validation-service"
     );
@@ -264,13 +264,37 @@ describe("validateRows emits issues", () => {
       {}
     );
 
-    const row = result.invalidRows[0];
-    expect(row).toBeDefined();
-    expect(row.issues.map((i) => i.code)).toContain("PAYMENT_METHOD_MISSING");
-    expect(row.issues.find((i) => i.code === "PAYMENT_METHOD_MISSING")!.severity).toBe("BLOCKER");
-    // The legacy errors array must also carry a blocker for this row, since
-    // existing consumers (and createInvitation) still read it, not issues.
-    expect(row.errors.some((e) => e.field === "payment_method")).toBe(true);
+    // The template has no Payment Method column any more (owner decision,
+    // 2026-10-10): the payment is recorded as CASH rather than refused.
+    expect(result.invalidRows).toHaveLength(0);
+    const row = [...result.validRows, ...result.duplicates][0];
+    expect(row.issues.map((i) => i.code)).not.toContain("PAYMENT_METHOD_MISSING");
+    expect(row.errors.some((e) => e.field === "payment_method")).toBe(false);
+    expect(row.data.payment_method).toBe("CASH");
+  });
+
+  it("keeps a payment method the owner's own file does give", async () => {
+    const { bulkImportValidationService } = await import(
+      "@/lib/services/bulk-import-validation-service"
+    );
+    const result = await bulkImportValidationService.validateRows(
+      [
+        {
+          name: "Ravi",
+          phone: "9876500005",
+          email: "ravi.upi@example.com",
+          room_no: "101",
+          joining_date: "2026-09-01",
+          amount_paid: 5000,
+          payment_method: "UPI",
+        } as any,
+      ],
+      HOSTEL_ID,
+      OWNER_ID,
+      {}
+    );
+    const row = [...result.validRows, ...result.duplicates, ...result.invalidRows][0];
+    expect(row.data.payment_method).toBe("UPI");
   });
 
   it("does not flag a row with no amount paid at all", async () => {

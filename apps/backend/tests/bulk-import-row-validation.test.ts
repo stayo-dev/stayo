@@ -274,7 +274,8 @@ describe("every blocked row can be explained to the owner", () => {
       row({ name: "=HYPERLINK(1)" }),
       row({ joining_date: "May" }),
       row({ monthly_rent: parseImportNumber("TBD") }),
-      row({ amount_paid: 5000 }),
+      // An amount paid with no method is no longer an error — it is recorded
+      // as cash (2026-10-10) — so it is not in this list.
     ];
     const result = await bulkImportValidationService.validateRows(rows, HOSTEL_ID, OWNER_ID, {});
 

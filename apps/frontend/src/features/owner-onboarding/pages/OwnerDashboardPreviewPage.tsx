@@ -98,7 +98,6 @@ export function OwnerDashboardPreviewPage() {
         tonight={dash.tonight}
         onOpenStay={() => navigate('/owner/stay')}
         collection={dash.collection}
-        spendAnomaly={dash.spendAnomaly}
         sections={sections}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}

@@ -8,6 +8,7 @@ import { eventLog } from "../../../lib/services/event-log-service";
 import { hostelBillingPreferencesService, type MaintenanceType } from "../../../lib/services/hostel-billing-preferences-service";
 import { roomCapacityService } from "../../../lib/services/room-capacity-service";
 import { ensureActiveAllocation } from "./tenancy-allocation";
+import { hasBedFreeFor, reopenExpiredTenancy, restoreSweptObligations } from "./reopen-expired-tenancy";
 import { onboardingFinancialsService } from "../payments/onboarding-financials-service";
 import { financialPaymentFacade } from "../payments/financial-payment-facade";
 import { financialService } from "../payments/financial-service";
@@ -786,6 +787,15 @@ export class TenantInvitationLifecycleService {
       throw new Error("BAD_REQUEST: Tenant is already active");
     }
     if (invitation.status === "CANCELLED") throw new Error("BAD_REQUEST: Invitation is cancelled");
+    if (invitation.tenant.status === "CANCELLED") {
+      throw new Error("BAD_REQUEST: This tenancy was cancelled — send a new invitation instead");
+    }
+    // Closed by the expiry sweep (`closeUnacceptedTenancy`). Re-sending reopens
+    // it — see reopen-expired-tenancy.ts.
+    const closedBySweep = invitation.tenant.status === "EXPIRED";
+    // An email here is the delivery fallback address (as on a nudge, ADR-183),
+    // not a change to what was agreed — it must not lock or rebuild anything.
+    const changesTerms = this.hasTermChanges(invitation, overrides ? { ...overrides, email: undefined } : overrides);
 
     // Lock rule: Prevent edit/resend if tenant has successful/recorded payments
     const paymentsCount = await prisma.payments.count({
@@ -795,10 +805,15 @@ export class TenantInvitationLifecycleService {
       // A resend rebuilds agreements and obligations, so term edits stay locked.
       // But an expired link on a tenant who already paid (e.g. rent marked paid
       // while adding them) must still be re-issuable: refresh only the link.
-      if (this.hasTermChanges(invitation, overrides)) {
+      if (changesTerms) {
         throw new Error("VALIDATION_ERROR: Cannot edit or resend invitation after payments have been recorded for this tenant");
       }
-      return this.refreshInvitationLink(invitation, isLegacyOwnerManaged, tenantAlreadyOwnerManaged);
+      return this.refreshInvitationLink(invitation, isLegacyOwnerManaged, tenantAlreadyOwnerManaged, overrides);
+    }
+    // "Send again" on a swept tenancy changes no terms, so nothing needs
+    // rebuilding: reopen it and refresh the link, keeping its dues as they were.
+    if (closedBySweep && !changesTerms) {
+      return this.refreshInvitationLink(invitation, isLegacyOwnerManaged, tenantAlreadyOwnerManaged, overrides);
     }
 
     // Limit rule: Prevent more than 10 invitation versions
@@ -811,6 +826,7 @@ export class TenantInvitationLifecycleService {
 
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+    let reopenedBedHeld: boolean | null = null;
     const updated = await prisma.$transaction(async (tx: any) => {
       // 1. Resolve target room
       const targetRoomId = overrides?.room_id || invitation.room_id;
@@ -860,6 +876,19 @@ export class TenantInvitationLifecycleService {
         if (capacity.available <= 0) {
           throw new Error("CAPACITY_EXCEEDED: Target room is already full including active reservations");
         }
+      }
+
+      // 1.5 An edit to a swept tenancy reopens it first (in the target room),
+      // so the rest of this path sees the same live tenancy any other edit does.
+      if (closedBySweep) {
+        const reopened = await reopenExpiredTenancy(tx, {
+          tenantId: invitation.tenant_id,
+          roomId: targetRoomId,
+          hostelId: targetHostelId,
+          ownerId: invitation.owner_id,
+          actorId: actor?.id || invitation.owner_id,
+        });
+        reopenedBedHeld = reopened.bedHeld;
       }
 
       // 2. Handle reservation: release all old active reservations for this invitation
@@ -953,7 +982,9 @@ export class TenantInvitationLifecycleService {
           // (the common case now — see createInvitation) already IS the live
           // tenancy: resend corrects its terms without undoing that rent
           // keeps generating and the room keeps reading occupied.
-          ...(tenantAlreadyOwnerManaged ? {} : { status: "INVITED" }),
+          // A reopened swept tenancy already has its status (ACTIVE with a
+          // bed, INVITED without) from reopenExpiredTenancy.
+          ...(tenantAlreadyOwnerManaged || closedBySweep ? {} : { status: "INVITED" }),
           activation_started_at: null,
           activation_completed_at: null,
           onboarding_last_activity_at: null,
@@ -1061,7 +1092,9 @@ export class TenantInvitationLifecycleService {
       // reservation, and creating one here would double-count them against
       // the room's capacity (`getRoomCapacitySnapshot` sums allocations and
       // reservations) with nothing that will ever convert or release it.
-      if (!tenantAlreadyOwnerManaged) {
+      // A reopened swept tenancy holds its allocation, or — room full — holds
+      // nothing; reserving a bed it could not get would overbook the room.
+      if (!tenantAlreadyOwnerManaged && !closedBySweep) {
         await tx.tenant_invitation_reservations.create({
           data: {
             id: crypto.randomUUID(),
@@ -1146,6 +1179,8 @@ export class TenantInvitationLifecycleService {
       email: updated.updatedInvitation.email,
       phone: updated.updatedInvitation.phone,
       activation_link: activationLink,
+      expires_at: expiresAt.toISOString(),
+      ...(closedBySweep ? { reopened: true, bed_held: reopenedBedHeld === true } : {}),
       ...delivery,
     };
   }
@@ -1180,30 +1215,74 @@ export class TenantInvitationLifecycleService {
   /**
    * Re-issues an invitation's link (new token, fresh expiry) and re-sends it,
    * touching nothing else — no agreements, obligations or tenant fields. Used
-   * when payments are already recorded, where a full resend is locked.
+   * when payments are already recorded, where a full resend is locked, and for
+   * "Send again" on a tenancy the expiry sweep closed.
+   *
+   * A swept tenancy is reopened in the same transaction
+   * (`reopenExpiredTenancy`): without that, the fresh link still dead-ends on
+   * `resolveByToken`'s EXPIRED-tenancy check. Payments are never touched; the
+   * future rent the sweep voided is restored in place when the bed is.
+   *
+   * `overrides.email`, like on a nudge, is the delivery fallback address only.
    */
-  private async refreshInvitationLink(invitation: any, isLegacyOwnerManaged: boolean, tenantAlreadyOwnerManaged: boolean) {
+  private async refreshInvitationLink(
+    invitation: any,
+    isLegacyOwnerManaged: boolean,
+    tenantAlreadyOwnerManaged: boolean,
+    overrides?: any,
+  ) {
     const token = crypto.randomBytes(32).toString("hex");
     const expiresAt = addDays(DEFAULT_INVITE_DAYS);
+    const closedBySweep = invitation.tenant.status === "EXPIRED";
+    const fallbackEmail = realEmailOrNull(overrides?.email ? normalizeEmail(overrides.email) : null);
 
-    const updatedInvitation = await prisma.$transaction(async (tx: any) => {
+    const { updatedInvitation, reopened } = await prisma.$transaction(async (tx: any) => {
+      const reopened = closedBySweep
+        ? await reopenExpiredTenancy(tx, {
+            tenantId: invitation.tenant_id,
+            roomId: invitation.room_id,
+            hostelId: invitation.hostel_id,
+            ownerId: invitation.owner_id,
+            actorId: invitation.owner_id,
+          })
+        : null;
       if (!tenantAlreadyOwnerManaged) {
         await tx.tenant_invitation_reservations.updateMany({
           where: { invitation_id: invitation.id, status: "ACTIVE" },
           data: { expires_at: expiresAt, updated_at: new Date() },
         });
       }
-      return tx.tenant_invitations.update({
+      const updatedInvitation = await tx.tenant_invitations.update({
         where: { id: invitation.id },
         data: {
           token,
           expires_at: expiresAt,
           status: isLegacyOwnerManaged ? "SUPERSEDED" : "PENDING",
           opened_at: null,
+          // The sweep stamps this when it closes the invitation.
+          cancelled_at: null,
+          ...(fallbackEmail ? { email: fallbackEmail } : {}),
           updated_at: new Date(),
         },
       });
-    });
+      return { updatedInvitation, reopened };
+    }, { timeout: 30000 });
+
+    if (reopened?.reopened) {
+      const { financialLifecycleService } = await import("../payments/financial-lifecycle-service");
+      financialLifecycleService.notifyActivated({
+        tenantId: invitation.tenant_id,
+        ownerId: invitation.owner_id,
+        hostelId: invitation.hostel_id,
+        source: "invitation_resend_reopen",
+      });
+      await eventLog.log("tenant_invitation_reopened", invitation.owner_id, {
+        tenant_id: invitation.tenant_id,
+        invitation_id: invitation.id,
+        bed_held: reopened.bedHeld,
+        restored_obligations: reopened.restoredObligationIds.length,
+      }, invitation.tenant_id);
+    }
 
     const owner = await prisma.profile.findUnique({ where: { id: invitation.owner_id }, select: { name: true } });
     const activationLink = frontendUrl(`/activate/${token}`);
@@ -1240,6 +1319,8 @@ export class TenantInvitationLifecycleService {
       email: updatedInvitation.email,
       phone: updatedInvitation.phone,
       activation_link: activationLink,
+      expires_at: expiresAt.toISOString(),
+      ...(reopened?.reopened ? { reopened: true, bed_held: reopened.bedHeld } : {}),
       ...delivery,
     };
   }
@@ -1263,8 +1344,10 @@ export class TenantInvitationLifecycleService {
     // A nudge — the same link, again — is not an edit. Sending it through
     // `resendInvitation` regenerated the tenant's dues, which is why that path
     // refuses once payments exist, and so every imported resident with rent
-    // already paid could never be nudged. Only an edit to the terms, or an
-    // invitation the expiry sweep has already closed, needs the full path.
+    // already paid could never be nudged. An edit to the terms, or an
+    // invitation the expiry sweep has already closed, goes to `resendInvitation`
+    // — which, for a closed one with no edit, reopens the tenancy and refreshes
+    // the link rather than rebuilding anything (`refreshInvitationLink`).
     if (invitation.status !== "EXPIRED" && !changesInvitationTerms(overrides, invitation)) {
       return this.nudgeInvitation(invitation.id, actor, { email: overrides?.email });
     }
@@ -1304,8 +1387,14 @@ export class TenantInvitationLifecycleService {
     if (!["PENDING", "OPENED", "ACTIVATION_STARTED", "QUEUED"].includes(String(invitation.status))) {
       throw new Error("BAD_REQUEST: This invitation can't be re-sent — send a new one");
     }
-    // The tenancy itself must still be live. A closed one (cancelled, or ended
-    // by the expiry sweep) must not get a working link back.
+    // Ended by the expiry sweep behind a still-live invitation — the state the
+    // pre-ADR-237 link refresh left (new token, tenant still EXPIRED). Nudging
+    // that link can never work, so reopen it the way "Send again" does.
+    if (invitation.tenant.status === "EXPIRED") {
+      return this.resendInvitation(invitation.id, actor, options.email ? { email: options.email } : undefined);
+    }
+    // The tenancy itself must still be live. A cancelled one must not get a
+    // working link back.
     if (!["INVITED", "ACTIVE"].includes(String(invitation.tenant.status))) {
       throw new Error("BAD_REQUEST: This tenancy has ended — send a new invitation instead");
     }
@@ -1827,6 +1916,10 @@ export class TenantInvitationLifecycleService {
       // neither a reservation nor an allocation is genuinely broken.
       let roomId: string;
       let hostelId: string;
+      // A tenancy the expiry sweep closed and a resend reopened while its room
+      // was full holds neither (see reopen-expired-tenancy.ts): it takes the
+      // invitation's room now, if a bed is free now.
+      let reopenedWithoutBed = false;
       if (reservation) {
         // Lock reservation row
         await tx.$executeRaw`
@@ -1839,9 +1932,16 @@ export class TenantInvitationLifecycleService {
         const existingAllocation = await tx.roomAllocation.findFirst({
           where: { tenant_id: tenant.id, is_active: true, end_date: null },
         });
-        if (!existingAllocation) throw new Error("INVALID_TRANSITION: Active room reservation is missing");
-        roomId = existingAllocation.room_id;
-        hostelId = existingAllocation.hostel_id;
+        if (existingAllocation) {
+          roomId = existingAllocation.room_id;
+          hostelId = existingAllocation.hostel_id;
+        } else if (currentTenantStatus === "INVITED" && invitation.room_id) {
+          roomId = invitation.room_id;
+          hostelId = invitation.hostel_id;
+          reopenedWithoutBed = true;
+        } else {
+          throw new Error("INVALID_TRANSITION: Active room reservation is missing");
+        }
       }
 
       // The room is assigned on joining, unconditionally. Deposit and maintenance
@@ -1849,12 +1949,29 @@ export class TenantInvitationLifecycleService {
       // owners on the platform collect them on their own terms. The capacity check
       // below stays, because that is overbooking protection, not a payment gate.
       await tx.$executeRaw`SELECT id FROM rooms WHERE id = ${roomId}::uuid FOR UPDATE`;
-      await ensureActiveAllocation(tx, {
+      if (reopenedWithoutBed) {
+        // Nothing was held for this tenant, so a bed reserved for someone
+        // else's pending invitation is not free either — but the tenant's own
+        // still-live invitation must not count against itself.
+        if (!(await hasBedFreeFor(tx, roomId, tenant.id))) {
+          throw new Error("CAPACITY_EXCEEDED: Your room is full right now — please ask the owner to assign you a room");
+        }
+      }
+      const allocation = await ensureActiveAllocation(tx, {
         tenantId: tenant.id,
         roomId,
         hostelId,
         startDate: tenantRow[0].joined_on || startOfToday(),
       });
+      if (reopenedWithoutBed) {
+        await restoreSweptObligations(tx, {
+          tenantId: tenant.id,
+          ownerId: tenant.owner_id || invitation.owner_id,
+          hostelId,
+          allocationId: allocation.allocationId,
+          actorId: tenant.owner_id || invitation.owner_id,
+        });
+      }
 
       if (reservation) {
         await tx.tenant_invitation_reservations.update({

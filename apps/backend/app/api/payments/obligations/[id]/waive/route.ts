@@ -31,6 +31,11 @@ export async function POST(
     if (!user || user.role !== "OWNER") {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+    // Same boundary as resolveOwnerScope: an OWNER acts only as themselves.
+    if (!user.owner_id || user.owner_id !== user.id) {
+      return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    }
+    const ownerId = user.owner_id;
 
     const body = await req.json().catch(() => ({}));
     const { reason, identityToken, identity_token } = body;
@@ -48,6 +53,7 @@ export async function POST(
         obligationId: params.id,
         reason: effectiveReason,
         actorId: user.id,
+        ownerScope: { ownerId },
       });
     });
 

@@ -5,6 +5,10 @@ import { buildImportWorkbook, HOSTEL_ID_CELL } from "@/lib/services/bulk-import/
 import { EXAMPLE_ROW_NAME, parseTenantWorkbook } from "@/lib/services/bulk-import/workbook-parser";
 import { parseRoomsSheet } from "@/lib/services/bulk-import/rooms-sheet";
 import { COVER_SHEET, ROOMS_SHEET, TENANTS_SHEET } from "@/lib/services/bulk-import/workbook-parser";
+import { PROFILE_HEADERS } from "@/lib/services/bulk-import/profile-fields";
+
+/** 1-based column of "What to fix": right after the 14 data columns. */
+const PROBLEM_COLUMN_INDEX = 12 + PROFILE_HEADERS.length + 1; // 12 stay/money columns + Guardian Name/Phone
 
 const INPUT = {
   hostel: { id: "11111111-1111-1111-1111-111111111111", name: "Sri Adithya Boys Hostel" },
@@ -70,7 +74,8 @@ describe("the generated workbook", () => {
 
   it("binds the Tenants room column to a dropdown of the rooms", async () => {
     const { wb } = await build();
-    const cell = wb.getWorksheet(TENANTS_SHEET)!.getCell("D2");
+    // Room is column F: Name, Phone, Email, Guardian Name, Guardian Phone, Room.
+    const cell = wb.getWorksheet(TENANTS_SHEET)!.getCell("F2");
     expect(cell.dataValidation?.type).toBe("list");
     // The dropdown must actually point at the room list — a list validation
     // with no source is an empty dropdown, which looks fine until it is used.
@@ -87,23 +92,24 @@ describe("the generated workbook", () => {
     expect(lastRow).toBeGreaterThan(INPUT.rooms.length + 1);
   });
 
-  it("offers maintenance type, paid-includes-deposit and payment method as dropdowns", async () => {
+  it("offers maintenance type and paid-includes-deposit as dropdowns", async () => {
     const { wb } = await build();
     const sheet = wb.getWorksheet(TENANTS_SHEET)!;
     const at = (ref: string) => sheet.getCell(ref).dataValidation?.formulae?.[0] ?? "";
-    expect(at("I2")).toContain("MONTHLY");
-    expect(at("L2")).toContain("YES");
-    expect(at("M2")).toContain("CASH");
+    expect(at("K2")).toContain("MONTHLY");
+    expect(at("N2")).toContain("YES");
   });
 
   it("puts each dropdown on the column its header names", async () => {
     const { wb } = await build();
     const header = (wb.getWorksheet(TENANTS_SHEET)!.getRow(1).values as any[]).map((v) => String(v ?? ""));
     // values is 1-based, so index N is column N.
-    expect(header[4]).toBe("Room");
-    expect(header[9]).toBe("Maintenance Type");
-    expect(header[12]).toBe("Paid Includes Deposit");
-    expect(header[13]).toBe("Payment Method");
+    expect(header[6]).toBe("Room");
+    expect(header[11]).toBe("Maintenance Type");
+    expect(header[14]).toBe("Paid Includes Deposit");
+    // Payment Method, Payment Reference and Notes were removed (2026-10-10).
+    expect(header).not.toContain("Payment Method");
+    expect(header).not.toContain("Notes");
   });
 
   it("round-trips through our own parser", async () => {
@@ -204,7 +210,6 @@ describe("handing the owner their corrected file back", () => {
       maintenance_type: "ONE_TIME",
       agreement_duration_months: 11,
       amount_paid: 76500,
-      payment_method: "CASH",
     });
     expect(row.amount_includes_deposit).toBe(true);
   });
@@ -221,7 +226,7 @@ describe("handing the owner their corrected file back", () => {
     await wb.xlsx.load(buf as any);
 
     expect(String(wb.getWorksheet(COVER_SHEET)!.getCell(HOSTEL_ID_CELL).value)).toBe(INPUT.hostel.id);
-    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("D2").dataValidation?.formulae?.[0]).toBe("RoomList");
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("F2").dataValidation?.formulae?.[0]).toBe("RoomList");
     expect(parseRoomsSheet(buf as Buffer).map((r) => r.room_no)).toEqual(["101", "G1"]);
   });
 
@@ -267,14 +272,15 @@ describe("marking the problems in the owner's own sheet", () => {
 
   it("colours the exact cell each problem is about", async () => {
     const { sheet } = await annotated();
-    // Phone is column B, room column D, on the first data row.
+    // Phone is column B, room column F, on the first data row.
     expect((sheet.getCell("B2").fill as any)?.fgColor?.argb).toBe("FFFFD9D6");
-    expect((sheet.getCell("D2").fill as any)?.fgColor?.argb).toBe("FFFFD9D6");
+    expect((sheet.getCell("F2").fill as any)?.fgColor?.argb).toBe("FFFFD9D6");
   });
 
   it("uses a different colour for something that only needs a decision", async () => {
     const { sheet } = await annotated();
-    expect((sheet.getCell("F3").fill as any)?.fgColor?.argb).toBe("FFFFF0CC");
+    // Joining Date is column G.
+    expect((sheet.getCell("G3").fill as any)?.fgColor?.argb).toBe("FFFFF0CC");
   });
 
   it("leaves cells with nothing wrong alone", async () => {
@@ -292,8 +298,9 @@ describe("marking the problems in the owner's own sheet", () => {
 
   it("adds a column saying what to fix, so nothing depends on hovering", async () => {
     const { sheet } = await annotated();
-    expect(sheet.getCell("P1").value).toBe("What to fix");
-    expect(String(sheet.getCell("P2").value)).toContain("Room 1O1 isn't in");
+    // Right after the last of the 14 data columns.
+    expect(sheet.getRow(1).getCell(PROBLEM_COLUMN_INDEX).value).toBe("What to fix");
+    expect(String(sheet.getRow(2).getCell(PROBLEM_COLUMN_INDEX).value)).toContain("Room 1O1 isn't in");
   });
 
   it("explains the colours on the cover sheet", async () => {
@@ -310,7 +317,7 @@ describe("marking the problems in the owner's own sheet", () => {
     });
     const wb = new ExcelJS.Workbook();
     await wb.xlsx.load(buf as any);
-    expect(wb.getWorksheet(TENANTS_SHEET)!.getCell("P1").value).toBeNull();
+    expect(wb.getWorksheet(TENANTS_SHEET)!.getRow(1).getCell(PROBLEM_COLUMN_INDEX).value).toBeNull();
   });
 
   it("is still a file our own parser reads back", async () => {

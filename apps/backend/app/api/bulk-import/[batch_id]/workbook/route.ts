@@ -6,6 +6,7 @@ import { getSession, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
 import { resolvePreferences } from "@/lib/preferences";
 import { buildImportWorkbook } from "@/lib/services/bulk-import/template-builder";
+import { PROFILE_FIELD_KEYS } from "@/lib/services/bulk-import/profile-fields";
 
 /**
  * 📄 GET /api/bulk-import/[batch_id]/workbook
@@ -100,6 +101,8 @@ export async function GET(
         payment_method: row.payment_method,
         payment_reference: row.payment_reference,
         notes: row.notes,
+        // The owner's onboarding details, as they typed them.
+        ...Object.fromEntries(PROFILE_FIELD_KEYS.map((key) => [key, row[key]])),
         // Still outstanding, so the sheet can mark exactly where.
         problems: (row.__issues ?? []).map((issue: any) => ({
           field: issue.field,
