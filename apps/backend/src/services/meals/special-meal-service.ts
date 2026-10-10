@@ -7,9 +7,12 @@ import { whatsAppTemplateDeliveryService, type WhatsAppTemplateDeliveryInput } f
 import { MetaWhatsAppProvider } from "@/lib/services/notifications/providers/whatsapp";
 import type { SenderIdentity } from "@/lib/services/notifications/routing/types";
 import {
+  SPECIAL_MEAL_QUESTION_TEMPLATE,
   answeredReply,
+  buildQuestionParameters,
   closedReply,
   decodeMealPayload,
+  encodeMealPayload,
   parseTypedChoice,
 } from "@/lib/services/notifications/providers/whatsapp/special-meal-template-contract";
 import type { HeadcountLeave } from "@/src/services/stay/stay-board";
@@ -17,6 +20,7 @@ import { fromDbDate, toDbDate } from "@/src/services/stay/stay-rows";
 import { isMealType, type MealType } from "./meal-ratio";
 import { conflict, invalidRequest, notFound } from "./meal-errors";
 import {
+  askAudience,
   buildMealCount,
   cutoffInstant,
   isMealChoice,
@@ -323,9 +327,61 @@ export function createSpecialMealService(deps: {
     return { handled: true, outcome: "ANSWERED" };
   }
 
-  // runRound — Task 7.
+  /**
+   * One daily round. ASK (≈18:00 IST) covers tomorrow's servings, REMIND
+   * (≈08:00 IST) covers today's. Vercel Hobby fires each anywhere in its hour,
+   * so a serving whose cutoff has already passed is skipped, never asked.
+   * Idempotent per tenant per serving per kind via whatsapp_logs.idempotency_key.
+   */
+  async function runRound(kind: "ASK" | "REMIND", now: Date = new Date()) {
+    const today = istDateOf(now);
+    const serveDate = kind === "ASK" ? addDaysIso(today, 1) : today;
+    const occasions = await db.special_meal_occasions.findMany({ where: { weekday: weekdayOfIso(serveDate), is_active: true } });
+    const result = { occasions: (occasions as any[]).length, sent: 0, skipped: 0, failed: 0, closed: 0 };
 
-  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply };
+    for (const occasion of occasions as any[]) {
+      const cutoffAt = await cutoffFor(occasion, serveDate);
+      if (now >= cutoffAt) {
+        result.closed += 1;
+        continue;
+      }
+      const [residents, leaves, answers] = await Promise.all([
+        residentsOf(occasion.hostel_id),
+        leavesAround(occasion.hostel_id, serveDate),
+        answersFor(occasion.id, serveDate),
+      ]);
+      const audience = askAudience({ serveDate, residents, leaves, answered: new Set(answers.keys()) });
+      for (const person of audience) {
+        try {
+          const outcome = await sendTemplate({
+            phone: person.phone,
+            templateName: SPECIAL_MEAL_QUESTION_TEMPLATE.name,
+            languageCode: SPECIAL_MEAL_QUESTION_TEMPLATE.language,
+            bodyParameters: buildQuestionParameters({
+              tenantName: person.name, serveDate, mealType: occasion.meal_type,
+              vegDish: occasion.veg_dish, nonVegDish: occasion.non_veg_dish, cutoffAt,
+            }),
+            quickReplyPayloads: SPECIAL_MEAL_QUESTION_TEMPLATE.quickReplies.map((q) =>
+              encodeMealPayload({ occasionId: occasion.id, serveDate, tenantId: person.tenantId, choice: q.choice }),
+            ),
+            idempotencyKey: `special_meal_${kind.toLowerCase()}:${occasion.id}:${serveDate}:${person.tenantId}`,
+            tenantId: person.tenantId,
+            hostelId: occasion.hostel_id,
+            ownerId: occasion.owner_id,
+          });
+          if (outcome.sent) result.sent += 1;
+          else result.skipped += 1;
+        } catch (error: any) {
+          result.failed += 1;
+          logger.warn("special_meal.send_failed", { kind, occasion_id: occasion.id, tenant_id: person.tenantId, error: error?.message || String(error) });
+        }
+      }
+    }
+    logger.info("special_meal.round_done", { kind, serve_date: serveDate, ...result });
+    return result;
+  }
+
+  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply, runRound };
 }
 
 export const specialMealService = createSpecialMealService();
