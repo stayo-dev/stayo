@@ -20,6 +20,26 @@ describe('crossSurfaceHandoff — signing in on Discovery', () => {
   });
 });
 
+describe('crossSurfaceHandoff — signing in on the homepage', () => {
+  it('takes a resident with a tenancy to their dashboard — they used to be left on the homepage', () => {
+    const handoff = crossSurfaceHandoff({ role: 'TENANT', tenantId: 't1' }, 'home');
+    expect(handoff?.path).toBe('/tenant/home');
+    expect(handoff?.message).toMatch(/tenant dashboard/i);
+  });
+
+  it('leaves a seeker with no tenancy on the homepage to browse', () => {
+    expect(crossSurfaceHandoff({ role: 'TENANT' }, 'home')).toBeNull();
+    expect(crossSurfaceHandoff({ role: 'tenant', tenantId: null }, 'home')).toBeNull();
+  });
+
+  it('routes owners, admins and managers exactly as Discovery does', () => {
+    for (const role of ['OWNER', 'ADMIN', 'MANAGER']) {
+      expect(crossSurfaceHandoff({ role }, 'home')).toEqual(crossSurfaceHandoff({ role }, 'discovery'));
+    }
+    expect(crossSurfaceHandoff({ role: 'MANAGER' }, 'home')?.path).toBe('/admin');
+  });
+});
+
 describe('crossSurfaceHandoff — signing in on the owner site', () => {
   it('sends a resident with a tenancy to their dashboard, and says why', () => {
     const handoff = crossSurfaceHandoff({ role: 'TENANT', tenantId: 't1' }, 'owner');

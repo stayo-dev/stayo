@@ -8,6 +8,18 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## Reopening Stayo always looked signed out; homepage tenant login stayed on the homepage (2026-10-10)
+
+**Symptom.** Closing and reopening Stayo (tab, browser or the installed app) showed the homepage with "Log in" for every role, even with a valid session. A resident who signed in on the homepage stayed there instead of reaching the tenant dashboard.
+
+**Cause.** Not session loss: both idle timeouts are 7 days, nothing signs out on close, and the service worker has no `fetch` handler. The installed app's `start_url` is `/` (`public/site.webmanifest`), and reopening the site lands there too. `/` is a public page that never acted on a session: `HomePage` had no signed-in redirect (only `/login` did, in `AuthContext`), and `PublicHeader` always renders "Log in". Separately, `crossSurfaceHandoff(…, 'discovery')` deliberately returned `null` for residents ("a resident stays on the homepage"), so a homepage login never routed a tenant.
+
+**Fix.** `signedInEntryRedirect` (`lib/auth/sessionRestore.ts`) extends the `/login` rule to `/`: a restored owner, admin, manager or resident with a tenancy is sent to their app; a seeker stays to browse; a fresh homepage sign-in keeps its own announced hand-off. `/` shows the boot screen while a possible session is restored instead of flashing "Log in". A new `home` login surface sends a resident with a tenancy to `/tenant/home`. An app-owned boolean hint (`localStorage['stayo_session_hint']` = `"1"`, never a token) is set on sign-in/restore and cleared on logout, expiry and failed restore, so `/` loads Clerk to look for a session even if Clerk's `__client_uat` cookie is unreadable. Route guards and role checks are unchanged.
+
+**Verified** by 23 new node tests (5 fail on the pre-fix code). **Not verified** in a browser or the installed app. How long a session survives a closed browser is governed by the Clerk production instance's session settings, which are outside this repo — unknown / needs clarification.
+
+**See:** [[Frontend]] · [[Changelog]]
+
 ## Signed-in users asked to log in again after the homepage, a refresh or a new tab (2026-10-09)
 
 **Symptom.** An owner signed in on the homepage was handed to `/owner/home` and immediately shown `/login`; signing in a second time worked. Refreshing any protected page, or opening one in a new tab, did the same. Tenants were worse: every reload of `/tenant/*` signed them out.

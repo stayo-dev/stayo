@@ -14,7 +14,12 @@
  * PURE — runs under vitest's node environment.
  */
 
-export type LoginSurface = 'discovery' | 'owner';
+/**
+ * `home` is the homepage at `/`: the same seeker-facing door as Discovery,
+ * except that a resident with a tenancy came to reach their stay — the home
+ * page is the app's launch screen, not where they browse.
+ */
+export type LoginSurface = 'discovery' | 'home' | 'owner';
 
 export interface CrossSurfaceHandoff {
   /** Where this account actually belongs. */
@@ -39,7 +44,7 @@ export function crossSurfaceHandoff(
 ): CrossSurfaceHandoff | null {
   const role = String(account.role ?? '').toLowerCase();
 
-  if (surface === 'discovery') {
+  if (surface === 'discovery' || surface === 'home') {
     // An owner or admin who signed in here wants their own app. Say so, then
     // take them.
     if (role === 'owner') {
@@ -55,7 +60,15 @@ export function crossSurfaceHandoff(
     if (role === 'manager') {
       return { path: '/admin', message: "This is a Stayo manager account — opening the admin console." };
     }
-    // A resident signing in on Discovery is exactly where they should be.
+    // A resident with a tenancy signing in on the homepage wants their stay.
+    if (surface === 'home' && role === 'tenant' && account.tenantId) {
+      return {
+        path: '/tenant/home',
+        message: "Welcome back — opening your tenant dashboard.",
+      };
+    }
+    // A seeker — or a resident signing in on Discovery — is exactly where
+    // they should be.
     return null;
   }
 

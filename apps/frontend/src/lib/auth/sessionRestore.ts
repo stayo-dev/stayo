@@ -76,6 +76,44 @@ export function hasClerkSignedInHint(cookieHeader: string | null | undefined): b
   });
 }
 
+/**
+ * A second, app-owned signal that a session may exist: `"1"` while this
+ * browser holds a restored or fresh sign-in, removed on sign-out, expiry or a
+ * restore that finds nobody. **Not a credential** — a boolean only; the
+ * session itself lives in Clerk's cookies and is verified by the backend.
+ *
+ * It exists because reopening Stayo (the installed app's `start_url` is `/`)
+ * lands on a public page, which loads Clerk only when something says a session
+ * may be there. `__client_uat` is Clerk's own signal, but it is Clerk's
+ * cookie, on Clerk's terms; this one is ours, so the reopen path does not
+ * depend on a third-party cookie detail alone.
+ */
+export const SESSION_HINT_KEY = 'stayo_session_hint';
+
+type HintStorage = Pick<Storage, 'getItem' | 'setItem' | 'removeItem'>;
+
+export function readSessionHint(storage: HintStorage | null | undefined): boolean {
+  try {
+    return storage?.getItem(SESSION_HINT_KEY) === '1';
+  } catch {
+    return false;
+  }
+}
+
+export function writeSessionHint(storage: HintStorage | null | undefined, signedIn: boolean): void {
+  try {
+    if (signedIn) storage?.setItem(SESSION_HINT_KEY, '1');
+    else storage?.removeItem(SESSION_HINT_KEY);
+  } catch {
+    /* storage unavailable (private mode) — the cookie hint still applies */
+  }
+}
+
+/** Either signal says a signed-in session may be waiting to be restored. */
+export function maySessionExist(input: { cookieHeader: string | null | undefined; storage: HintStorage | null | undefined }): boolean {
+  return hasClerkSignedInHint(input.cookieHeader) || readSessionHint(input.storage);
+}
+
 export function initialClerkPhase(input: {
   configured: boolean;
   mode: ClerkRestoreMode;
@@ -266,4 +304,29 @@ export function signedInLoginRedirect(input: {
     return input.tenantId ? '/tenant/home' : '/discover';
   }
   return null;
+}
+
+/**
+ * Where a signed-in visitor on an entry page belongs.
+ *
+ * - `/login` — see `signedInLoginRedirect`.
+ * - `/` — the homepage, and the installed app's `start_url`, so this is what
+ *   reopening Stayo lands on. A restored owner, admin, manager or resident
+ *   with a tenancy is taken to their app. A seeker (no tenancy) stays: the
+ *   homepage is where they browse. Someone who *just* signed in here is left
+ *   to the homepage's own announced hand-off (`crossSurfaceLogin.ts`).
+ *
+ * Any other path: no redirect.
+ */
+export function signedInEntryRedirect(input: {
+  pathname: string;
+  role: string | null | undefined;
+  tenantId?: string | null;
+  justSignedIn: boolean;
+}): string | null {
+  if (input.pathname === '/login') return signedInLoginRedirect(input);
+  if (input.pathname !== '/' || input.justSignedIn) return null;
+  const role = String(input.role ?? '').toLowerCase();
+  if (role === 'tenant') return input.tenantId ? '/tenant/home' : null;
+  return signedInLoginRedirect(input);
 }

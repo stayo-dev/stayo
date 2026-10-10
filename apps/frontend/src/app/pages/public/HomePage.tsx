@@ -69,9 +69,9 @@ export function HomePage() {
 
   const handleSignedIn = (user: LoginModalUser) => {
     setSignInOpen(false);
-    const crossing = crossSurfaceHandoff({ role: user.role, tenantId: (user as any).tenantId }, 'discovery');
+    const crossing = crossSurfaceHandoff({ role: user.role, tenantId: user.tenantId }, 'home');
     if (crossing) setHandoff(crossing);
-    // A resident stays on the homepage — they came here to look at hostels.
+    // A seeker (no tenancy) stays on the homepage — they came to look at hostels.
   };
 
   const state = homeSupplyState(isLoading, cards.length);

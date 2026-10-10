@@ -15,8 +15,13 @@ import {
   decideSessionResolution,
   hasClerkSignedInHint,
   initialClerkPhase,
+  maySessionExist,
+  readSessionHint,
+  SESSION_HINT_KEY,
+  signedInEntryRedirect,
   signedInLoginRedirect,
   startSessionRestore,
+  writeSessionHint,
   type ClerkRestorePhase,
 } from './sessionRestore';
 
@@ -424,5 +429,142 @@ describe('signedInLoginRedirect — /login is only for people who need to sign i
   it('does nothing for an unknown role', () => {
     expect(signedInLoginRedirect({ role: 'warden', justSignedIn: false })).toBeNull();
     expect(signedInLoginRedirect({ role: undefined, justSignedIn: false })).toBeNull();
+  });
+});
+
+// ── Reopening Stayo (2026-10-10) ─────────────────────────────────────────────
+//
+// The installed app's start_url is "/", and reopening the site lands there too.
+// "/" is a public page: it never sent a restored user anywhere and always
+// showed "Log in", so every reopen looked like being signed out.
+
+describe('signedInEntryRedirect — reopening Stayo lands on /', () => {
+  const at = (pathname: string, role: string, extra: { tenantId?: string | null; justSignedIn?: boolean } = {}) =>
+    signedInEntryRedirect({ pathname, role, tenantId: extra.tenantId ?? null, justSignedIn: extra.justSignedIn ?? false });
+
+  it('sends a restored owner, admin and manager from / to their app', () => {
+    expect(at('/', 'OWNER')).toBe('/owner/home');
+    expect(at('/', 'ADMIN')).toBe('/admin');
+    expect(at('/', 'MANAGER')).toBe('/admin');
+  });
+
+  it('sends a restored resident with a tenancy from / to the tenant dashboard', () => {
+    expect(at('/', 'TENANT', { tenantId: 't-1' })).toBe('/tenant/home');
+  });
+
+  it('leaves a seeker with no tenancy on / — it is where they browse', () => {
+    expect(at('/', 'TENANT')).toBeNull();
+  });
+
+  it("does not pre-empt the homepage's own announced hand-off right after signing in there", () => {
+    expect(at('/', 'OWNER', { justSignedIn: true })).toBeNull();
+    expect(at('/', 'TENANT', { tenantId: 't-1', justSignedIn: true })).toBeNull();
+  });
+
+  it('keeps the /login rules unchanged', () => {
+    for (const role of ['OWNER', 'ADMIN', 'MANAGER', 'TENANT']) {
+      for (const tenantId of [null, 't-1']) {
+        for (const justSignedIn of [true, false]) {
+          expect(signedInEntryRedirect({ pathname: '/login', role, tenantId, justSignedIn })).toBe(
+            signedInLoginRedirect({ role, tenantId, justSignedIn }),
+          );
+        }
+      }
+    }
+  });
+
+  it('never redirects from other pages, signed in or not', () => {
+    for (const pathname of ['/owners', '/discover', '/welcome', '/owner/home', '/tenant/home', '/admin']) {
+      expect(at(pathname, 'OWNER')).toBeNull();
+      expect(at(pathname, 'TENANT', { tenantId: 't-1' })).toBeNull();
+    }
+  });
+
+  it('does nothing for an unknown role', () => {
+    expect(at('/', 'warden')).toBeNull();
+    expect(at('/', '')).toBeNull();
+  });
+});
+
+function memoryStorage(initial: Record<string, string> = {}) {
+  const data = new Map(Object.entries(initial));
+  return {
+    getItem: (k: string) => data.get(k) ?? null,
+    setItem: (k: string, v: string) => void data.set(k, v),
+    removeItem: (k: string) => void data.delete(k),
+    data,
+  };
+}
+
+describe('the session hint — a boolean, never a credential', () => {
+  it('is written on sign-in and removed on sign-out', () => {
+    const storage = memoryStorage();
+    writeSessionHint(storage, true);
+    expect(storage.data.get(SESSION_HINT_KEY)).toBe('1');
+    expect(readSessionHint(storage)).toBe(true);
+    writeSessionHint(storage, false);
+    expect(storage.data.has(SESSION_HINT_KEY)).toBe(false);
+    expect(readSessionHint(storage)).toBe(false);
+  });
+
+  it('stores only "1" — no token, id or user data', () => {
+    const storage = memoryStorage();
+    writeSessionHint(storage, true);
+    expect([...storage.data.entries()]).toEqual([[SESSION_HINT_KEY, '1']]);
+  });
+
+  it('survives unavailable storage without throwing', () => {
+    const broken = {
+      getItem: () => { throw new Error('denied'); },
+      setItem: () => { throw new Error('denied'); },
+      removeItem: () => { throw new Error('denied'); },
+    };
+    expect(readSessionHint(broken)).toBe(false);
+    expect(() => writeSessionHint(broken, true)).not.toThrow();
+    expect(readSessionHint(null)).toBe(false);
+  });
+
+  it('either signal is enough to look for a session; neither means an anonymous visit', () => {
+    expect(maySessionExist({ cookieHeader: '__client_uat=1728460000', storage: memoryStorage() })).toBe(true);
+    expect(maySessionExist({ cookieHeader: '', storage: memoryStorage({ [SESSION_HINT_KEY]: '1' }) })).toBe(true);
+    expect(maySessionExist({ cookieHeader: '__client_uat=0', storage: memoryStorage() })).toBe(false);
+    expect(maySessionExist({ cookieHeader: undefined, storage: null })).toBe(false);
+  });
+
+  it('a hint alone authorises nothing: it only decides whether Clerk is loaded to look', () => {
+    expect(initialClerkPhase({ configured: true, mode: 'load-if-signed-in', alreadyLoaded: false, hasSignedInHint: true })).toBe('loading');
+    expect(decideSessionResolution({ supabaseKnown: true, hasSupabaseSession: false, clerkPhase: 'ready', hasClerkSession: false })).toBe('signed-out');
+  });
+});
+
+describe('close and reopen — the whole path, at "/"', () => {
+  it('a signed-in owner reopening Stayo is restored before anything signs them out', async () => {
+    // Reopen: public page, the hint from last time says a session may exist.
+    const phase = initialClerkPhase({ configured: true, mode: 'load-if-signed-in', alreadyLoaded: false, hasSignedInHint: true });
+    const h = harness({ clerkPhase: phase, profile: { role: 'owner' } });
+    h.supabaseInitial(false);
+    await flush();
+    expect(h.deps.setUser).not.toHaveBeenCalled();
+    h.state.clerkSession = true;
+    await h.clerkLoaded();
+    expect(h.deps.setUser).toHaveBeenCalledWith({ role: 'owner' });
+    expect(signedInEntryRedirect({ pathname: '/', role: 'owner', justSignedIn: false })).toBe('/owner/home');
+  });
+
+  it('an expired or revoked session reopening Stayo ends signed out, and the hint can be cleared', async () => {
+    const h = harness({ clerkPhase: 'loading' });
+    h.supabaseInitial(false);
+    await h.clerkLoaded(); // Clerk loaded, but its session is gone
+    expect(h.deps.setUser).toHaveBeenCalledWith(null);
+    expect(h.deps.settle).toHaveBeenCalledTimes(1);
+  });
+
+  it('an anonymous visitor to / never loads Clerk and never waits', async () => {
+    const phase = initialClerkPhase({ configured: true, mode: 'load-if-signed-in', alreadyLoaded: false, hasSignedInHint: false });
+    const h = harness({ clerkPhase: phase });
+    h.supabaseInitial(false);
+    await flush();
+    expect(h.deps.loadClerk).not.toHaveBeenCalled();
+    expect(h.deps.settle).toHaveBeenCalledTimes(1);
   });
 });
