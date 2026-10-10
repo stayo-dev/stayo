@@ -4,6 +4,7 @@ export const dynamic = "force-dynamic";
 import { NextRequest } from "next/server";
 import { getSession, apiError } from "@/lib/auth";
 import { prisma } from "@/lib/db";
+import { ensureMonthSchedule } from "@/lib/services/food/month-carry-forward";
 import { normalizeMealTimings } from "@/lib/services/food/meal-timings";
 import { buildMenuContent, type MenuSlot } from "@/lib/pdf/menu-content";
 import { renderMenuPdf } from "@/lib/pdf/menu-template-pdf-lib";
@@ -67,6 +68,7 @@ export async function GET(req: NextRequest) {
       },
       select: {
         id: true,
+        owner_id: true,
         name: true,
         logo_url: true,
         address: true,
@@ -82,13 +84,12 @@ export async function GET(req: NextRequest) {
     const monthDate = firstOfMonth(month);
     if (!monthDate) return apiError("month must be YYYY-MM", "VALIDATION_ERROR", 400);
 
-    const schedule = await prisma.food_schedules.findUnique({
-      where: { hostel_id_month: { hostel_id: hostelId, month: monthDate } },
-      include: {
-        food_schedule_meals: {
-          include: { food_schedule_meal_items: { orderBy: { display_order: "asc" } } },
-        },
-      },
+    // A month with no menu of its own prints the owner's carried-forward menu.
+    const schedule = await ensureMonthSchedule({
+      hostelId,
+      ownerId: hostel.owner_id,
+      month: monthDate,
+      allowCreateEmpty: false,
     });
     if (!schedule) {
       return apiError("No menu exists for that month yet", "NOT_FOUND", 404);

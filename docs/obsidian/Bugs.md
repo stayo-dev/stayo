@@ -8,6 +8,26 @@ Related: [[Features]] · [[Changelog]] · [[TODO]] · [[Business-Rules]]
 
 Log of significant bugs — open and fixed. Not meant to replace an issue tracker for every minor bug; use this for anything that revealed a real architectural/business-rule gap (the kind of thing worth remembering months later), matching the bar already used in `docs/known-issues.md` and `docs/business-logic/*-investigation-report.md`.
 
+## The food menu reset every month (2026-10-10)
+
+**Symptom.** An owner built the weekly menu in September; on 1 October the Meal Plan was blank and had to be rebuilt, and the owner Home card, Kitchen Sheet and Food page showed nothing. (Tenants kept seeing September's menu, labelled September, because their view shows the latest published month.)
+
+**Cause.** Not a date bug: by design since [[Decisions#ADR-114|ADR-114]]. `food_schedules` is one row per `(hostel_id, month)`; the nightly carry-forward clone was removed and `POST /api/food/schedules` deliberately created every new month **empty**. Owner readers look up the exact current month, so a month without a row had no menu.
+
+**Fix.** `ensureMonthSchedule` (`lib/services/food/month-carry-forward.ts`) — a month without its own menu inherits the owner's latest authored menu unchanged; owner edits (already `source: MANUAL`) flow into later months; unedited copies re-sync; future months copy as drafts. Wired into the owner GET/POST, tenant history (current month) and menu PDF. No schema change, no cron, no frontend change.
+
+**Verified** by 16 pure tests (in-memory DB). **Not verified** against a real database or in a browser.
+
+**Open — needs a disposable Postgres (unknown / needs clarification until run):**
+- **Transaction safety.** `ensureMonthSchedule` reads, decides and writes inside one interactive `prisma.$transaction`. Verify a failure mid-copy (e.g. after the `deleteMany` of a carried copy's items) rolls back fully, leaving the previous cells intact, never a half-empty week.
+- **Concurrent first requests for the same month.** Two requests (owner Home card + Meal Plan, or owner + tenant) can both find no row. The loser's `create` should hit the `(hostel_id, month)` unique index (`P2002`), roll back, and return the winner's row via the re-read. Verify under real concurrency, including that a `P2002` raised inside the interactive transaction surfaces with `code: "P2002"` as caught.
+- **Concurrent re-syncs of an existing copy.** Two requests re-syncing the same `CARRIED_FORWARD` row both `deleteMany` then `createMany` items; under READ COMMITTED the second insert can collide on `(schedule_meal_id, display_order)`. Expected outcome is the same `P2002` → re-read path; verify the final row has exactly one copy of each item, in order.
+- **Owner edit racing a re-sync.** An owner `PATCH` (with its `expectedUpdatedAt` guard) landing while the same month is being re-synced: verify the edit is not lost, and that once it lands the month counts as authored and is never re-synced again.
+- **Initial writes.** The first materialisation of a hostel-month does ~31–33 writes (row + 28 cells, one bulk delete, one bulk insert, 28 legacy-field updates) in one transaction. Verify latency on the pooled connection (pgbouncer, port 6543) is acceptable for a GET, that it stays well inside the interactive-transaction timeout (Prisma default 5 s), and that every later read of that month writes nothing.
+- **Real query shapes.** `findMany` with `month: { lt }`, `source: { not: "CARRIED_FORWARD" }`, `take: 24` against the real `@db.Date` column; first-of-month UTC boundaries (an IST request between 00:00 and 05:30 on the 1st still resolves to the previous month, matching existing behaviour).
+
+**See:** [[Food]] · [[Business-Rules]] · [[Changelog]]
+
 ## Reopening Stayo always looked signed out; homepage tenant login stayed on the homepage (2026-10-10)
 
 **Symptom.** Closing and reopening Stayo (tab, browser or the installed app) showed the homepage with "Log in" for every role, even with a valid session. A resident who signed in on the homepage stayed there instead of reaching the tenant dashboard.
