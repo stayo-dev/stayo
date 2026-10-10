@@ -20,13 +20,14 @@ export const SPECIAL_MEAL_QUESTION_TEMPLATE = {
   parameters: ["tenant_first_name", "occasion_label", "dishes", "cutoff_time"] as const,
   quickReplies: [
     { text: "Veg", choice: "VEG" },
-    { text: "Non-veg", choice: "NON_VEG" },
+    { text: "Non Veg", choice: "NON_VEG" },
     { text: "I'm away", choice: "AWAY" },
   ] as const satisfies readonly { text: string; choice: MealChoice }[],
+  // As submitted at Meta on 2026-10-10 (Meta re-classified it as Marketing).
   body:
     "Hi {{1}}! {{2}} is a special meal: {{3}}.\n" +
-    "What would you like? Please answer by {{4}}.\n\n" +
-    "If you won't be at the hostel for this meal, tap I'm away and we won't cook for you.",
+    "*What would you like?* Please answer by {{4}}.\n\n" +
+    "_If you won't be at the hostel for this meal, tap I'm away and we won't cook for you._",
 };
 
 const PREFIX = "MEAL";
@@ -135,7 +136,8 @@ export function closedReply(input: { serveDate: string; mealType: string; cutoff
 // conversation, which is the point: a resident who answers once is a
 // resident who reads the next message.
 //
-// Names are hard-coded (ADR-196). All three must be approved at Meta; the
+// Bodies below are copies of what was submitted on 2026-10-10; Meta holds the
+// real ones. Names are hard-coded (ADR-196). All three must be approved; the
 // service falls back to the first if a rotated one is rejected.
 
 export interface MealReadyTemplate {
@@ -155,7 +157,7 @@ export const MEAL_READY_TEMPLATES: readonly MealReadyTemplate[] = [
     parameters: READY_PARAMS,
     quickReply: "I'm on my way",
     body:
-      "🔥 It's ready, {{1}}! {{2}} is hot and being served now at {{3}}.\n\n" +
+      "*It's ready*, {{1}}! {{2}} 🔥 is hot and being served now at {{3}}.\n\n" +
       "Grab your plate before the first round runs out.",
   },
   {
@@ -165,7 +167,7 @@ export const MEAL_READY_TEMPLATES: readonly MealReadyTemplate[] = [
     quickReply: "I'm on my way",
     body:
       "The wait is over, {{1}} 🍽️ {{2}} just came off the stove at {{3}}.\n\n" +
-      "Your plate is waiting. Come and get it!",
+      "*Your plate is waiting. _Come and get it!_*",
   },
   {
     name: "stayo_meal_ready_ding",
@@ -174,7 +176,7 @@ export const MEAL_READY_TEMPLATES: readonly MealReadyTemplate[] = [
     quickReply: "I'm on my way",
     body:
       "Ding ding! 🔔 {{1}}, {{2}} is ready to serve at {{3}}.\n\n" +
-      "Hungry? This one's for you. See you at the counter!",
+      "*Hungry?* This one's for you. See you at the Dining Hall!",
   },
 ];
 

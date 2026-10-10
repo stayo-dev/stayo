@@ -1,5 +1,18 @@
 # WhatsApp template briefs — special meals (4 templates)
 
+> **Submitted 2026-10-10.** Status as reported by the user that day:
+>
+> | Template | Category Meta gave it | Status |
+> |---|---|---|
+> | `stayo_special_meal_question` | **Marketing** (re-classified from Utility) | Active – quality pending |
+> | `stayo_meal_ready_hot` | **Marketing** (re-classified from Utility) | Active – quality pending |
+> | `stayo_meal_ready_wait_over` | Utility | In review |
+> | `stayo_meal_ready_ding` | Utility | In review |
+>
+> Submitted copy differs slightly from the drafts below (bold/italic, "Non Veg", "Dining Hall"); the code's copy in `special-meal-template-contract.ts` was synced to the submitted text. Names, variable counts and button order all match, so sending is unaffected. While a rotated "ready" template is still in review, the code falls back to `stayo_meal_ready_hot`.
+>
+> **Why the re-classification matters for the question.** Marketing messages cost several times more per message, and Meta caps how many marketing messages one person receives across all businesses, so some residents may silently not get the question (error 131049). The ready alert can live with that; the question is the core of the feature. A neutrally worded Utility version is drafted at the end of this file for resubmission.
+
 For submission in Meta Business Manager → WhatsApp Manager → Message templates. Used by [[Decisions#ADR-238|ADR-238]] (special-meal choices). The code that sends it lives in `apps/backend/lib/services/notifications/providers/whatsapp/special-meal-template-contract.ts`. **Name, language, body and button order must match that file exactly**, or sends fail (Meta error 132001 for a wrong name; 132000 for a wrong parameter count).
 
 | Field | Value |
@@ -76,3 +89,28 @@ Hungry? This one's for you. See you at the counter!
 **On the Utility category.** Meta can re-classify a playful template as Marketing, which costs more per message and only reaches people who haven't opted out of marketing. Two things argue for Utility, and are worth putting in the submission's description field: the message only goes to a resident who **chose that meal** (it is effectively an order-status update, like "your order is ready"), and it is sent once, when the food is actually ready. If Meta re-classifies it anyway, the feature still works; it just costs more.
 
 **What the [I'm on my way] tap does:** the resident gets an instant, friendly reply ("🏃 See you at the counter, Rahul!"). It needs no extra template, because a tap opens WhatsApp's 24-hour reply window.
+
+
+---
+
+# Resubmission draft: a Utility version of the question
+
+Meta's classifier reacts to promotional tone ("special meal", "What would you like?"). This version reads as a confirmation request for a meal the resident is already part of. **Submit it under a new name** (an approved template's category can't be changed by editing). Once it's approved, the code switches to it with a one-line change (`SPECIAL_MEAL_QUESTION_TEMPLATE.name`).
+
+| Field | Value |
+|---|---|
+| Name | `stayo_meal_choice_request` |
+| Category | Utility |
+| Language | English |
+| Footer | `Stayo Property Management` |
+| Buttons | Quick reply, in order: `Veg`, `Non Veg`, `I'm away` |
+| Samples | `{{1}}` Shiva · `{{2}}` Sunday lunch, 11 Oct · `{{3}}` Chicken Biryani or Veg Biryani · `{{4}}` 9:30 AM |
+
+```
+Hi {{1}}, please confirm your meal for {{2}}: {{3}}.
+Reply by {{4}} using the buttons below.
+
+If you won't be at the hostel for this meal, tap I'm away.
+```
+
+In the submission's description: *"Sent to a hostel resident the evening before a scheduled meal they are enrolled in, asking them to confirm veg or non-veg so the kitchen cooks the right quantity. Not promotional."*
