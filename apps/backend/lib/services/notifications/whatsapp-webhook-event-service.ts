@@ -7,6 +7,7 @@ import { MetaWhatsAppProvider, maskWhatsAppPhone } from "./providers/whatsapp/me
 import { ownerWhatsAppAssistantService } from "./owner-whatsapp-assistant";
 import { routeInboundMessage } from "./routing/message-router";
 import { resolveSenderIdentity } from "./routing/identity-resolver";
+import { specialMealService } from "@/src/services/meals/special-meal-service";
 import { INTENTS, defaultIntentResolver } from "./routing/intent-resolvers";
 import {
   ANY_ROLE,
@@ -668,6 +669,15 @@ export class WhatsAppWebhookEventService {
         allowedRoles: ANY_ROLE,
         handler: ({ message, identity }) =>
           commandCenterService.handleText(message.from, message.body, identity),
+      },
+      [INTENTS.MEAL_CHOICE]: {
+        name: INTENTS.MEAL_CHOICE,
+        description: "A resident's answer to a special-meal question (Veg / Non-veg / I'm away / skip).",
+        // ANY_ROLE on purpose: the handler self-authorises against the sender's
+        // own residency and declines otherwise, so a guardian or stranger never
+        // receives a permission-denied reply for typing "veg".
+        allowedRoles: ANY_ROLE,
+        handler: ({ message, identity }) => specialMealService.handleWhatsAppReply(message.from, message.body, identity),
       },
       [INTENTS.INTERACTIVE_REPLY]: {
         name: INTENTS.INTERACTIVE_REPLY,

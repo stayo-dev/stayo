@@ -5,6 +5,13 @@ import { OCCUPYING_ALLOCATION_WHERE } from "@/lib/services/room-capacity-service
 import { normalizeMealTimings } from "@/lib/services/food/meal-timings";
 import { whatsAppTemplateDeliveryService, type WhatsAppTemplateDeliveryInput } from "@/lib/services/notifications/whatsapp-template-delivery";
 import { MetaWhatsAppProvider } from "@/lib/services/notifications/providers/whatsapp";
+import type { SenderIdentity } from "@/lib/services/notifications/routing/types";
+import {
+  answeredReply,
+  closedReply,
+  decodeMealPayload,
+  parseTypedChoice,
+} from "@/lib/services/notifications/providers/whatsapp/special-meal-template-contract";
 import type { HeadcountLeave } from "@/src/services/stay/stay-board";
 import { fromDbDate, toDbDate } from "@/src/services/stay/stay-rows";
 import { isMealType, type MealType } from "./meal-ratio";
@@ -248,9 +255,77 @@ export function createSpecialMealService(deps: {
     });
   }
 
-  // handleWhatsAppReply — Task 6. runRound — Task 7.
+  async function recordWhatsApp(occasion: any, tenantId: string, serveDate: string, choice: MealChoice) {
+    const key = { occasion_id: occasion.id, serve_date: toDbDate(serveDate), tenant_id: tenantId };
+    await db.special_meal_answers.upsert({
+      where: { occasion_id_serve_date_tenant_id: key },
+      create: { ...key, hostel_id: occasion.hostel_id, choice, source: "WHATSAPP", recorded_by: null },
+      update: { choice, source: "WHATSAPP", recorded_by: null, updated_at: new Date() },
+    });
+  }
 
-  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer };
+  async function handleWhatsAppReply(phone: string, body: string, identity: SenderIdentity, now: Date = new Date()) {
+    const guardianOf = new Set(identity.guardianResidents.map((g) => g.tenantId));
+    const own = identity.residents.filter((r) => !guardianOf.has(r.tenantId));
+    if (own.length === 0) return { handled: false };
+
+    const decoded = decodeMealPayload(body);
+    if (decoded) {
+      const mine = own.find((r) => r.tenantId === decoded.tenantId);
+      if (!mine) {
+        logger.warn("special_meal.payload_tenant_not_own", { tenant_id: decoded.tenantId });
+        return { handled: false };
+      }
+      const occasion = await db.special_meal_occasions.findFirst({ where: { id: decoded.occasionId, hostel_id: mine.hostelId } });
+      if (!occasion) return { handled: false };
+      const cutoffAt = await cutoffFor(occasion, decoded.serveDate);
+      const copy = { serveDate: decoded.serveDate, mealType: occasion.meal_type, cutoffAt };
+      if (now >= cutoffAt) {
+        await sendText(phone, closedReply(copy));
+        return { handled: true, outcome: "CLOSED" };
+      }
+      await recordWhatsApp(occasion, decoded.tenantId, decoded.serveDate, decoded.choice);
+      await sendText(phone, answeredReply({ ...copy, choice: decoded.choice }));
+      return { handled: true, outcome: "ANSWERED" };
+    }
+
+    const choice = parseTypedChoice(body);
+    if (!choice) return { handled: false };
+
+    const today = istDateOf(now);
+    const dates = [today, addDaysIso(today, 1)];
+    if (own.length > 1) {
+      await sendText(phone, "Please tap a button in the meal message so we know who it's for.");
+      return { handled: true, outcome: "AMBIGUOUS" };
+    }
+    const resident = own[0];
+    const occasions = await db.special_meal_occasions.findMany({
+      where: { hostel_id: resident.hostelId, is_active: true, weekday: { in: dates.map(weekdayOfIso) } },
+    });
+    const candidates: Array<{ occasion: any; serveDate: string; cutoffAt: Date }> = [];
+    for (const occasion of occasions as any[]) {
+      for (const serveDate of dates) {
+        if (weekdayOfIso(serveDate) !== occasion.weekday) continue;
+        candidates.push({ occasion, serveDate, cutoffAt: await cutoffFor(occasion, serveDate) });
+      }
+    }
+    if (candidates.length === 0) return { handled: false };
+
+    const open = candidates.filter((c) => now < c.cutoffAt).sort((a, b) => a.cutoffAt.getTime() - b.cutoffAt.getTime());
+    if (open.length === 0) {
+      const latest = candidates.sort((a, b) => b.cutoffAt.getTime() - a.cutoffAt.getTime())[0];
+      await sendText(phone, closedReply({ serveDate: latest.serveDate, mealType: latest.occasion.meal_type, cutoffAt: latest.cutoffAt }));
+      return { handled: true, outcome: "CLOSED" };
+    }
+    const target = open[0];
+    await recordWhatsApp(target.occasion, resident.tenantId, target.serveDate, choice);
+    await sendText(phone, answeredReply({ choice, serveDate: target.serveDate, mealType: target.occasion.meal_type, cutoffAt: target.cutoffAt }));
+    return { handled: true, outcome: "ANSWERED" };
+  }
+
+  // runRound — Task 7.
+
+  return { listOccasions, createOccasion, updateOccasion, getCount, setOwnerAnswer, handleWhatsAppReply };
 }
 
 export const specialMealService = createSpecialMealService();
