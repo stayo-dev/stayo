@@ -2,7 +2,8 @@ import { lazy, Suspense } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { Navigate, Outlet, Route, useParams } from 'react-router-dom';
 import { queryClient } from '@lib/queryClient';
-import { AuthProvider } from '@context/AuthContext';
+import { AuthProvider, useAuth } from '@context/AuthContext';
+import { maySessionExist } from '@lib/auth/sessionRestore';
 import { StayoLoadingScreen } from '@shared/ui/brand';
 import { resolveHomepageVersion } from '@/app/pages/public/homepageVersion';
 
@@ -76,6 +77,14 @@ function ManagerInviteTemplateRedirect() {
   return <Navigate to={token ? `/admin/manager-invitation/${token}` : '/login'} replace />;
 }
 
+function safeLocalStorage(): Storage | null {
+  try {
+    return window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function PublicShell() {
   return (
     <QueryClientProvider client={queryClient}>
@@ -106,6 +115,21 @@ function AuthShell() {
  * `?homepage=chooser` works on a deployed build without a redeploy.
  */
 function RootHomepage() {
+  const { loading } = useAuth();
+  // `/` is what reopening Stayo lands on (the installed app's `start_url`).
+  // While a session that may exist is still being restored, show the boot
+  // screen rather than the signed-out homepage and its "Log in" button —
+  // `AuthProvider` sends a restored user on to their app (see
+  // `signedInEntryRedirect`). Anonymous visitors never wait: with no hint,
+  // Clerk is not loaded and `loading` ends at once.
+  const restoring =
+    loading &&
+    maySessionExist({
+      cookieHeader: typeof document === 'undefined' ? '' : document.cookie,
+      storage: typeof window === 'undefined' ? null : safeLocalStorage(),
+    });
+  if (restoring) return <PublicRouteFallback />;
+
   const version = resolveHomepageVersion({
     envValue: import.meta.env.VITE_HOMEPAGE,
     search: typeof window === 'undefined' ? '' : window.location.search,

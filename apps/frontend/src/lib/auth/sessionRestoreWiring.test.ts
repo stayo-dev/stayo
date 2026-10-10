@@ -58,6 +58,42 @@ describe('restore mode per shell', () => {
     expect(clerkRestoreModeForPath('/onboarding')).toBe('load');
   });
 
+  it('the installed app reopens on "/" — the page that must recognise a signed-in user', () => {
+    const manifest = JSON.parse(fs.readFileSync(path.join(SRC, '../public/site.webmanifest'), 'utf8'));
+    expect(manifest.start_url).toBe('/');
+    expect(clerkRestoreModeForPath(manifest.start_url)).toBe('load-if-signed-in');
+  });
+
+  it('"/" holds the boot screen while a possible session is restored, instead of showing "Log in"', () => {
+    const routes = read('app/router/PublicRoutes.tsx');
+    const root = routes.slice(routes.indexOf('function RootHomepage'));
+    expect(root).toMatch(/const \{ loading \} = useAuth\(\)/);
+    expect(root).toMatch(/maySessionExist\(/);
+    expect(root).toMatch(/if \(restoring\) return <PublicRouteFallback \/>/);
+  });
+
+  it('AuthContext redirects signed-in users from entry pages, and keeps the hint in step with the session', () => {
+    const src = read('context/AuthContext.tsx');
+    expect(src).toMatch(/signedInEntryRedirect\(\{\s*pathname: location\.pathname/);
+    // Set on every sign-in and every restore; cleared on logout and server expiry.
+    expect(src.match(/writeSessionHint\(hintStorage\(\), true\)/g)).toHaveLength(2);
+    expect(src.match(/writeSessionHint\(hintStorage\(\), false\)/g)).toHaveLength(2);
+    expect(src).toMatch(/writeSessionHint\(hintStorage\(\), restored !== null\)/);
+    expect(src).toMatch(/maySessionExist\(\{/);
+  });
+
+  it('the homepage login hands a resident with a tenancy to their dashboard', () => {
+    expect(read('app/pages/public/HomePage.tsx')).toMatch(/crossSurfaceHandoff\([^)]*, 'home'\)/);
+  });
+
+  it('nothing but the boolean hint is written to localStorage by the auth layer', () => {
+    for (const rel of ['context/AuthContext.tsx', 'lib/auth/sessionRestore.ts', 'lib/auth/clerkLoader.ts', 'lib/auth/clerkBrowser.ts']) {
+      const writes = [...read(rel).matchAll(/localStorage\.setItem\(([^,]+),/g)].map((m) => m[1].trim());
+      expect(writes).toEqual([]);
+    }
+    expect(read('lib/auth/sessionRestore.ts')).toMatch(/storage\?\.setItem\(SESSION_HINT_KEY, '1'\)/);
+  });
+
   it('AuthContext reaches the Clerk loader only through import()', () => {
     const src = read('context/AuthContext.tsx');
     expect(src).toContain("await import('@lib/auth/clerkLoader')");

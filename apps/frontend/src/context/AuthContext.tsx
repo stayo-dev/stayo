@@ -7,10 +7,11 @@ import { hasClerkSession, isClerkLoaded, subscribeToClerkSession, waitForClerkLo
 import { readClerkConfig } from '@lib/auth/clerkConfig';
 import {
   clerkRestoreModeForPath,
-  hasClerkSignedInHint,
   initialClerkPhase,
-  signedInLoginRedirect,
+  maySessionExist,
+  signedInEntryRedirect,
   startSessionRestore,
+  writeSessionHint,
   type ClerkRestoreMode,
   type SessionRestoreHandle,
 } from '@lib/auth/sessionRestore';
@@ -155,6 +156,15 @@ const clearSessionScopedStorage = (options: LogoutOptions = {}) => {
   if (preservedNotice) sessionStorage.setItem(SESSION_EXPIRY_NOTICE_KEY, preservedNotice);
 };
 
+/** `localStorage`, or null where it is unavailable (SSR, strict privacy modes). */
+function hintStorage(): Storage | null {
+  try {
+    return typeof window === 'undefined' ? null : window.localStorage;
+  } catch {
+    return null;
+  }
+}
+
 function buildAuthUser(data: any): AuthUser {
   return {
     email: data.email,
@@ -210,6 +220,7 @@ export function AuthProvider({
     // revoked it server-side) and any pre-Clerk Supabase one.
     await clearLocalSessions();
     restoreRef.current?.supersede();
+    writeSessionHint(hintStorage(), false);
     setUser(null);
     queryClient.clear();
     clearSessionScopedStorage(options);
@@ -230,8 +241,9 @@ export function AuthProvider({
   };
 
   useEffect(() => {
-    if (!user || location.pathname !== '/login') return;
-    const destination = signedInLoginRedirect({
+    if (!user) return;
+    const destination = signedInEntryRedirect({
+      pathname: location.pathname,
       role: user.role,
       tenantId: user.tenant_id,
       justSignedIn: justSignedInRef.current,
@@ -253,7 +265,10 @@ export function AuthProvider({
         configured: config.configured,
         mode,
         alreadyLoaded: isClerkLoaded(),
-        hasSignedInHint: hasClerkSignedInHint(typeof document === 'undefined' ? '' : document.cookie),
+        hasSignedInHint: maySessionExist({
+          cookieHeader: typeof document === 'undefined' ? '' : document.cookie,
+          storage: hintStorage(),
+        }),
       }),
       loadClerk: async (signal) => {
         if (mode === 'provider') return waitForClerkLoaded(signal);
@@ -271,7 +286,10 @@ export function AuthProvider({
         return Boolean(data.session);
       },
       fetchProfile: async () => buildAuthUser((await api.get('/auth/me')).data),
-      setUser,
+      setUser: (restored) => {
+        writeSessionHint(hintStorage(), restored !== null);
+        setUser(restored);
+      },
       settle: () => setLoading(false),
     });
     restoreRef.current = handle;
@@ -310,6 +328,7 @@ export function AuthProvider({
       const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
       justSignedInRef.current = true;
       restoreRef.current?.supersede();
+      writeSessionHint(hintStorage(), true);
       setUser(userData);
       return userData;
     } catch (error: unknown) {
@@ -359,6 +378,7 @@ export function AuthProvider({
       const userData = buildAuthUser({ ...response.data, email: normalizedEmail });
       justSignedInRef.current = true;
       restoreRef.current?.supersede();
+      writeSessionHint(hintStorage(), true);
       setUser(userData);
       return userData;
     } catch (error: unknown) {
@@ -401,6 +421,7 @@ export function AuthProvider({
       setExpiredMessage(message);
       persistSessionExpiryNotice(message, detail?.reason || 'expired');
       restoreRef.current?.supersede();
+      writeSessionHint(hintStorage(), false);
       setUser(null);
       queryClient.clear();
       clearSessionScopedStorage({ preserveSessionNotice: true });
