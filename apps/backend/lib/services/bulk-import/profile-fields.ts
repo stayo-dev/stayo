@@ -1,6 +1,7 @@
 /**
- * Tenant details an owner can supply in the import workbook, so the tenant is
- * not asked for them again at onboarding.
+ * Tenant details an owner can supply in the import workbook — date of birth,
+ * gender, tenant type, guardian and permanent address — so the tenant is not
+ * asked for them again at onboarding.
  *
  * Onboarding already prefills every screen from the tenancy record — the
  * activation context returns `tenants.*` and the screens read it. What was
@@ -16,7 +17,9 @@
  * What this never does:
  * - touch agreement, signature, rules-acceptance, activation or KYC fields —
  *   the tenant still reviews and signs the agreement themselves;
- * - collect a photo or documents (they cannot come from a spreadsheet);
+ * - collect a photo or documents (they cannot come from a spreadsheet), or
+ *   college/course/roll-number and company/office/job-role details — those
+ *   stay with the tenant at onboarding (product decision, 2026-10-10);
  * - mark anything verified. The one consequence of import data for
  *   verification is the guardian rule in `guardianSuppliedByImport`, which is
  *   keyed to *this tenancy's own import row*, never to a number merely being
@@ -55,12 +58,6 @@ export interface ImportedProfileFields {
   guardian_name?: string;
   guardian_phone?: string;
   guardian_relation?: string;
-  college_name?: string;
-  course?: string;
-  roll_number?: string;
-  office_name?: string;
-  office_location?: string;
-  job_role?: string;
   permanent_address?: string;
 }
 
@@ -71,12 +68,6 @@ export const PROFILE_FIELD_KEYS = [
   "guardian_name",
   "guardian_phone",
   "guardian_relation",
-  "college_name",
-  "course",
-  "roll_number",
-  "office_name",
-  "office_location",
-  "job_role",
   "permanent_address",
 ] as const satisfies readonly (keyof ImportedProfileFields)[];
 
@@ -92,12 +83,6 @@ export const PROFILE_COLUMNS: Record<keyof ImportedProfileFields, string[]> = {
   guardian_name: ["Guardian Name", "guardian_name", "Parent Name", "parent_name"],
   guardian_phone: ["Guardian Phone", "guardian_phone", "Parent Phone", "parent_phone", "Guardian Mobile"],
   guardian_relation: ["Guardian Relation", "guardian_relation", "Relation", "relation"],
-  college_name: ["College", "college", "college_name", "College Name"],
-  course: ["Course", "course"],
-  roll_number: ["Roll Number", "roll_number", "Roll No"],
-  office_name: ["Company", "company", "office_name", "Office Name"],
-  office_location: ["Office Location", "office_location"],
-  job_role: ["Job Role", "job_role", "Designation"],
   permanent_address: ["Permanent Address", "permanent_address", "Address", "address"],
 };
 
@@ -221,22 +206,10 @@ export function normalizeProfileFields(fields: ImportedProfileFields, today: Dat
   if (type) out.profile_type = type;
   const guardianPhone = fields.guardian_phone ? normalizeIndianPhone(fields.guardian_phone) : null;
   if (guardianPhone) out.guardian_phone = guardianPhone;
-  for (const key of [
-    "guardian_name",
-    "guardian_relation",
-    "college_name",
-    "course",
-    "office_name",
-    "office_location",
-    "job_role",
-    "permanent_address",
-  ] as const) {
+  for (const key of ["guardian_name", "guardian_relation", "permanent_address"] as const) {
     const value = String(fields[key] ?? "").trim();
     if (value) out[key] = value;
   }
-  // Onboarding stores roll numbers uppercased (`saveProfile`).
-  const roll = String(fields.roll_number ?? "").trim().toUpperCase();
-  if (roll) out.roll_number = roll;
   return out;
 }
 
@@ -253,8 +226,7 @@ function toIsoDate(date: Date): string {
  * Only fields the owner actually supplied are written — a blank stays blank
  * for the tenant to fill. The column mapping mirrors onboarding exactly:
  * guardian phone goes to both `phone_2` and `guardian_phone` (`saveGuardian`
- * writes both, and readers use `phone_2 || guardian_phone`); student fields
- * only for a student, office fields only for a working professional.
+ * writes both, and readers use `phone_2 || guardian_phone`).
  *
  * Deliberately absent: anything about agreements, signatures, rules
  * acceptance, activation, profile completion or documents.
@@ -271,19 +243,6 @@ export function tenantPrefillData(fields: ImportedProfileFields): Record<string,
     data.phone_2 = fields.guardian_phone;
   }
   if (fields.permanent_address) data.permanent_address = fields.permanent_address;
-
-  // A blank type means the owner did not say; onboarding treats that as a
-  // student (`saveProfile`'s default), so student details still apply.
-  const isProfessional = fields.profile_type === "WORKING_PROFESSIONAL";
-  if (!isProfessional) {
-    if (fields.college_name) data.college_name = fields.college_name;
-    if (fields.course) data.course = fields.course;
-    if (fields.roll_number) data.roll_number = fields.roll_number;
-  } else {
-    if (fields.office_name) data.office_name = fields.office_name;
-    if (fields.office_location) data.office_location = fields.office_location;
-    if (fields.job_role) data.job_role = fields.job_role;
-  }
   return data;
 }
 

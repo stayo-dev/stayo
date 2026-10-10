@@ -41,7 +41,6 @@ export const ISSUE_CODES = [
   "GUARDIAN_PHONE_INVALID",
   "GUARDIAN_PHONE_IS_TENANT",
   "TEXT_TOO_LONG",
-  "ROLL_NUMBER_TAKEN",
 ] as const;
 
 export type IssueCode = (typeof ISSUE_CODES)[number];
@@ -126,10 +125,6 @@ const SEVERITY: Record<IssueCode, IssueSeverity> = {
   GUARDIAN_PHONE_INVALID: "BLOCKER",
   GUARDIAN_PHONE_IS_TENANT: "BLOCKER",
   TEXT_TOO_LONG: "BLOCKER",
-  // Onboarding refuses a roll number another of the owner's tenants already
-  // has (`assertUniqueRollNumberForTenant`); prefilling one would strand the
-  // tenant on a screen they cannot submit.
-  ROLL_NUMBER_TAKEN: "BLOCKER",
 };
 
 /**
@@ -324,7 +319,7 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
   }),
   TENANT_TYPE_INVALID: (c) => ({
     title: `"${c.value ?? ""}" isn't a tenant type.`,
-    detail: `Use Student or Working Professional. It decides whether the tenant is asked for college or office details.`,
+    detail: `Use Student or Working Professional. Or clear the cell and the tenant chooses it themselves.`,
     field: "profile_type",
     fix: { kind: "PICK_OPTION", options: ["Student", "Working Professional"] },
   }),
@@ -343,14 +338,6 @@ const COPY: Record<IssueCode, (c: IssueContext) => Copy> = {
   TEXT_TOO_LONG: (c) => ({
     title: `The ${c.fieldLabel ?? "text"} is too long.`,
     detail: `Shorten it — an address can be up to 500 characters, other details up to 200.`,
-    fix: { kind: "EDIT_FIELD" },
-  }),
-  ROLL_NUMBER_TAKEN: (c) => ({
-    title: c.otherRows?.length
-      ? `Roll number "${c.value ?? ""}" is also on row ${c.otherRows.join(", ")}.`
-      : `Roll number "${c.value ?? ""}" already belongs to another of your tenants.`,
-    detail: `Each tenant needs their own roll number. Correct it, or clear the cell and the tenant enters it themselves.`,
-    field: "roll_number",
     fix: { kind: "EDIT_FIELD" },
   }),
   HOSTEL_STAMP_MISMATCH: (c) => ({
@@ -413,7 +400,6 @@ const GROUP_TITLE: Record<IssueCode, (count: number) => string> = {
   GUARDIAN_PHONE_INVALID: (n) => `${n} rows have a guardian phone that isn't a mobile number.`,
   GUARDIAN_PHONE_IS_TENANT: (n) => `${n} rows give the tenant's own number as the guardian's.`,
   TEXT_TOO_LONG: (n) => `${n} rows have a detail that's too long.`,
-  ROLL_NUMBER_TAKEN: (n) => `${n} rows use a roll number that's already taken.`,
 };
 
 /**

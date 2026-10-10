@@ -3578,7 +3578,7 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
 - **Status:** Accepted
 - **Context:** Bulk import created every tenancy through `createInvitation` (ADR-165), but carried only name, phone, email, room and money terms. Onboarding already prefills every screen from `tenants.*`, so owners who knew their residents' details still had each tenant re-enter them. Owners also asked that a guardian they supply not have to be verified again by OTP.
 - **Decision:**
-  - Thirteen optional workbook columns (Date of Birth, Gender, Tenant Type, Guardian Name, Guardian Phone, Guardian Relation, College, Course, Roll Number, Company, Office Location, Job Role, Permanent Address), validated by onboarding's own rules and written onto the tenancy at confirm. No schema change; no change to `createInvitation` or the single-invite path.
+  - Seven optional workbook columns (Date of Birth, Gender, Tenant Type, Guardian Name, Guardian Phone, Guardian Relation, Permanent Address), validated by onboarding's own rules and written onto the tenancy at confirm. College/course/roll-number and company/office/job-role are deliberately excluded — the tenant gives those. No schema change; no change to `createInvitation` or the single-invite path.
   - The guardian OTP is skipped when — and only when — this tenancy's executed import row supplied both the guardian's name and that exact number. The owner is vouching for a guardian they named; this is provenance, not "a number exists in the database". Implemented once in `isGuardianPhoneVerifiedForTenant`, so the activation context, the GUARDIAN step and the owner's view agree.
   - Imported data never signs, accepts, activates, completes a profile or verifies documents.
 - **Consequences:**

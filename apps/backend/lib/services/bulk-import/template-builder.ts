@@ -135,8 +135,8 @@ const TENANT_HEADERS = [
   "Payment Method",
   "Payment Reference",
   "Notes",
-  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation, College,
-  // Course, Roll Number, Company, Office Location, Job Role, Permanent Address.
+  // Date of Birth, Gender, Tenant Type, Guardian Name/Phone/Relation,
+  // Permanent Address.
   ...PROFILE_HEADERS,
 ];
 
@@ -187,7 +187,6 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "Tenant details (optional — every column from Date of Birth onwards)",
     "• Whatever you fill in here is already filled in when the tenant opens their invitation, so they are not asked for it again. Leave a cell blank and the tenant fills it in themselves.",
     "• Date of Birth is DD/MM/YYYY. Gender is Male, Female, Other or Prefer not to say. Tenant Type is Student or Working Professional.",
-    "• College, Course and Roll Number are for students; Company, Office Location and Job Role for working professionals.",
     "• Guardian: if you give both the Guardian Name and Guardian Phone, the tenant is not asked to verify that number with a code — you are vouching for it. Only fill it in if you are sure it is right.",
     "• The tenant still adds their own photo and ID documents, and reads and signs the agreement themselves. Nothing here signs anything for them.",
     "",
@@ -334,12 +333,6 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
     "Ramesh Kumar",
     "9876500001",
     "Father",
-    "ABC Engineering College",
-    "B.Tech CSE",
-    "21CS045",
-    "",
-    "",
-    "",
     "12 MG Road, Hyderabad",
   ]);
   if (example) example.font = GREY;

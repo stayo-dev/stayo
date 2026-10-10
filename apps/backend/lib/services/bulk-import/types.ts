@@ -4,8 +4,8 @@ import type { ImportedProfileFields } from "./profile-fields";
 
 /**
  * One tenant row. Extends the owner-supplied onboarding details
- * (`profile-fields.ts`): date of birth, gender, tenant type, guardian, and
- * college/office/address — prefilled for the tenant at onboarding.
+ * (`profile-fields.ts`): date of birth, gender, tenant type, guardian and
+ * permanent address — prefilled for the tenant at onboarding.
  */
 export interface TenantImportRow extends ImportedProfileFields {
   name: string;

@@ -41,12 +41,6 @@ const FIELD_LABELS: Record<string, string> = {
   guardian_name: "guardian name",
   guardian_phone: "guardian phone",
   guardian_relation: "guardian relation",
-  college_name: "college",
-  course: "course",
-  roll_number: "roll number",
-  office_name: "company",
-  office_location: "office location",
-  job_role: "job role",
   permanent_address: "permanent address",
 };
 
@@ -124,8 +118,6 @@ export class BulkImportValidationService {
     const validatedRows: ValidatedRow[] = [];
     const existingPhones = await this.getExistingPhones(ownerId);
     const existingEmails = await this.getExistingEmails(ownerId);
-    const existingRollNumbers = await this.getExistingRollNumbers(ownerId);
-    const rollNumbersSeen = new Map<string, number>();
     const savedRooms = await this.getHostelRooms(hostelId);
     const savedRoomNumbers = new Set(savedRooms.map((r) => r.room_no.trim().toUpperCase()));
     const hostelRooms = [
@@ -298,21 +290,6 @@ export class BulkImportValidationService {
           fieldLabel: FIELD_LABELS[problem.field] ?? problem.field,
         });
         issues.push({ ...issue, field: issue.field ?? problem.field });
-      }
-
-      // Same uniqueness rule onboarding applies, against the same tenants.
-      const rollKey = String(row.roll_number ?? "").trim().toUpperCase();
-      if (rollKey) {
-        const otherRow = rollNumbersSeen.get(rollKey);
-        if (existingRollNumbers.has(rollKey) || otherRow !== undefined) {
-          errors.push({ row: rowNumber, field: "roll_number", message: "Roll number already used", value: row.roll_number });
-          issues.push(buildIssue("ROLL_NUMBER_TAKEN", rowNumber, {
-            value: row.roll_number,
-            otherRows: otherRow !== undefined ? [otherRow] : undefined,
-          }));
-        } else {
-          rollNumbersSeen.set(rollKey, rowNumber);
-        }
       }
 
       let roomForRow: any = null;
@@ -610,19 +587,6 @@ export class BulkImportValidationService {
   }
 
   /** People who cannot be imported again, by email. Live tenancies only. */
-  /**
-   * Roll numbers already held by this owner's tenants — the same set
-   * `assertUniqueRollNumberForTenant` checks at onboarding (any tenancy that
-   * is not CANCELLED), uppercased as onboarding stores them.
-   */
-  private async getExistingRollNumbers(ownerId: string): Promise<Set<string>> {
-    const rows = await prisma.tenants.findMany({
-      where: { owner_id: ownerId, roll_number: { not: null }, status: { not: "CANCELLED" } },
-      select: { roll_number: true },
-    });
-    return new Set(rows.map((r: { roll_number: string | null }) => String(r.roll_number ?? "").trim().toUpperCase()).filter(Boolean));
-  }
-
   private async getExistingEmails(ownerId: string): Promise<Set<string>> {
     const live = await prisma.tenants.findMany({
       where: { owner_id: ownerId, status: { in: LIVE_TENANCY_STATUSES as any } },
