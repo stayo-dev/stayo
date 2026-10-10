@@ -1389,3 +1389,18 @@ guardian contact, and a resident's STOP must not switch off their own guardian's
 
 See [[Features]], [[Database]], [[APIs]].
 
+## Tenants list filters and invitation stages (as implemented 2026-10-11)
+
+Source: `apps/frontend/src/features/owner-tenants/tenantListFilters.ts` (`inviteStageOf`, `isUnpaid`). See [[Features]].
+
+- **All**: every tenant in the selected hostel scope.
+- **Overdue**: owes money past its due date (`payment_status = OVERDUE` and overdue amount > 0), from real obligations. Independent of invitation state, so an invited tenant can be both Overdue and Invited.
+- **Invited**: tenancy is still `invited` (not yet active). Each is in exactly one stage, from the latest invitation, checked in this order:
+  - **No link sent**: no invitation, or it was cancelled.
+  - **Awaiting acceptance**: invitation `ACTIVATED` (account made); the tenancy still needs accepting.
+  - **Link expired**: `expires_at` has passed (links last 7 days). Fixed by a resend.
+  - **Creating account**: `activation_started_at` is set (or status `ACTIVATION_STARTED`).
+  - **Opened**: `opened_at` is set (or status `OPENED`).
+  - **Link sent** (was "Not opened"): a live link that hasn't been opened.
+- A resend (single or bulk) creates a fresh 7-day invitation with `opened_at`/`activation_started_at` cleared, so the tenant moves to **Link sent**.
+- Payment schedule badge: the billing timeline marks unpaid obligations `overdue` (past due), `due_soon` (0–5 days), `pending` (6–30 days) and `upcoming` (>30 days). The owner profile shows both `pending` and `upcoming` as **Upcoming**.

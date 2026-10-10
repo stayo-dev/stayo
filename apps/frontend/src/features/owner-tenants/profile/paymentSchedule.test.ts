@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { groupPaymentSchedule, describeNextPayment, toScheduleItem } from './paymentSchedule';
+import { groupPaymentSchedule, describeNextPayment, toScheduleItem, previewRows, SECTION_PREVIEW_LIMIT } from './paymentSchedule';
 
 const TODAY = '2026-09-02';
 
@@ -167,5 +167,25 @@ describe('a charge the owner withdrew', () => {
   it('is not offered as the next scheduled payment', () => {
     const schedule = groupPaymentSchedule([cancelled], new Date('2026-09-01T00:00:00.000Z'));
     expect(schedule.next).toBeNull();
+  });
+});
+
+describe('previewRows', () => {
+  const rows = Array.from({ length: 11 }, (_, i) => i);
+
+  it('shows the first few and counts the rest', () => {
+    expect(previewRows(rows, 2, false)).toEqual({ visible: [0, 1], hidden: 9 });
+  });
+  it('shows everything once expanded', () => {
+    expect(previewRows(rows, 2, true)).toEqual({ visible: rows, hidden: 0 });
+  });
+  it('never cuts a section with no limit (overdue)', () => {
+    expect(previewRows(rows, SECTION_PREVIEW_LIMIT.overdue, false).hidden).toBe(0);
+  });
+  it('does not hide a single row behind a button', () => {
+    expect(previewRows([0, 1, 2], 2, false)).toEqual({ visible: [0, 1, 2], hidden: 0 });
+  });
+  it('leaves short sections alone', () => {
+    expect(previewRows([0], 2, false)).toEqual({ visible: [0], hidden: 0 });
   });
 });

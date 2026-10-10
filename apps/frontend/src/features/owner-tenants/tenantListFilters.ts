@@ -40,8 +40,10 @@ export const DUES_BUCKETS: { id: DuesBucket; label: string }[] = [
 
 /** Most actionable first: an expired link is dead until the owner resends it. */
 export const INVITE_STAGES: { id: InviteStage; label: string; hint: string }[] = [
-  { id: 'expired', label: 'Link expired', hint: 'Their link no longer works. Open a tenant and tap Send new link.' },
-  { id: 'not-opened', label: 'Not opened', hint: "They haven't opened the link yet. A WhatsApp nudge usually helps." },
+  { id: 'expired', label: 'Link expired', hint: 'Their 7-day link has run out and no longer works. Send everyone a new one below, or open a tenant to send just theirs.' },
+  // Was "Not opened". A working link has gone out and is waiting on them —
+  // which is also exactly where a tenant lands after a resend.
+  { id: 'not-opened', label: 'Link sent', hint: "A working link has been sent; they haven't opened it yet. A WhatsApp nudge usually helps." },
   { id: 'opened', label: 'Opened', hint: "They've seen the offer but haven't started creating an account." },
   { id: 'signing-up', label: 'Creating account', hint: 'They started signing up and have not finished yet.' },
   { id: 'accepting', label: 'Awaiting acceptance', hint: 'Account is ready; they still need to accept the tenancy.' },
