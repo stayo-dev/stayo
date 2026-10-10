@@ -21,6 +21,7 @@ import {
   TICKET_CATEGORIES,
   canSubmitReport,
   classifyProblem,
+  reportBlocker,
   hostelChannel,
   searchGuides,
   suggestCategory,
@@ -83,6 +84,8 @@ export function HelpCenter({
   const [subject, setSubject] = useState('');
   const [description, setDescription] = useState('');
   const [justFiled, setJustFiled] = useState(false);
+  /** Set once they tap Send too early; the reason then updates as they type. */
+  const [showBlocker, setShowBlocker] = useState(false);
 
   const matches = useMemo(() => searchGuides(query, audience), [query, audience]);
   const verdict = useMemo(() => classifyProblem(query), [query]);
@@ -107,6 +110,7 @@ export function HelpCenter({
       // before it has been read. Being heard means seeing where it went.
       setJustFiled(true);
       setReporting(false);
+      setShowBlocker(false);
       setSubject('');
       setDescription('');
       setCategory(null);
@@ -118,11 +122,13 @@ export function HelpCenter({
   const openReport = () => {
     if (!subject && query.trim()) setSubject(query.trim());
     setJustFiled(false);
+    setShowBlocker(false);
     setReporting(true);
   };
 
   const tickets = ticketsQuery.data ?? [];
   const canSubmit = canSubmitReport(subject, description) && !createMutation.isPending;
+  const blocker = reportBlocker(subject, description);
 
   const embedded = chrome === 'embedded';
 
@@ -386,6 +392,11 @@ export function HelpCenter({
               className="mt-2.5 w-full resize-none rounded-xl border px-3.5 py-2.5 text-[13.5px] outline-none"
               style={{ borderColor: C.lineInput, background: C.paper, color: C.text }}
             />
+            {description.trim().length < MIN_DESCRIPTION_LENGTH && (
+              <p className="mt-1 text-right text-[11px]" style={{ color: C.textGhost }}>
+                {description.trim().length}/{MIN_DESCRIPTION_LENGTH} characters minimum
+              </p>
+            )}
 
             {/*
               A nudge, never a block. The classifier is a good guess, not an
@@ -409,6 +420,12 @@ export function HelpCenter({
               </p>
             )}
 
+            {showBlocker && blocker && (
+              <p role="alert" className="mt-2 text-[12px] font-semibold" style={{ color: '#B4453A' }}>
+                {blocker}
+              </p>
+            )}
+
             <div className="mt-3 flex gap-2">
               <button
                 type="button"
@@ -420,21 +437,24 @@ export function HelpCenter({
               </button>
               <button
                 type="button"
-                disabled={!canSubmit}
-                onClick={() => createMutation.mutate()}
-                className="flex flex-1 items-center justify-center gap-1.5 rounded-[11px] py-3 text-[13px] font-extrabold text-white disabled:opacity-50"
+                // Never disabled for missing text: a dead button reads as broken.
+                // Tapping it early explains what's missing instead.
+                disabled={createMutation.isPending}
+                aria-disabled={!canSubmit}
+                onClick={() => {
+                  if (!canSubmit) {
+                    setShowBlocker(true);
+                    return;
+                  }
+                  createMutation.mutate();
+                }}
+                className="flex flex-1 items-center justify-center gap-1.5 rounded-[11px] py-3 text-[13px] font-extrabold text-white disabled:opacity-50 aria-disabled:opacity-60"
                 style={{ fontFamily: FONT.display, background: C.clay }}
               >
                 {createMutation.isPending ? 'Sending…' : 'Send to Stayo'}
                 {!createMutation.isPending && <Send className="h-3.5 w-3.5" />}
               </button>
             </div>
-            {!canSubmitReport(subject, description) && (subject || description) && (
-              <p className="mt-2 text-[11.5px]" style={{ color: C.textGhost }}>
-                A line about what happened and at least {MIN_DESCRIPTION_LENGTH} characters of
-                detail — enough for someone to reproduce it.
-              </p>
-            )}
           </section>
         )}
 
