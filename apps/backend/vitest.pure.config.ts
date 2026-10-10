@@ -292,6 +292,8 @@ export default defineConfig({
       'tests/email-otp-service.test.ts',
       'tests/activation-email-gate.test.ts',
       'tests/invitation-nudge.test.ts',
+      'tests/invitation-resend-reopens-link.test.ts',
+      'tests/resend-invitation-route-link.test.ts',
       'tests/build-without-env.test.ts',
       // ADR-212 — guardian verification as a hostel policy. Pure: takes the
       // database's answers as arguments and reads nothing itself.

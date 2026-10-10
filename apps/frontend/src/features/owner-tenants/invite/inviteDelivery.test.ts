@@ -3,6 +3,7 @@ import {
   buildActivationShareText,
   buildWhatsAppShareUrl,
   copyActivationLink,
+  resendFailureBody,
   resolveInviteDelivery,
   resolveResendDelivery,
 } from './inviteDelivery';
@@ -239,6 +240,38 @@ describe('resolveResendDelivery', () => {
     );
 
     expect(outcome.activationLink).toBe(fresh);
+  });
+});
+
+describe('resend failure keeps the refreshed link (2026-10-10)', () => {
+  // A resend can mint a new token, which kills the link the screen cached.
+  // The route now returns the live link beside the error; the stale one must
+  // never be shared in its place.
+  const FRESH = 'https://app.test/activate/new-token';
+  const STALE = 'https://app.test/activate/old-token';
+
+  it('a 202 EMAIL_FALLBACK_REQUIRED body shares the refreshed link, not the cached one', () => {
+    const outcome = resolveResendDelivery(
+      { error: { code: 'EMAIL_FALLBACK_REQUIRED', message: 'WhatsApp failed' }, activation_link: FRESH },
+      STALE,
+    );
+    expect(outcome.channel).toBe('none');
+    expect(outcome.activationLink).toBe(FRESH);
+  });
+
+  it('a rejected 502 DELIVERY_FAILED is read as an undelivered resend carrying the refreshed link', () => {
+    const body = { error: { code: 'DELIVERY_FAILED', message: 'Template rejected' }, activation_link: FRESH };
+    const failed = resendFailureBody({ response: { status: 502, data: body } });
+    expect(failed).toEqual(body);
+    const outcome = resolveResendDelivery(failed, null);
+    expect(outcome).toMatchObject({ channel: 'none', activationLink: FRESH, needsEmail: false, reason: 'Template rejected' });
+  });
+
+  it('any other rejection is still an ordinary failure', () => {
+    expect(resendFailureBody({ response: { status: 400, data: { error: { code: 'VALIDATION_ERROR', message: 'x' } } } })).toBeNull();
+    expect(resendFailureBody({ response: { status: 502, data: { error: { code: 'DELIVERY_FAILED' } } } })).toBeNull();
+    expect(resendFailureBody(new Error('Network Error'))).toBeNull();
+    expect(resendFailureBody(undefined)).toBeNull();
   });
 });
 

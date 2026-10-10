@@ -15,7 +15,7 @@ import {
   Undo2,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { buildActivationShareText, buildWhatsAppShareUrl, resolveResendDelivery } from '../invite/inviteDelivery';
+import { buildActivationShareText, buildWhatsAppShareUrl, resendFailureBody, resolveResendDelivery } from '../invite/inviteDelivery';
 import { StatusPill } from '@shared/ui-patterns/StatusPill';
 import { canonicalPhone, formatIndianPhone, toLocalPhone } from '@shared/lib/phone';
 import { queryKeys } from '@lib/queryKeys';
@@ -151,10 +151,7 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
   // worked. When it fails, the owner is offered their own WhatsApp instead.
   const handleResend = async () => {
     setIsResending(true);
-    try {
-      const response = await tenantService.resendInvitation(tenant.phone);
-      const outcome = resolveResendDelivery(response, invitation?.activationLink ?? null);
-      refresh();
+    const report = (outcome: ReturnType<typeof resolveResendDelivery>) => {
       if (outcome.channel === 'whatsapp') {
         toast.success('Sent on WhatsApp');
       } else if (outcome.channel === 'email') {
@@ -178,8 +175,21 @@ export function InvitedTenantProfileView({ tenant }: { tenant: RealTenantDetail 
               : undefined,
         });
       }
+    };
+    try {
+      const response = await tenantService.resendInvitation(tenant.phone);
+      refresh();
+      report(resolveResendDelivery(response, invitation?.activationLink ?? null));
     } catch (error: any) {
-      toast.error(error?.response?.data?.error?.message || 'Failed to resend invitation');
+      // A 502 DELIVERY_FAILED rejects, but the link was still refreshed and
+      // the body carries the new one — the cached link may be dead now.
+      const failed = resendFailureBody(error);
+      if (failed) {
+        refresh();
+        report(resolveResendDelivery(failed, null));
+      } else {
+        toast.error(error?.response?.data?.error?.message || 'Failed to resend invitation');
+      }
     } finally {
       setIsResending(false);
     }

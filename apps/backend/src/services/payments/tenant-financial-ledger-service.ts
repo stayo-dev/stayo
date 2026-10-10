@@ -7,6 +7,11 @@ import { liveTenancyWhere } from "@/lib/tenancy/active-tenancy";
 
 const logger = getLogger("tenant.financial-ledger");
 
+/** `reference_type` of the debit a waiver writes (financial-correction-gateway). */
+export const WAIVER_REFERENCE_TYPE = "RENT_OBLIGATION_WAIVER";
+/** `reference_type` of the credit that reverses it when the obligation is restored. */
+export const WAIVER_REVERSAL_REFERENCE_TYPE = "RENT_OBLIGATION_WAIVER_REVERSAL";
+
 // Refund lifecycle — physical money has not necessarily been returned until COMPLETED.
 export type RefundStatus = "PENDING" | "COMPLETED" | "FAILED";
 
@@ -383,6 +388,65 @@ export class TenantFinancialLedgerService {
 
     logger.info("financial-ledger.debit-in-tx", { tenant_id: tenantId, reason, amount, new_balance: newBalance, entry_id: entry.id, refund_status: effectiveRefundStatus });
     return { entry, balance: newBalance };
+  }
+
+  /**
+   * Undo the ledger effect of waiving an obligation, when that obligation is
+   * restored (a closed tenancy reopened — see `reopen-expired-tenancy.ts`).
+   *
+   * A waiver writes an OBLIGATION_WAIVER debit (financial-correction-gateway).
+   * This writes the matching LEDGER_CORRECTION credit, for only the amount not
+   * already reversed — so it is idempotent, and an obligation waived, restored
+   * and waived again nets to exactly one open debit at every step.
+   *
+   * Must run inside the caller's transaction. Returns the amount credited.
+   */
+  async reverseObligationWaiverInTx(
+    tx: Prisma.TransactionClient,
+    params: { obligationId: string; tenantId: string; ownerId: string; createdBy: string; label?: string }
+  ): Promise<number> {
+    const { obligationId, tenantId, ownerId, createdBy, label } = params;
+    const tenant = await tx.tenants.findUnique({
+      where: { id: tenantId },
+      select: { id: true, hostel_id: true, owner_id: true },
+    });
+    if (!tenant) throw new Error("NOT_FOUND: Tenant not found");
+    if (tenant.owner_id !== ownerId) throw new Error("FORBIDDEN: Tenant does not belong to this owner");
+    await tx.$queryRaw`SELECT id FROM tenants WHERE id = ${tenantId}::uuid FOR UPDATE`;
+
+    const [waived, reversed] = await Promise.all([
+      tx.tenant_financial_ledger.aggregate({
+        where: { tenant_id: tenantId, type: "DEBIT", reason: "OBLIGATION_WAIVER", reference_id: obligationId, reference_type: WAIVER_REFERENCE_TYPE },
+        _sum: { amount: true },
+      }),
+      tx.tenant_financial_ledger.aggregate({
+        where: { tenant_id: tenantId, type: "CREDIT", reference_id: obligationId, reference_type: WAIVER_REVERSAL_REFERENCE_TYPE },
+        _sum: { amount: true },
+      }),
+    ]);
+    const open = this._roundCurrency(Number(waived._sum.amount ?? 0) - Number(reversed._sum.amount ?? 0));
+    if (open <= 0) return 0;
+
+    const currentBalance = await this._computeBalance(tx, tenantId);
+    const entry = await tx.tenant_financial_ledger.create({
+      data: {
+        id: randomUUID(),
+        tenant_id: tenantId,
+        owner_id: ownerId,
+        hostel_id: tenant.hostel_id,
+        type: "CREDIT",
+        reason: "LEDGER_CORRECTION",
+        amount: open,
+        balance_after: this._roundCurrency(currentBalance + open),
+        notes: `Waiver reversed — ${label || "obligation"} restored when the invitation was re-sent`,
+        reference_id: obligationId,
+        reference_type: WAIVER_REVERSAL_REFERENCE_TYPE,
+        created_by: createdBy,
+      },
+    });
+
+    logger.info("financial-ledger.waiver-reversed", { tenant_id: tenantId, obligation_id: obligationId, amount: open, entry_id: entry.id });
+    return open;
   }
 
   /**

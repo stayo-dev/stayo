@@ -81,8 +81,10 @@ export function resolveInviteDelivery(response: unknown): InviteDeliveryOutcome 
  *
  * That route answers 202 with `{error: {code: 'EMAIL_FALLBACK_REQUIRED'}}` when
  * it still has no email, and 502 `DELIVERY_FAILED` when delivery failed
- * outright. Neither body carries an `activation_link`, so `previousLink` — the
- * link from the original invite — is carried forward rather than lost.
+ * outright. Both bodies carry the refreshed `activation_link` beside `error`,
+ * and it always wins: a resend can mint a new token, so the link from the
+ * original invite may be dead. `previousLink` is only a fallback for a body
+ * that has none.
  */
 export function resolveResendDelivery(response: unknown, previousLink: string | null): InviteDeliveryOutcome {
   const body = asRecord(response);
@@ -101,6 +103,19 @@ export function resolveResendDelivery(response: unknown, previousLink: string | 
 
   const outcome = resolveInviteDelivery(response);
   return { ...outcome, activationLink: outcome.activationLink ?? previousLink };
+}
+
+/**
+ * The body of a resend that *rejected* (the route's 502 `DELIVERY_FAILED`) but
+ * still refreshed the link — so the caller can treat it as an undelivered
+ * resend with a link to share, not as a failure to resend. Null for any other
+ * error (network, 4xx, a body without a link).
+ */
+export function resendFailureBody(error: unknown): Record<string, unknown> | null {
+  const response = asRecord(asRecord(error).response);
+  const body = asRecord(response.data);
+  if (!asText(asRecord(body.error).code)) return null;
+  return asText(body.activation_link) ? body : null;
 }
 
 /** Minimal surface of `navigator.clipboard` this module needs, so it can be stubbed. */
