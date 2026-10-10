@@ -56,7 +56,8 @@ export function HostelDrilldownLayout() {
       <div className={isDesktop ? `min-h-screen bg-background ${APP_GRID}` : APP_SURFACE}>
         {!isDesktop && (
           <div className="flex items-center gap-2.5 px-4 pb-1.5 pt-6 sm:px-6">
-            <button type="button" onClick={() => navigate('/owner/home')} aria-label="Back" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
+            {/* Back goes to the Properties list it is labelled as, not Home. */}
+            <button type="button" onClick={() => navigate('/owner/hostels')} aria-label="Back to properties" className="flex h-8.5 w-8.5 flex-none items-center justify-center rounded-full border border-border bg-card">
               <ArrowLeft className="h-4 w-4 text-muted-foreground" strokeWidth={1.9} />
             </button>
             <span className="text-[13px] font-medium text-muted-foreground">Properties</span>
