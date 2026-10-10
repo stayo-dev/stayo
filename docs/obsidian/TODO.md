@@ -8,8 +8,7 @@ tags: [todo, backlog]
 
 Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`.
 - [x] **Code audit** — `docs/audits/special-meal-choices-audit.md` (2026-10-10).
-- [x] **Production half of the audit** — done 2026-10-10, audit §7.
-  ~~Production half~~ — the read-only queries in the audit's §6 (aggregates only, run by an authorised account in the Supabase SQL editor). Decides tenant self-service vs caretaker-assisted collection for the first release.
+- [x] **Production half of the audit** — done 2026-10-10 (audit §7): tenant self-service first; "I'm away" carries absence because only 2 leaves were ever recorded.
 - [x] **Decided:** buttons `Veg · Non-veg · I'm away`. "I'm away" is meal-specific and creates no leave record; Skip is a typed reply.
 - [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
 - [ ] **Submit the two templates early** (question — also the reminder — and heads-up); the rest go inside the 24h window as interactive messages (audit A4). Meta approval is the long pole.
