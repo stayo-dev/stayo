@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Search, Check, ChevronDown } from 'lucide-react';
 import type { useRealTenantList } from '../hooks/useRealTenantList';
 import { DUES_BUCKETS, INVITE_STAGES, type SubFilter, type TenantView } from '../tenantListFilters';
+import { ResendExpiredButton } from './ResendExpiredButton';
 
 interface TenantFiltersProps {
   filters: ReturnType<typeof useRealTenantList>;
@@ -116,7 +117,11 @@ export function TenantFilters({ filters, hideHostelSelector }: TenantFiltersProp
             INVITE_STAGES.find((st) => st.id === filters.sub)?.hint ??
             (filters.counts.invited > 0 ? 'Grouped by where each tenant is stuck, the ones needing you first.' : 'No pending invitations.')
           }
-        />
+        >
+          {(filters.sub === 'any' || filters.sub === 'expired') && (
+            <ResendExpiredButton expired={filters.expiredInvites} onDone={filters.refresh} />
+          )}
+        </SubFilterRow>
       )}
     </div>
   );
@@ -129,6 +134,8 @@ interface SubFilterRowProps {
   anyCount: number;
   options: { id: SubFilter; label: string; count: number }[];
   note: string;
+  /** Optional action under the note, e.g. resend to every expired link. */
+  children?: React.ReactNode;
 }
 
 /**
@@ -136,7 +143,7 @@ interface SubFilterRowProps {
  * offers choices that return someone, except the selected one, which stays
  * visible so it can be switched off.
  */
-function SubFilterRow({ label, selected, onSelect, anyCount, options, note }: SubFilterRowProps) {
+function SubFilterRow({ label, selected, onSelect, anyCount, options, note, children }: SubFilterRowProps) {
   const visible = options.filter((o) => o.count > 0 || o.id === selected);
   return (
     <div className="-mt-1 flex flex-col gap-2 rounded-[14px] border border-border bg-card/60 p-2.5">
@@ -160,6 +167,7 @@ function SubFilterRow({ label, selected, onSelect, anyCount, options, note }: Su
         })}
       </div>
       <p className="px-1 text-[11.5px] leading-snug text-muted-foreground">{note}</p>
+      {children}
     </div>
   );
 }

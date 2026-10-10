@@ -23,7 +23,9 @@ const STATE_TONE: Record<string, 'destructive' | 'warning' | 'success' | 'neutra
   overdue: 'destructive',
   partial: 'warning',
   due_soon: 'warning',
-  pending: 'warning',
+  // The server calls anything due in 6–30 days 'pending'. It is simply the
+  // next month's rent, not waiting on anyone, so it reads as Upcoming.
+  pending: 'neutral',
   upcoming: 'neutral',
   paid: 'success',
   waived: 'neutral',
@@ -34,7 +36,7 @@ const STATE_LABEL: Record<string, string> = {
   overdue: 'Overdue',
   partial: 'Part paid',
   due_soon: 'Due soon',
-  pending: 'Pending',
+  pending: 'Upcoming',
   upcoming: 'Upcoming',
   paid: 'Paid',
   waived: 'Waived',

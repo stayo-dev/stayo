@@ -163,6 +163,12 @@ export function useRealTenantList(hostelScopeOverride?: string) {
 
   const allTenants = listQuery.data ?? [];
 
+  /** Every invite whose link has lapsed, in the current hostel scope — ignores search and chips. */
+  const expiredInvites = useMemo(
+    () => allTenants.filter((t) => t.status === 'invited' && t.inviteStage === 'expired'),
+    [allTenants],
+  );
+
   const counts = useMemo(() => countTenants(allTenants), [allTenants]);
 
   const tenants = useMemo(() => filterTenants(allTenants, { view, sub, search }), [allTenants, view, sub, search]);
@@ -181,6 +187,9 @@ export function useRealTenantList(hostelScopeOverride?: string) {
     setFilter,
     counts,
     tenants,
+    expiredInvites,
+    /** Re-reads the list after a bulk resend so tenants move to their new stage. */
+    refresh: () => listQuery.refetch(),
     isLoading: session.isLoading || listQuery.isLoading,
   };
 }
