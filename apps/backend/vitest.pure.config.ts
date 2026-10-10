@@ -47,6 +47,8 @@ export default defineConfig({
       'tests/food-voting-expiry.test.ts',
       'tests/food-meal-items.test.ts',
       'tests/food-meal-timings.test.ts',
+      // Special-meal choices (Phase 1).
+      'tests/special-meal-schema.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',

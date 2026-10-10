@@ -4717,6 +4717,42 @@ model meal_service_logs {
   @@index([hostel_id, meal_type, serve_date(sort: Desc)], map: "meal_service_logs_hostel_meal_date_idx")
 }
 
+/// Special-meal choices (Phase 1). A hostel's recurring special meal. No
+/// relation fields on purpose — see migrations/096_special_meals.sql.
+model special_meal_occasions {
+  id                    String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  hostel_id             String   @db.Uuid
+  owner_id              String   @db.Uuid
+  weekday               Int      @db.SmallInt
+  meal_type             String
+  veg_dish              String?
+  non_veg_dish          String?
+  cutoff_minutes_before Int      @default(180)
+  no_answer_policy      String   @default("LAST_CHOICE")
+  is_active             Boolean  @default(true)
+  created_at            DateTime @default(now()) @db.Timestamptz(6)
+  updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([hostel_id, weekday, meal_type], map: "special_meal_occasions_hostel_day_meal_key")
+}
+
+/// One resident's answer for one dated serving. Latest answer wins (upsert).
+model special_meal_answers {
+  id          String   @id @default(dbgenerated("gen_random_uuid()")) @db.Uuid
+  occasion_id String   @db.Uuid
+  hostel_id   String   @db.Uuid
+  tenant_id   String   @db.Uuid
+  serve_date  DateTime @db.Date
+  choice      String
+  source      String
+  recorded_by String?  @db.Uuid
+  created_at  DateTime @default(now()) @db.Timestamptz(6)
+  updated_at  DateTime @default(now()) @updatedAt @db.Timestamptz(6)
+
+  @@unique([occasion_id, serve_date, tenant_id], map: "special_meal_answers_occasion_date_tenant_key")
+  @@index([occasion_id, tenant_id, serve_date(sort: Desc)], map: "special_meal_answers_history_idx")
+}
+
 /// Projection of `stay_events`: one row per leave. Rebuildable by replay.
 /// "One ACTIVE leave per tenant" is a partial unique index in the migration
 /// (`stay_leaves_one_active_per_tenant`) — Prisma cannot express it.
