@@ -66,7 +66,7 @@ guarantees at least 61 minutes of separation in the worst case.
 
 ## Active jobs — the MVP set
 
-All six run on Vercel Cron. IST times are the **earliest** a job can fire; Hobby
+All of these run on Vercel Cron. IST times are the **earliest** a job can fire; Hobby
 may delay any of them by up to 59 minutes.
 
 | Job | Route | Schedule (UTC / IST) | Criticality | Owner |
@@ -78,6 +78,8 @@ may delay any of them by up to 59 minutes.
 | Partner held-enquiry fallback | `/api/cron/partner-lead-fallback` | `0 4 * * *` / 09:30 | P1 Important Operations | Marketplace |
 | Payment reconciliation | `/api/cron/reconcile-payments` | `30 3 * * *` / 09:00 | P0 Business Critical | Payments |
 | Unaccepted tenancy expiry | `/api/cron/expire-unaccepted-tenancies` | `0 5 * * *` / 10:30 | P0 Business Critical | Tenant Onboarding |
+| Special-meal questions | `/api/cron/special-meal-asks` | `30 12 * * *` / 18:00 | P2 Convenience | Food (ADR-238) |
+| Special-meal reminders | `/api/cron/special-meal-reminders` | `30 2 * * *` / 08:00 | P2 Convenience | Food (ADR-238) |
 
 **Two slots moved in the consolidation, both non-billing.** `move-out-releases`
 `0 18` → `0 16` (a 91-minute worst-case lead on rent generation instead of 30),
@@ -118,6 +120,15 @@ Why each one is in the MVP set — i.e. what is *wrong in the product* if it nev
   PENDING`). This is the only sweep that frees the room and voids future
   obligations when the tenant never personally accepts. Without it, ghost
   tenancies hold beds and accrue rent indefinitely.
+
+- **`special-meal-asks` / `special-meal-reminders`** ([[Decisions#ADR-238|ADR-238]]) —
+  the only way residents are asked to choose veg / non-veg / away for an
+  owner-configured special meal. If they never run, nobody is asked, every
+  resident shows "No answer", and the owner falls back to the door-to-door
+  count. Convenience, not correctness: no money or occupancy depends on them,
+  and both skip a serving whose cutoff has already passed (so a late fire
+  sends nothing rather than a closed question). Inert until migration 096 is
+  applied and `stayo_special_meal_question` is approved.
 
 ## Descheduled 2026-09-06 (ADR-177)
 
@@ -227,6 +238,7 @@ scheduled, which is the fastest way to diff reality against this registry.
 | Invitation expiry reminders | Re-run with `CRON_SECRET`; de-duplicated per invitation via `system_event_logs`. |
 | Payment reconciliation | Re-run with `CRON_SECRET`; inspect payment reconciliation runs and provider snapshots for unresolved attempts. |
 | Unaccepted tenancy expiry | Re-run with `CRON_SECRET`; idempotent, and the grace window (`UNACCEPTED_TENANCY_GRACE_DAYS`, default 7) means a one-day miss changes nothing. |
+| Special-meal questions / reminders | Re-run with `CRON_SECRET`; each send is deduped on `whatsapp_logs.idempotency_key` (`special_meal_ask:` / `special_meal_remind:` + occasion, date, tenant), so a re-run only reaches residents not yet messaged. Pointless after the occasion's cutoff, which the job itself skips. |
 
 ## Known gaps
 

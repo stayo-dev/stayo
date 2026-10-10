@@ -601,6 +601,14 @@ The old inline `eligibleCount` (ACTIVE tenants, repeated per poll/publish route)
 
 Related: [[Decisions#ADR-195|ADR-195]], [[Features]], [[Database]]
 
-## Proposed: special-meal choices — veg / non-veg (2026-10-10, not built)
+## Special-meal choices — veg / non-veg (Phase 1, 2026-10-10, [[Decisions#ADR-238|ADR-238]])
 
-A product design for replacing the warden's door-to-door veg/non-veg round before special meals (e.g. Wednesday and Sunday) with WhatsApp questions, tenant-agreed standing orders, and leave-aware counts. **Design only — nothing is audited or built.** It narrowly departs from [[Decisions#ADR-195|ADR-195]]'s D1 (no tenant-declared skips), and says so. Spec: `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`. Open items in [[TODO]].
+Replaces the warden's door-to-door veg/non-veg round before a hostel's recurring special meal (e.g. Sunday lunch). **Built on `feat/special-meal-choices`, never run against a real database; migration 096 is not applied and the Meta template is not submitted.** Spec `docs/superpowers/specs/2026-10-10-special-meal-choices-design.md`, audit `docs/audits/special-meal-choices-audit.md`, plan `docs/superpowers/plans/2026-10-10-special-meal-choices-phase-1.md`.
+
+- The owner adds an occasion (weekday + meal, optional dish names, cutoff) at `/owner/food/special-meals`.
+- At ≈18:00 IST the day before, every resident who is here, not moving out and has a phone gets `stayo_special_meal_question` with **Veg · Non-veg · I'm away** buttons. Anyone still silent gets the same message again at ≈08:00 IST on the day. A typed "veg" / "nv" / "skip" / "I'm away" also works.
+- The count locks at the cutoff for WhatsApp answers. The owner can still edit any resident's answer afterwards (labelled `OWNER`).
+- The cook's numbers are confirmed answers plus, under the default `LAST_CHOICE` policy, each silent resident's last explicit veg/non-veg for that occasion. The screen labels which is which. Leave always wins over an answer.
+- The kitchen sheet shows one line per special meal served today or tomorrow.
+
+**Separate from food polls** (§ polls), which stay the tool for one-off questions, and from the [[Decisions#ADR-195|ADR-195]] forecast, which this does not read or change.

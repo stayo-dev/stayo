@@ -3570,3 +3570,22 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
   - **Unresolved, and needing a human:** the compliance posture on personal UPI IDs used for collection at scale. Owners already do this manually so Stayo is not creating the exposure, but facilitating it is a different posture. **This ADR does not resolve it.**
   - **The feature is inert until owners act:** 0 of 6 production hostels have `upi_id` set.
 - **Related:** [[Decisions#ADR-230|ADR-230]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Bugs]]
+
+### ADR-238 — Special-meal choices are collected on WhatsApp, a narrow exception to ADR-195 D1 (2026-10-10)
+
+- **Status:** Accepted. **Phase 1 built on `feat/special-meal-choices`, not merged.** Migration 096 not applied; template `stayo_special_meal_question` not submitted; nothing exercised against a database or a real phone.
+- **Context:** Hostels serving a special meal on fixed days (e.g. Wednesday and Sunday, cooked veg and non-veg) send a warden door to door the evening before to count veg vs non-veg. [[Decisions#ADR-195|ADR-195]] D1 rejected tenant-declared meal skips because a daily decision for every resident breaks the two-second rule. Production (2026-10-10): 29 active tenants, all with phones; 2 leaves ever recorded; 0 food-poll votes ever; 5 distinct WhatsApp senders in 30 days.
+- **Decision:**
+  1. **This is not a reversal of D1.** It covers only owner-configured special meals (typically two a week), the choice changes cost (non-veg costs more), and it replaces a question the warden already asks by hand. Ordinary meals stay on the ADR-195 forecast, which this does not read or change.
+  2. **Three buttons: Veg · Non-veg · I'm away.** "I'm away" is a *meal* answer and never writes `stay_leaves` / `stay_events`; with leave reporting near zero, it is what will actually keep away residents out of the count. "Skip" (here but not eating) is typed or set by the owner.
+  3. **Absence wins; nothing is guessed.** Recorded leave and move-out exclude a resident whatever they answered. A silent resident is cooked for only under the occasion's `LAST_CHOICE` policy, as their last explicit choice for that occasion, and is labelled as such.
+  4. **Per-send quick-reply payloads** (`MEAL:<occasion>:<date>:<tenant>:<choice>`). This is the first template in this account whose buttons carry ids, not keywords. A new `MEAL_CHOICE` intent at the front of the router handles them, and self-authorises against the sender's *own* residency so guardians and strangers fall through silently.
+  5. **Fixed daily slots** (asks 18:00 IST for tomorrow, reminders 08:00 IST for today), because Vercel Hobby crons are once-daily ±59 min. The cutoff is checked when a reply arrives, not by a cron.
+  6. **`STOP` is untouched** ([[Decisions#ADR-234|ADR-234]] owns it). Phase 2's opt-out word is `ASK ME`.
+- **Consequences:**
+  - Nothing works until the template is approved and migration 096 is applied.
+  - With 5 of 29 tenants ever messaging the number, expect a large "No answer" group early. The owner screen's per-resident correction is the mitigation.
+  - No hostel has set meal timings, so cutoffs come from the defaults (lunch 12:30, dinner 19:00) until owners set them.
+  - Button texts are fixed at Meta approval, so option labels are not renameable; owners name the dishes in the message body instead.
+  - Phase 2 (standing orders, the heads-up template, `MEALS` / `ASK ME`) and Phase 3 (served counts per option) are not built.
+- **Related:** [[Food]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Decisions#ADR-194|ADR-194]], [[Decisions#ADR-195|ADR-195]]

@@ -5,6 +5,14 @@
 
 > **Audited 2026-10-10** — `docs/audits/special-meal-choices-audit.md` changes four things in this design (§1 there): fixed daily send slots instead of per-owner ask times (Vercel Hobby crons are once-daily), `ASK ME` instead of `STOP` (taken by ADR-234), per-send button payloads are supported by Meta and only need new code, and only two Meta templates are needed. The production-data half of the audit is still pending.
 
+> **Phase 1 built 2026-10-10** on `feat/special-meal-choices` ([[Decisions#ADR-238|ADR-238]]). Built differently from this design:
+> 1. Option labels are the fixed button texts "Veg", "Non-veg" and "I'm away", because Meta locks button text at approval. Owners name the **dishes** in the message body instead.
+> 2. Dish names are typed per occasion, not read from the Food schedule, because schedule dishes carry no veg/non-veg flag.
+> 3. The no-answer policy is `LAST_CHOICE` or `LEAVE_OUT`. "The hostel's usual split" was dropped because it produces fractional people.
+> 4. No "Welcome back" copy for residents returning on the meal day. They get the ordinary question, because the template is fixed.
+> 5. No manual "Remind the 4" button; the 08:00 reminder covers it. No "skip this week" control; pausing the occasion covers it.
+> 6. Served counts per option (Phase 3) are not built.
+
 ## Context
 
 Many hostels serve a **special meal on fixed days, e.g. Wednesday and Sunday**, cooked in a veg version and a non-veg version. Today a warden goes door to door the evening before and asks each room how many want veg and how many want non-veg, then adds up the totals on paper. The aim is to replace that round with WhatsApp, and over time stop asking people whose answer is already known, while never counting tenants who are away.

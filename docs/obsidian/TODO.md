@@ -11,8 +11,12 @@ Product design approved; spec `docs/superpowers/specs/2026-10-10-special-meal-ch
 - [x] **Production half of the audit** — done 2026-10-10 (audit §7): tenant self-service first; "I'm away" carries absence because only 2 leaves were ever recorded.
 - [x] **Decided:** buttons `Veg · Non-veg · I'm away`. "I'm away" is meal-specific and creates no leave record; Skip is a typed reply.
 - [x] ~~Verify a Meta template quick-reply can carry a per-send payload~~ — it can; our code only ever sent static ones. Needs a `MEAL:` payload prefix routed before the text vocabulary (audit A3).
-- [ ] **Submit the two templates early** (question — also the reminder — and heads-up); the rest go inside the 24h window as interactive messages (audit A4). Meta approval is the long pole.
-- [ ] Then: Phase 1 plan → TDD → verification.
+- [x] ~~Submit the two templates early~~ — Phase 1 needs only the question template (also the reminder); the heads-up is Phase 2.
+- [x] Phase 1 built on `feat/special-meal-choices` ([[Decisions#ADR-238|ADR-238]]).
+- [ ] **Submit `stayo_special_meal_question`** to Meta exactly as `docs/design/special-meal-whatsapp-template.md` says. Nothing sends until it is approved.
+- [ ] **Apply `migrations/096_special_meals.sql`** to production after the code deploys.
+- [ ] **One real test:** one occasion, one phone. Tap each button, type "veg", tap after the cutoff, and check the owner screen and the kitchen sheet.
+- [ ] Phase 2: standing orders, the heads-up template, `MEALS` / `ASK ME`.
 
 ## Restore production's missing integrity guards (2026-09-14, [[Database]])
 
