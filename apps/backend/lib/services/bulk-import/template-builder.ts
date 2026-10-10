@@ -118,9 +118,6 @@ const TENANT_COLUMNS: TenantColumn[] = [
   { header: "Maintenance Charge", field: "maintenance_charge", example: 500 },
   { header: "Amount Already Paid", field: "amount_paid", example: 76500 },
   { header: "Paid Includes Deposit", field: "amount_includes_deposit", example: "YES" },
-  { header: "Payment Method", field: "payment_method", example: "CASH" },
-  { header: "Payment Reference", field: "payment_reference", example: "" },
-  { header: "Notes", field: "notes", example: "Already living here since January", width: 28 },
 ];
 const TENANT_HEADERS = TENANT_COLUMNS.map((c) => c.header);
 
@@ -192,7 +189,7 @@ function buildCover(sheet: ExcelJS.Worksheet, input: TemplateInput) {
     "• Amounts are in ₹. Digits only, like 8500 — a ₹ sign and commas are fine.",
     "• Email is optional. We invite tenants on WhatsApp, so a mobile number is what we need.",
     "• Leave Monthly Rent blank to use the room's own rent.",
-    "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid. We will work out what is still owed.",
+    "• Already living here? Put their real joining date, and what they have already paid in Amount Already Paid — it is recorded as a cash payment. We will work out what is still owed.",
     "• Paste values, not formulas — we cannot read a formula, only the value it produces.",
     "",
     "Guardian (optional — Guardian Name and Guardian Phone)",
@@ -334,11 +331,6 @@ function buildTenants(sheet: ExcelJS.Worksheet, workbook: ExcelJS.Workbook, inpu
       type: "list",
       allowBlank: true,
       formulae: ['"YES,NO"'],
-    };
-    row.getCell(FIELD_COLUMN.payment_method).dataValidation = {
-      type: "list",
-      allowBlank: true,
-      formulae: ['"CASH,UPI,BANK_TRANSFER,CARD,CHEQUE"'],
     };
   }
 

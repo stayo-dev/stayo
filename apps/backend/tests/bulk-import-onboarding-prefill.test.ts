@@ -82,9 +82,6 @@ const EXPECTED_HEADERS = [
   "Maintenance Charge",
   "Amount Already Paid",
   "Paid Includes Deposit",
-  "Payment Method",
-  "Payment Reference",
-  "Notes",
 ];
 
 function headersOf(buffer: Buffer): string[] {
@@ -95,7 +92,7 @@ function headersOf(buffer: Buffer): string[] {
 // ── The columns ─────────────────────────────────────────────────────────────
 
 describe("the workbook columns", () => {
-  it("are exactly these seventeen, in this order", async () => {
+  it("are exactly these fourteen, in this order — no Payment Method, Payment Reference or Notes", async () => {
     const buffer = await buildImportWorkbook({ hostel: { id: HOSTEL_ID, name: "Sri Adithya" }, dueDay: 5, rooms: ROOMS, tenantCount: 0 });
     expect(headersOf(buffer)).toEqual(EXPECTED_HEADERS);
   });
@@ -129,9 +126,6 @@ describe("the workbook columns", () => {
           maintenance_charge: 500,
           amount_paid: 9000,
           amount_includes_deposit: false,
-          payment_method: "UPI",
-          payment_reference: "UTR123",
-          notes: "Top bunk",
         },
       ],
     });
@@ -152,21 +146,21 @@ describe("the workbook columns", () => {
       maintenance_charge: 500,
       amount_paid: 9000,
       amount_includes_deposit: false,
-      payment_method: "UPI",
-      payment_reference: "UTR123",
-      notes: "Top bunk",
     });
+    expect(row.payment_method).toBeUndefined();
+    expect(row.notes).toBeUndefined();
   });
 
   it("a file in the old column order still imports — columns are read by header, not position", () => {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(
       wb,
-      XLSX.utils.json_to_sheet([{ Name: "Ravi", Phone: "9876500002", Room: "101", "Monthly Rent": 8000, Notes: "x", "Guardian Phone": "9123400001", "Guardian Name": "Sita" }]),
+      XLSX.utils.json_to_sheet([{ Name: "Ravi", Phone: "9876500002", Room: "101", "Monthly Rent": 8000, "Payment Method": "UPI", Notes: "x", "Guardian Phone": "9123400001", "Guardian Name": "Sita" }]),
       "Tenants",
     );
     const [row] = parseTenantWorkbook(XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer, "old.xlsx");
-    expect(row).toMatchObject({ name: "Ravi", room_no: "101", monthly_rent: 8000, guardian_name: "Sita", guardian_phone: "9123400001" });
+    // An older file's Payment Method and Notes are still read and used.
+    expect(row).toMatchObject({ name: "Ravi", room_no: "101", monthly_rent: 8000, payment_method: "UPI", notes: "x", guardian_name: "Sita", guardian_phone: "9123400001" });
   });
 
   it("accepts owners' own spellings of the guardian headers", () => {

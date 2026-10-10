@@ -29,6 +29,9 @@ const LIVE_TENANCY_STATUSES = ["INVITED", "ACTIVE"] as const;
 const RENT_BACKFILL_CAP_MONTHS = 24;
 
 /** Owner-facing column names, for issue copy. */
+/** How an imported "Amount Already Paid" is recorded when the sheet names no method. */
+export const DEFAULT_IMPORT_PAYMENT_METHOD = "CASH";
+
 const FIELD_LABELS: Record<string, string> = {
   name: "name",
   email: "email",
@@ -406,18 +409,14 @@ export class BulkImportValidationService {
         }
       }
 
-      // Amount already paid needs a payment method to be recorded against
-      // dues correctly. Without this check the row previews as clean and
-      // then hard-fails at execute time inside createInvitation.
-      if ((row.amount_paid ?? 0) > 0 && !row.payment_method) {
-        errors.push({
-          row: rowNumber,
-          field: "payment_method",
-          message: "A payment method is required when an amount already paid is entered",
-          value: row.payment_method,
-        });
-        issues.push(buildIssue("PAYMENT_METHOD_MISSING", rowNumber, { amountPaid: row.amount_paid }));
-      }
+      // Amount already paid is recorded as a real payment, and a payment needs
+      // a method. The template no longer has a Payment Method column (owner
+      // decision, 2026-10-10), so an amount with no method is recorded as
+      // CASH rather than blocking the row. A method given in an owner's own
+      // file (or an older template) still wins. PAYMENT_METHOD_MISSING is no
+      // longer raised for this reason.
+      const paymentMethod =
+        row.payment_method || ((row.amount_paid ?? 0) > 0 ? DEFAULT_IMPORT_PAYMENT_METHOD : undefined);
 
       const rowMaintenanceType = row.maintenance_type ?? defaultMaintenanceType;
 
@@ -504,7 +503,7 @@ export class BulkImportValidationService {
           agreement_duration_months: row.agreement_duration_months,
           amount_paid: row.amount_paid,
           amount_includes_deposit: row.amount_includes_deposit ?? true,
-          payment_method: row.payment_method,
+          payment_method: paymentMethod,
           payment_reference: row.payment_reference,
           // Stored as ISO, from the date the validator parsed. createInvitation
           // re-reads it with `new Date()`, which takes "05/01/2026" as 1 May

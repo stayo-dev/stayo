@@ -7,8 +7,8 @@ import { parseRoomsSheet } from "@/lib/services/bulk-import/rooms-sheet";
 import { COVER_SHEET, ROOMS_SHEET, TENANTS_SHEET } from "@/lib/services/bulk-import/workbook-parser";
 import { PROFILE_HEADERS } from "@/lib/services/bulk-import/profile-fields";
 
-/** 1-based column of "What to fix": right after the 17 data columns. */
-const PROBLEM_COLUMN_INDEX = 15 + PROFILE_HEADERS.length + 1; // 15 money/stay columns + Guardian Name/Phone
+/** 1-based column of "What to fix": right after the 14 data columns. */
+const PROBLEM_COLUMN_INDEX = 12 + PROFILE_HEADERS.length + 1; // 12 stay/money columns + Guardian Name/Phone
 
 const INPUT = {
   hostel: { id: "11111111-1111-1111-1111-111111111111", name: "Sri Adithya Boys Hostel" },
@@ -92,13 +92,12 @@ describe("the generated workbook", () => {
     expect(lastRow).toBeGreaterThan(INPUT.rooms.length + 1);
   });
 
-  it("offers maintenance type, paid-includes-deposit and payment method as dropdowns", async () => {
+  it("offers maintenance type and paid-includes-deposit as dropdowns", async () => {
     const { wb } = await build();
     const sheet = wb.getWorksheet(TENANTS_SHEET)!;
     const at = (ref: string) => sheet.getCell(ref).dataValidation?.formulae?.[0] ?? "";
     expect(at("K2")).toContain("MONTHLY");
     expect(at("N2")).toContain("YES");
-    expect(at("O2")).toContain("CASH");
   });
 
   it("puts each dropdown on the column its header names", async () => {
@@ -108,7 +107,9 @@ describe("the generated workbook", () => {
     expect(header[6]).toBe("Room");
     expect(header[11]).toBe("Maintenance Type");
     expect(header[14]).toBe("Paid Includes Deposit");
-    expect(header[15]).toBe("Payment Method");
+    // Payment Method, Payment Reference and Notes were removed (2026-10-10).
+    expect(header).not.toContain("Payment Method");
+    expect(header).not.toContain("Notes");
   });
 
   it("round-trips through our own parser", async () => {
@@ -209,7 +210,6 @@ describe("handing the owner their corrected file back", () => {
       maintenance_type: "ONE_TIME",
       agreement_duration_months: 11,
       amount_paid: 76500,
-      payment_method: "CASH",
     });
     expect(row.amount_includes_deposit).toBe(true);
   });
@@ -298,7 +298,7 @@ describe("marking the problems in the owner's own sheet", () => {
 
   it("adds a column saying what to fix, so nothing depends on hovering", async () => {
     const { sheet } = await annotated();
-    // Right after the last of the 17 data columns.
+    // Right after the last of the 14 data columns.
     expect(sheet.getRow(1).getCell(PROBLEM_COLUMN_INDEX).value).toBe("What to fix");
     expect(String(sheet.getRow(2).getCell(PROBLEM_COLUMN_INDEX).value)).toContain("Room 1O1 isn't in");
   });
