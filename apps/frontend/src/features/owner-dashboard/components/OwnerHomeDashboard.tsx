@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Bell, Search, Plus, UtensilsCrossed, ChevronRight, TrendingUp } from 'lucide-react';
+import { Bell, Search, Plus, UtensilsCrossed, ChevronRight } from 'lucide-react';
 import { StatCard } from '@shared/ui-patterns/StatCard';
 import { TonightSection } from '@features/owner-stay/components/TonightSection';
 import type { TonightCards } from '@features/stay/stayState';
@@ -52,12 +52,6 @@ interface OwnerHomeDashboardProps {
   tonight?: TonightCards | null;
   onOpenStay?: () => void;
   collection?: CollectionData;
-  /**
-   * One category that rose sharply this month, or null in an ordinary month.
-   * Deliberately absent most of the time — the Action Center is for work, and
-   * spending being normal is not work. See `expense-anomaly.ts`.
-   */
-  spendAnomaly?: { category: string; changePct: number; riseAmount: string } | null;
   onOpenAlerts?: () => void;
   onOpenQuickActions?: () => void;
   onViewAllActions?: () => void;
@@ -122,7 +116,6 @@ export function OwnerHomeDashboard({
   tonight = null,
   onOpenStay,
   collection = mockCollection,
-  spendAnomaly = null,
   sections = { search: true, actionCenter: true, monthCard: true, hostels: true, setupMode: false },
   onOpenAlerts,
   onOpenQuickActions,
@@ -261,24 +254,6 @@ export function OwnerHomeDashboard({
             <div className="mt-1 text-xs font-medium text-background/65">{actionCenter.collectRent.caption}</div>
           </DarkHeroCard>
         </button>
-        {/* Only in a month where something moved. `detectSpendAnomaly` holds a
-            much higher bar than the Money screen's per-row annotation — on
-            Home this is the single thing said about money going out, so a
-            false alarm costs trust in the whole surface. */}
-        {spendAnomaly && (
-          <button
-            type="button"
-            onClick={() => navigate('/owner/money?tab=expenses')}
-            className="flex min-h-[44px] items-center gap-2.5 rounded-[14px] border border-warning/30 bg-warning-bg/60 px-3.5 py-2.5 text-left"
-          >
-            <TrendingUp className="h-4 w-4 flex-none text-warning" strokeWidth={2} />
-            <span className="flex-1 text-[12.5px] leading-snug text-foreground">
-              <span className="font-semibold">{spendAnomaly.category}</span> up {spendAnomaly.changePct}% on
-              last month — {spendAnomaly.riseAmount} more
-            </span>
-            <ChevronRight className="h-4 w-4 flex-none text-muted-foreground" />
-          </button>
-        )}
 
         <div className="grid grid-cols-3 gap-2">
           {/* All were non-interactive: StatCard had no onClick prop at all,
