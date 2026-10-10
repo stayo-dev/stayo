@@ -47,6 +47,8 @@ export default defineConfig({
       'tests/food-voting-expiry.test.ts',
       'tests/food-meal-items.test.ts',
       'tests/food-meal-timings.test.ts',
+      // The menu persists across months; mocks `@/lib/db` (2026-10-10).
+      'tests/food-month-carry-forward.test.ts',
       'tests/food-poll-edit-validation.test.ts',
       'tests/platform-lead-templates.test.ts',
       'tests/platform-lead-stage-mapper.test.ts',
