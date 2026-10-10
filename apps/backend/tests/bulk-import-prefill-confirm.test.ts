@@ -46,10 +46,12 @@ const WITH_DETAILS = {
   room_id: "room-101",
   monthly_rent: 8500,
   joining_date: "2026-10-01",
-  gender: "male",
-  profile_type: "Student",
   guardian_name: "Ramesh Reddy",
   guardian_phone: "91234 00001",
+  // Not import columns any more: an old file may still carry them, and they
+  // must not be written.
+  gender: "male",
+  profile_type: "Student",
   guardian_relation: "Father",
 };
 const PLAIN = { name: "Ravi", phone: "+919876500002", email: "", room_no: "101", room_id: "room-101", monthly_rent: 8500, joining_date: "2026-10-01" };
@@ -111,17 +113,14 @@ beforeEach(() => {
 });
 
 describe("confirm writes the owner's details onto the new tenancy", () => {
-  it("normalised as onboarding stores them, on the tenancy createInvitation returned", async () => {
+  it("only the guardian name and phone, normalised as onboarding stores them, on the tenancy createInvitation returned", async () => {
     seed([WITH_DETAILS]);
     await confirm();
     expect(mockPrisma.tenants.update).toHaveBeenCalledTimes(1);
     const { where, data } = mockPrisma.tenants.update.mock.calls[0][0];
     expect(where).toEqual({ id: "tenant-1" });
     expect(data).toEqual({
-      gender: "Male",
-      profile_type: "STUDENT",
       guardian_name: "Ramesh Reddy",
-      guardian_relation: "Father",
       guardian_phone: "+919123400001",
       phone_2: "+919123400001",
     });
@@ -132,7 +131,7 @@ describe("confirm writes the owner's details onto the new tenancy", () => {
     seed([WITH_DETAILS]);
     await confirm();
     const sent = mockLifecycle.createInvitation.mock.calls[0][0];
-    for (const key of ["gender", "profile_type", "guardian_name", "guardian_phone", "guardian_relation"]) {
+    for (const key of ["guardian_name", "guardian_phone"]) {
       expect(sent).not.toHaveProperty(key);
     }
     expect(sent).toMatchObject({ name: "Akhil Reddy", room_id: "room-101", dispatch: "DEFERRED", batch_id: BATCH_ID });

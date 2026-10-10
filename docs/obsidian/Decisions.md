@@ -3573,12 +3573,12 @@ The first reason is right. The second optimised the wrong thing. `/hostels/:slug
   - **The feature is inert until owners act:** 0 of 6 production hostels have `upi_id` set.
 - **Related:** [[Decisions#ADR-230|ADR-230]], [[Business-Rules]], [[Database]], [[APIs]], [[Features]], [[Changelog]], [[Bugs]]
 
-### ADR-236 — Bulk import prefills onboarding; an owner-supplied guardian skips the guardian OTP (2026-10-10)
+### ADR-236 — Bulk import prefills the guardian at onboarding; an owner-supplied guardian skips the guardian OTP (2026-10-10)
 
 - **Status:** Accepted
-- **Context:** Bulk import created every tenancy through `createInvitation` (ADR-165), but carried only name, phone, email, room and money terms. Onboarding already prefills every screen from `tenants.*`, so owners who knew their residents' details still had each tenant re-enter them. Owners also asked that a guardian they supply not have to be verified again by OTP.
+- **Context:** Bulk import created every tenancy through `createInvitation` (ADR-165) but carried only name, phone, email, room and money terms, so every imported tenant re-entered their guardian at onboarding. Owners asked that a guardian they supply not have to be verified again by OTP. A wider set of personal-detail columns (date of birth, gender, tenant type, guardian relation, college/office, address) was built and then removed at the owner's request — those stay with the tenant.
 - **Decision:**
-  - Five optional workbook columns (Gender, Tenant Type, Guardian Name, Guardian Phone, Guardian Relation), validated by onboarding's own rules and written onto the tenancy at confirm. Date of birth, college/course/roll-number, company/office/job-role and permanent address are deliberately excluded — the tenant gives those. No schema change; no change to `createInvitation` or the single-invite path.
+  - The Tenants sheet is reordered to Name, Phone, Email, Guardian Name, Guardian Phone, Room, Joining Date, Agreement Months, Monthly Rent, Security Deposit, Maintenance Type, Maintenance Charge, Amount Already Paid, Paid Includes Deposit, Payment Method, Payment Reference, Notes. Guardian Name and Guardian Phone are optional, validated by onboarding's own rules, and written onto the tenancy at confirm. No schema change; no change to `createInvitation` or the single-invite path.
   - The guardian OTP is skipped when — and only when — this tenancy's executed import row supplied both the guardian's name and that exact number. The owner is vouching for a guardian they named; this is provenance, not "a number exists in the database". Implemented once in `isGuardianPhoneVerifiedForTenant`, so the activation context, the GUARDIAN step and the owner's view agree.
   - Imported data never signs, accepts, activates, completes a profile or verifies documents.
 - **Consequences:**

@@ -1,7 +1,6 @@
 /**
- * Tenant details an owner can supply in the import workbook — gender, tenant
- * type and guardian — so the tenant is not
- * asked for them again at onboarding.
+ * The guardian an owner can supply in the import workbook — Guardian Name and
+ * Guardian Phone — so the tenant is not asked for them again at onboarding.
  *
  * Onboarding already prefills every screen from the tenancy record — the
  * activation context returns `tenants.*` and the screens read it. What was
@@ -11,16 +10,16 @@
  * created, through `tenantPrefillData` below.
  *
  * Every value is validated by the **same rules onboarding enforces**
- * (`activation-workflow-service.saveProfile` / `saveGuardian`), so an import
+ * (`activation-workflow-service.saveGuardian`), so an import
  * can never store something the tenant's own screen would have refused.
  *
  * What this never does:
  * - touch agreement, signature, rules-acceptance, activation or KYC fields —
  *   the tenant still reviews and signs the agreement themselves;
  * - collect a photo or documents (they cannot come from a spreadsheet), or
- *   date of birth, college/course/roll-number, company/office/job-role or
- *   address — those stay with the tenant at onboarding (product decision,
- *   2026-10-10);
+ *   any other personal detail — gender, tenant type, guardian relation, date
+ *   of birth, college/office, address stay with the tenant at onboarding
+ *   (product decision, 2026-10-10);
  * - mark anything verified. The one consequence of import data for
  *   verification is the guardian rule in `guardianSuppliedByImport`, which is
  *   keyed to *this tenancy's own import row*, never to a number merely being
@@ -50,42 +49,25 @@ export function normalizeIndianPhone(value: string | null | undefined): string |
   return /^[6-9]\d{9}$/.test(tenDigits) ? `+91${tenDigits}` : null;
 }
 
-/** The owner-supplied profile values, as stored in `bulk_import_rows.mapped_data`. */
+/** The owner-supplied values, as stored in `bulk_import_rows.mapped_data`. */
 export interface ImportedProfileFields {
-  gender?: string;
-  profile_type?: string;
   guardian_name?: string;
   guardian_phone?: string;
-  guardian_relation?: string;
 }
 
-export const PROFILE_FIELD_KEYS = [
-  "gender",
-  "profile_type",
-  "guardian_name",
-  "guardian_phone",
-  "guardian_relation",
-] as const satisfies readonly (keyof ImportedProfileFields)[];
+export const PROFILE_FIELD_KEYS = ["guardian_name", "guardian_phone"] as const satisfies readonly (keyof ImportedProfileFields)[];
 
 /**
- * Workbook headers, in the order the template writes them after the existing
- * columns. The first entry is what the template prints; the rest are accepted
- * spellings for files owners make themselves.
+ * Accepted headers for each field. The first is what the template prints;
+ * the rest are spellings owners use in files they make themselves.
  */
 export const PROFILE_COLUMNS: Record<keyof ImportedProfileFields, string[]> = {
-  gender: ["Gender", "gender"],
-  profile_type: ["Tenant Type", "tenant_type", "Profile Type", "profile_type", "type"],
   guardian_name: ["Guardian Name", "guardian_name", "Parent Name", "parent_name"],
   guardian_phone: ["Guardian Phone", "guardian_phone", "Parent Phone", "parent_phone", "Guardian Mobile"],
-  guardian_relation: ["Guardian Relation", "guardian_relation", "Relation", "relation"],
 };
 
-/** Labels the template prints for these columns, in template order. */
+/** Labels the template prints for these columns. */
 export const PROFILE_HEADERS = PROFILE_FIELD_KEYS.map((key) => PROFILE_COLUMNS[key][0]);
-
-/** The four values onboarding accepts for gender — `saveProfile`'s own list. */
-export const GENDER_VALUES = ["Male", "Female", "Other", "Prefer not to say"] as const;
-export const TENANT_TYPE_VALUES = ["Student", "Working Professional"] as const;
 
 const TEXT_LIMIT = 200;
 
@@ -97,7 +79,7 @@ function readCell(row: Record<string, any>, keys: string[]): string {
   return "";
 }
 
-/** Reads the profile columns of one raw sheet row. Blank cells are absent. */
+/** Reads the guardian columns of one raw sheet row. Blank cells are absent. */
 export function readProfileCells(row: Record<string, any>): ImportedProfileFields {
   const out: ImportedProfileFields = {};
   for (const key of PROFILE_FIELD_KEYS) {
@@ -107,49 +89,22 @@ export function readProfileCells(row: Record<string, any>): ImportedProfileField
   return out;
 }
 
-export function normalizeGender(value: string | undefined): string | null {
-  const text = String(value ?? "").trim().toLowerCase();
-  if (!text) return null;
-  if (["male", "m", "boy"].includes(text)) return "Male";
-  if (["female", "f", "girl"].includes(text)) return "Female";
-  if (text === "other") return "Other";
-  if (["prefer not to say", "not specified"].includes(text)) return "Prefer not to say";
-  return null;
-}
-
-export function normalizeTenantType(value: string | undefined): "STUDENT" | "WORKING_PROFESSIONAL" | null {
-  const text = String(value ?? "").trim().toLowerCase().replace(/[\s_-]+/g, " ");
-  if (!text) return null;
-  if (["student", "studying"].includes(text)) return "STUDENT";
-  if (["working professional", "working", "professional", "employee", "job"].includes(text)) {
-    return "WORKING_PROFESSIONAL";
-  }
-  return null;
-}
-
 export type ProfileProblem = {
-  code: "GENDER_INVALID" | "TENANT_TYPE_INVALID" | "GUARDIAN_PHONE_INVALID" | "GUARDIAN_PHONE_IS_TENANT" | "TEXT_TOO_LONG";
+  code: "GUARDIAN_PHONE_INVALID" | "GUARDIAN_PHONE_IS_TENANT" | "TEXT_TOO_LONG";
   field: keyof ImportedProfileFields;
   value: string;
 };
 
 /**
- * Checks the owner's profile cells. Every value here is optional — a blank
- * cell is simply something the tenant fills in at onboarding — but a value
- * that *is* given must be one onboarding would accept, or the row stops
- * until it is fixed or cleared.
+ * Checks the owner's guardian cells. Both are optional — a blank is filled in
+ * by the tenant at onboarding — but a value that *is* given must be one
+ * onboarding would accept, or the row stops until it is fixed or cleared.
  */
 export function profileProblems(
   fields: ImportedProfileFields,
-  context: { tenantPhone: string | null | undefined; today: Date },
+  context: { tenantPhone: string | null | undefined; today?: Date },
 ): ProfileProblem[] {
   const problems: ProfileProblem[] = [];
-  if (fields.gender && !normalizeGender(fields.gender)) {
-    problems.push({ code: "GENDER_INVALID", field: "gender", value: fields.gender });
-  }
-  if (fields.profile_type && !normalizeTenantType(fields.profile_type)) {
-    problems.push({ code: "TENANT_TYPE_INVALID", field: "profile_type", value: fields.profile_type });
-  }
   if (fields.guardian_phone) {
     const guardian = normalizeIndianPhone(fields.guardian_phone);
     if (!guardian) {
@@ -159,50 +114,42 @@ export function profileProblems(
       problems.push({ code: "GUARDIAN_PHONE_IS_TENANT", field: "guardian_phone", value: fields.guardian_phone });
     }
   }
-  for (const key of PROFILE_FIELD_KEYS) {
-    const value = fields[key];
-    if (value && value.length > TEXT_LIMIT) problems.push({ code: "TEXT_TOO_LONG", field: key, value });
+  if (fields.guardian_name && fields.guardian_name.length > TEXT_LIMIT) {
+    problems.push({ code: "TEXT_TOO_LONG", field: "guardian_name", value: fields.guardian_name });
   }
   return problems;
 }
 
 /**
- * The normalised values persisted in `mapped_data` — what confirm writes and
- * what the guardian rule compares against. Only valid values survive; a row
- * with an invalid one never reaches confirm (it is blocked at preview).
+ * The normalised values confirm writes: a trimmed name and the guardian
+ * number as onboarding stores it (`+91` + 10 digits). An invalid value never
+ * reaches confirm — its row is blocked at preview.
  */
-export function normalizeProfileFields(fields: ImportedProfileFields, today: Date): ImportedProfileFields {
+export function normalizeProfileFields(fields: ImportedProfileFields, _today?: Date): ImportedProfileFields {
   const out: ImportedProfileFields = {};
-  const gender = normalizeGender(fields.gender);
-  if (gender) out.gender = gender;
-  const type = normalizeTenantType(fields.profile_type);
-  if (type) out.profile_type = type;
-  const guardianPhone = fields.guardian_phone ? normalizeIndianPhone(fields.guardian_phone) : null;
-  if (guardianPhone) out.guardian_phone = guardianPhone;
-  for (const key of ["guardian_name", "guardian_relation"] as const) {
-    const value = String(fields[key] ?? "").trim();
-    if (value) out[key] = value;
-  }
+  const name = String(fields.guardian_name ?? "").trim();
+  if (name) out.guardian_name = name;
+  const phone = fields.guardian_phone ? normalizeIndianPhone(fields.guardian_phone) : null;
+  if (phone) out.guardian_phone = phone;
   return out;
 }
 
 /**
- * The `tenants` update that puts the owner's details on the new tenancy.
+ * The `tenants` update that puts the owner's guardian on the new tenancy.
  *
- * Only fields the owner actually supplied are written — a blank stays blank
- * for the tenant to fill. The column mapping mirrors onboarding exactly:
- * guardian phone goes to both `phone_2` and `guardian_phone` (`saveGuardian`
- * writes both, and readers use `phone_2 || guardian_phone`).
+ * Only what the owner supplied is written — a blank stays blank for the
+ * tenant to fill. The guardian phone goes to both `phone_2` and
+ * `guardian_phone`, exactly as `saveGuardian` writes it (readers use
+ * `phone_2 || guardian_phone`). The guardian relation is not imported: the
+ * tenant gives it on the Guardian step, which therefore still opens for them,
+ * prefilled, with no OTP when the number is the owner's.
  *
  * Deliberately absent: anything about agreements, signatures, rules
  * acceptance, activation, profile completion or documents.
  */
 export function tenantPrefillData(fields: ImportedProfileFields): Record<string, unknown> {
   const data: Record<string, unknown> = {};
-  if (fields.gender) data.gender = fields.gender;
-  if (fields.profile_type) data.profile_type = fields.profile_type;
   if (fields.guardian_name) data.guardian_name = fields.guardian_name;
-  if (fields.guardian_relation) data.guardian_relation = fields.guardian_relation;
   if (fields.guardian_phone) {
     data.guardian_phone = fields.guardian_phone;
     data.phone_2 = fields.guardian_phone;

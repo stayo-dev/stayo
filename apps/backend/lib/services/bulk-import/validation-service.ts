@@ -35,11 +35,8 @@ const FIELD_LABELS: Record<string, string> = {
   phone: "mobile number",
   room_no: "room",
   notes: "notes",
-  gender: "gender",
-  profile_type: "tenant type",
   guardian_name: "guardian name",
   guardian_phone: "guardian phone",
-  guardian_relation: "guardian relation",
 };
 
 type NumberProblem = { field: string; label: string; value: unknown; message: string; hint: string };
