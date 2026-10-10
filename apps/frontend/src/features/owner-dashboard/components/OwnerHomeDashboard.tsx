@@ -54,7 +54,6 @@ interface OwnerHomeDashboardProps {
   collection?: CollectionData;
   onOpenAlerts?: () => void;
   onOpenQuickActions?: () => void;
-  onViewAllActions?: () => void;
   /** A hostel that exists but still has floors without rooms. */
   hostelInProgress?: { name: string; summary: string } | null;
   /** New-owner walkthrough. Absent once all three steps are satisfied. */
@@ -119,7 +118,6 @@ export function OwnerHomeDashboard({
   sections = { search: true, actionCenter: true, monthCard: true, hostels: true, setupMode: false },
   onOpenAlerts,
   onOpenQuickActions,
-  onViewAllActions,
   hostelInProgress,
   gettingStarted,
   gettingStartedRef,
@@ -234,12 +232,9 @@ export function OwnerHomeDashboard({
 
       {sections.actionCenter && (
       <section className="flex flex-col gap-3" ref={actionCenterRef}>
-        <div className="flex items-baseline justify-between">
-          <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
-          <button type="button" onClick={onViewAllActions} className="text-[12.5px] font-semibold text-primary">
-            View all
-          </button>
-        </div>
+        {/* No "View all" link: its sheet repeated the same cards already on
+            this screen, each of which opens its own queue. */}
+        <h2 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">Action Center</h2>
         {/* The card showed a "›" chevron but had no handler — it went nowhere.
             It now opens today's prioritised collection queue (ADR-045). */}
         <button type="button" onClick={onOpenCollectionQueue} className="text-left">

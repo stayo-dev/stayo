@@ -8,10 +8,8 @@ import { UniversalSearchOverlay } from '@features/owner-search/UniversalSearchOv
 import { getInitials } from '@features/tenants/utils/normalize';
 import { useHomeQuickActions } from '@features/owner-dashboard/quick-actions/useHomeQuickActions';
 import { QuickActionsSheet } from '@features/owner-dashboard/quick-actions/QuickActionsSheet';
-import { AllActionsSheet } from '@features/owner-dashboard/quick-actions/AllActionsSheet';
 import { QuickCollectModal } from '@features/owner-tenants/quick-collect/QuickCollectModal';
 import { InviteTenantWizard } from '@features/owner-tenants/invite/InviteTenantWizard';
-import { pendingVerificationsRoute } from '@features/owner-tenants/documents/kycDocuments';
 import { PENDING_ACTIVATIONS_PATH } from '@features/owner-tenants/activation/activationProgress';
 import { useGettingStarted } from '@features/owner-dashboard/getting-started/useGettingStarted';
 import { deriveHomeSections } from '@features/owner-dashboard/homeSections';
@@ -101,7 +99,6 @@ export function OwnerDashboardPreviewPage() {
         sections={sections}
         onOpenAlerts={() => navigate('/owner/alerts')}
         onOpenQuickActions={qa.openSheet}
-        onViewAllActions={qa.openAllActions}
         hostelInProgress={hostelInProgress}
         gettingStartedRef={gettingStartedRef}
         actionCenterRef={actionCenterRef}
@@ -163,24 +160,6 @@ export function OwnerDashboardPreviewPage() {
         onInviteTenant={qa.inviteTenant}
         onAddExpense={qa.addExpense}
         canOperate={dash.properties.length > 0}
-      />
-      <AllActionsSheet
-        open={qa.allActionsOpen}
-        onClose={qa.closeAllActions}
-        onCollectRent={() => {
-          qa.closeAllActions();
-          navigate('/owner/money/collect');
-        }}
-        onActivateTenants={() => {
-          qa.closeAllActions();
-          navigate(PENDING_ACTIVATIONS_PATH);
-        }}
-        onVerifyKyc={() => {
-          qa.closeAllActions();
-          navigate(pendingVerificationsRoute());
-        }}
-        onInviteTenant={qa.inviteTenant}
-        actionCenter={dash.actionCenter}
       />
       {/* Orientation, once, after the first hostel exists.
           It used to run on a completely empty account, where it dimmed the
