@@ -49,6 +49,14 @@ describe("handleWhatsAppReply — taps", () => {
     expect(db.special_meal_answers.upsert).not.toHaveBeenCalled();
   });
 
+  it("ignores a hand-typed payload whose date is not the occasion's day", async () => {
+    // A template button arrives as plain text, so this string can be typed by hand.
+    const body = encodeMealPayload({ occasionId: OCC_ID, serveDate: "2026-10-12", tenantId: T1, choice: "VEG" });
+    const out = await svc().handleWhatsAppReply("91900", body, identity([T1]), SAT_EVENING);
+    expect(out).toEqual({ handled: false });
+    expect(db.special_meal_answers.upsert).not.toHaveBeenCalled();
+  });
+
   it("never lets a shared phone answer for someone who is not its own resident", async () => {
     const body = encodeMealPayload({ occasionId: OCC_ID, serveDate: "2026-10-11", tenantId: T2, choice: "VEG" });
     const out = await svc().handleWhatsAppReply("91900", body, identity([T1], [T2]), SAT_EVENING);

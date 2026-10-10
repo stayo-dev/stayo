@@ -281,7 +281,9 @@ export function createSpecialMealService(deps: {
         return { handled: false };
       }
       const occasion = await db.special_meal_occasions.findFirst({ where: { id: decoded.occasionId, hostel_id: mine.hostelId } });
-      if (!occasion) return { handled: false };
+      // A button payload arrives as plain text and can be typed by hand, so its
+      // date is untrusted: only the occasion's own weekday is a real serving.
+      if (!occasion || weekdayOfIso(decoded.serveDate) !== occasion.weekday) return { handled: false };
       const cutoffAt = await cutoffFor(occasion, decoded.serveDate);
       const copy = { serveDate: decoded.serveDate, mealType: occasion.meal_type, cutoffAt };
       if (now >= cutoffAt) {
