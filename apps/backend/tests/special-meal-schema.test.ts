@@ -59,3 +59,25 @@ describe("special meal schema", () => {
     }
   });
 });
+
+describe("migration 097 — several specials at the same meal", () => {
+  const M097 = (() => {
+    try {
+      return readFileSync(join(__dirname, "../../../migrations/097_special_meals_many_per_meal.sql"), "utf8");
+    } catch {
+      return "";
+    }
+  })();
+
+  it("drops the one-per-day-and-meal unique key", () => {
+    expect(M097).toMatch(/DROP CONSTRAINT IF EXISTS special_meal_occasions_hostel_day_meal_key/);
+  });
+
+  it("keeps a plain index for the hostel/day lookups the key used to serve", () => {
+    expect(M097).toMatch(/CREATE INDEX IF NOT EXISTS special_meal_occasions_hostel_day_idx\s+ON public\.special_meal_occasions \(hostel_id, weekday\)/);
+  });
+
+  it("no longer declares the unique key in Prisma", () => {
+    expect(modelOf("special_meal_occasions")).not.toContain("@@unique");
+  });
+});

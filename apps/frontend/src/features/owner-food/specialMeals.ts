@@ -42,6 +42,8 @@ export interface Outreach {
 export interface SpecialCount {
   occasion: SpecialOccasion;
   serveDate: string;
+  /** The meal's serving start, "HH:mm" IST. */
+  mealStart?: string;
   cutoffAt: string;
   isOpen: boolean;
   /** True only on the serving day itself: the only day "food's ready" can be sent. */
@@ -156,4 +158,113 @@ export function outreachActions(o: Outreach | undefined, isOpen: boolean) {
     ask: o.toAsk > 0 ? (fresh ? `Ask residents now · ${o.toAsk}` : `Ask ${o.toAsk} more`) : null,
     remind: o.toRemind > 0 ? `Remind ${o.toRemind} who haven't answered` : null,
   };
+}
+
+// ─── Screen v2 (2026-10-11) ─────────────────────────────────────────────
+
+const MEAL_LABEL = { BREAKFAST: 'Breakfast', LUNCH: 'Lunch', SNACKS: 'Snacks', DINNER: 'Dinner' } as const;
+export const MEAL_TYPE_OPTIONS = (['BREAKFAST', 'LUNCH', 'SNACKS', 'DINNER'] as const).map((value) => ({ value, label: MEAL_LABEL[value] }));
+export const WEEKDAY_SHORT = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'] as const;
+
+function clock(hhmm: string): string {
+  const [h, m] = hhmm.split(':').map(Number);
+  return `${h % 12 === 0 ? 12 : h % 12}:${String(m).padStart(2, '0')} ${h >= 12 ? 'PM' : 'AM'}`;
+}
+
+function istDate(iso: string): string {
+  return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date(iso));
+}
+
+function addDays(isoDate: string, n: number): string {
+  const d = new Date(`${isoDate}T00:00:00Z`);
+  d.setUTCDate(d.getUTCDate() + n);
+  return d.toISOString().slice(0, 10);
+}
+
+function dayWord(isoDate: string, today: string): string {
+  if (isoDate === today) return 'today';
+  if (isoDate === addDays(today, 1)) return 'tomorrow';
+  return new Date(`${isoDate}T00:00:00Z`).toLocaleDateString('en-IN', { weekday: 'short', timeZone: 'UTC' });
+}
+
+/** The one-line state of a special meal, with a StatusPill tone. */
+export function phaseOf(
+  data: Pick<SpecialCount, 'occasion' | 'isOpen' | 'isToday' | 'cutoffAt'>,
+  today: string,
+): { tone: 'success' | 'warning' | 'neutral'; label: string } {
+  if (!data.occasion.isActive) return { tone: 'neutral', label: "Paused · residents won't be asked" };
+  if (data.isOpen) return { tone: 'success', label: `Collecting answers · closes ${istTime(data.cutoffAt)} ${dayWord(istDate(data.cutoffAt), today)}` };
+  if (data.isToday) return { tone: 'warning', label: 'Answers closed · serving today' };
+  return { tone: 'neutral', label: 'Answers closed · final count' };
+}
+
+/** "Today · Lunch at 12:30 PM". */
+export function servingLine(serveDate: string, mealType: keyof typeof MEAL_LABEL, mealStart: string, today: string): string {
+  const word = dayWord(serveDate, today);
+  const when = word === 'today' ? 'Today' : word === 'tomorrow' ? 'Tomorrow'
+    : new Date(`${serveDate}T00:00:00Z`).toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' }).replace(',', '');
+  return `${when} · ${MEAL_LABEL[mealType]} at ${clock(mealStart)}`;
+}
+
+/** Answers so far, out of everyone who is here (people on leave are not asked). */
+export function answeredProgress(c: SpecialCount['count']) {
+  const here = c.people.filter((p) => p.basis !== 'ON_LEAVE').length;
+  const answered = c.people.filter((p) => p.basis === 'CONFIRMED').length;
+  return { answered, here, pct: here > 0 ? Math.round((answered / here) * 100) : 0 };
+}
+
+export function dishSummary(o: { nonVegDish: string | null; vegDish: string | null }): string | null {
+  const parts = [o.nonVegDish, o.vegDish].map((d) => (d || '').trim()).filter(Boolean);
+  return parts.length ? parts.join(' · ') : null;
+}
+
+/** Live preview under the cutoff picker. */
+export function closePreview(mealStart: string, minutesBefore: number): string {
+  const [h, m] = mealStart.split(':').map(Number);
+  const t = h * 60 + m - minutesBefore;
+  const mins = ((t % 1440) + 1440) % 1440;
+  const at = clock(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
+  return t >= 0 ? `Answers close at ${at} on the day` : `Answers close at ${at} the evening before`;
+}
+
+const MEAL_ORDER = { BREAKFAST: 0, LUNCH: 1, SNACKS: 2, DINNER: 3 } as const;
+
+/** "Today", "Tomorrow", "Wed 14 Oct". */
+export function dayLabel(isoDate: string, today: string): string {
+  const word = dayWord(isoDate, today);
+  if (word === 'today') return 'Today';
+  if (word === 'tomorrow') return 'Tomorrow';
+  return new Date(`${isoDate}T00:00:00Z`)
+    .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .replace(',', '');
+}
+
+/**
+ * The owner thinks in days ("what's special on Sunday?"), so specials are
+ * grouped by their next serving date, soonest first, and within a day in the
+ * order they're served.
+ */
+export function groupByDay(occasions: SpecialOccasion[], today: string) {
+  const byDate = new Map<string, SpecialOccasion[]>();
+  for (const o of occasions) {
+    const list = byDate.get(o.nextServeDate) ?? [];
+    list.push(o);
+    byDate.set(o.nextServeDate, list);
+  }
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => ({
+      date,
+      weekday: list[0].weekday,
+      label: dayLabel(date, today),
+      occasions: list.map((o, i) => ({ o, i })).sort((x, y) => MEAL_ORDER[x.o.mealType] - MEAL_ORDER[y.o.mealType] || x.i - y.i).map((x) => x.o),
+    }));
+}
+
+/** "Lunch", or "Lunch · Chicken Biryani" when another special that day is also at lunch. */
+export function specialLabel(o: SpecialOccasion, sameDay: SpecialOccasion[]): string {
+  const meal = MEAL_LABEL[o.mealType];
+  const shared = sameDay.some((x) => x.id !== o.id && x.mealType === o.mealType);
+  const dish = dishSummary(o)?.split(' · ')[0];
+  return shared && dish ? `${meal} · ${dish}` : meal;
 }
