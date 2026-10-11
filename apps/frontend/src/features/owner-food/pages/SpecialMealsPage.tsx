@@ -21,7 +21,9 @@ import { OccasionFormSheet, type OccasionFormValues } from '../components/specia
 import { useMealTimings } from '../hooks/useMealTimings';
 import { useSpecialMealCount, useSpecialMeals } from '../hooks/useSpecialMeals';
 import {
-  WEEKDAY_SHORT,
+  WEEKDAYS,
+  groupByDay,
+  specialLabel,
   answeredProgress,
   breakdownLine,
   choiceLabel,
@@ -36,6 +38,7 @@ import {
 } from '../specialMeals';
 
 const SLOT = { BREAKFAST: 'breakfast', LUNCH: 'lunch', SNACKS: 'snacks', DINNER: 'dinner' } as const;
+const MEAL_EMOJI = { BREAKFAST: '🍳', LUNCH: '🍛', SNACKS: '☕', DINNER: '🍽️' } as const;
 
 function istToday(): string {
   return new Intl.DateTimeFormat('en-CA', { timeZone: 'Asia/Kolkata' }).format(new Date());
@@ -56,10 +59,16 @@ export function SpecialMealsPage() {
   const meals = useSpecialMeals(hostelId);
   const { mealTimings } = useMealTimings(hostelId);
   const [selectedId, setSelectedId] = useState<string | null>(null);
-  const [form, setForm] = useState<{ open: boolean; editing: SpecialOccasion | null }>({ open: false, editing: null });
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [form, setForm] = useState<{ open: boolean; editing: SpecialOccasion | null; weekday?: number }>({ open: false, editing: null });
   const [deleting, setDeleting] = useState<SpecialOccasion | null>(null);
 
-  const active = meals.occasions.find((o) => o.id === selectedId) ?? meals.occasions[0] ?? null;
+  const today = istToday();
+  const days = useMemo(() => groupByDay(meals.occasions, today), [meals.occasions, today]);
+  const day = days.find((d) => d.date === selectedDay) ?? days[0] ?? null;
+  const active = day?.occasions.find((o) => o.id === selectedId) ?? day?.occasions[0] ?? null;
+  const hasSiblingAt = (weekday: number, mealType: SpecialOccasion['mealType']) =>
+    meals.occasions.some((o) => o.weekday === weekday && o.mealType === mealType && o.id !== form.editing?.id);
   const mealStartFor = (m: SpecialOccasion['mealType']) => mealTimings[SLOT[m]]?.start ?? '12:30';
 
   const save = async (v: OccasionFormValues) => {
@@ -70,6 +79,7 @@ export function SpecialMealsPage() {
       } else {
         const created = await meals.create(v);
         setSelectedId(created.id);
+        setSelectedDay(created.nextServeDate);
         stayoToast.success(`${occasionTitle(created)} added · residents are asked the evening before`);
       }
       setForm({ open: false, editing: null });
@@ -114,7 +124,7 @@ export function SpecialMealsPage() {
         </div>
         <div className="flex flex-none items-center gap-2">
           {meals.occasions.length > 0 && (
-            <button onClick={() => setForm({ open: true, editing: null })} className="flex h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-[13.5px] font-bold text-primary-foreground">
+            <button onClick={() => setForm({ open: true, editing: null, weekday: day?.weekday })} className="flex h-10 items-center gap-1.5 rounded-full bg-primary px-4 text-[13.5px] font-bold text-primary-foreground">
               <Plus className="h-4 w-4" /> New
             </button>
           )}
@@ -124,18 +134,49 @@ export function SpecialMealsPage() {
 
       {!meals.isLoading && meals.occasions.length === 0 && <EmptyIntro onCreate={() => setForm({ open: true, editing: null })} />}
 
-      {meals.occasions.length > 1 && (
-        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0">
-          {meals.occasions.map((o) => (
+      {days.length > 0 && (
+        <div className="-mx-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:px-0" role="tablist" aria-label="Days">
+          {days.map((d) => (
             <button
-              key={o.id}
-              onClick={() => setSelectedId(o.id)}
-              className={`flex flex-none items-center gap-1.5 rounded-full px-4 py-2 text-[13.5px] font-semibold ${active?.id === o.id ? 'bg-foreground text-background' : 'bg-muted text-foreground'}`}
+              key={d.date}
+              role="tab"
+              aria-selected={day?.date === d.date}
+              onClick={() => { setSelectedDay(d.date); setSelectedId(null); }}
+              className={`flex flex-none items-center gap-2 rounded-full px-4 py-2 text-[13.5px] font-semibold ${day?.date === d.date ? 'bg-foreground text-background' : 'bg-muted text-foreground'}`}
             >
-              {WEEKDAY_SHORT[o.weekday]} · {o.mealType[0] + o.mealType.slice(1).toLowerCase()}
-              {!o.isActive && <span className="rounded-full bg-background/30 px-1.5 text-[11px]">paused</span>}
+              {d.label}
+              <span className={`rounded-full px-1.5 text-[11.5px] ${day?.date === d.date ? 'bg-background/20' : 'bg-background'}`}>{d.occasions.length}</span>
             </button>
           ))}
+        </div>
+      )}
+
+      {day && (
+        <div className="flex flex-col gap-2">
+          {day.occasions.map((o) => {
+            const selected = active?.id === o.id;
+            return (
+              <button
+                key={o.id}
+                onClick={() => setSelectedId(o.id)}
+                aria-pressed={selected}
+                className={`flex items-center gap-3 rounded-2xl border px-4 py-3 text-left transition-colors ${selected ? 'border-primary bg-primary/5' : 'border-border bg-card'}`}
+              >
+                <span className="text-xl" aria-hidden>{MEAL_EMOJI[o.mealType]}</span>
+                <span className="min-w-0 flex-1">
+                  <span className="block text-[15px] font-bold">{specialLabel(o, day.occasions)}</span>
+                  <span className="block truncate text-[12.5px] text-muted-foreground">{dishSummary(o) ?? 'Veg or non-veg'}</span>
+                </span>
+                {!o.isActive && <span className="rounded-full bg-muted px-2 py-0.5 text-[11.5px] font-semibold text-muted-foreground">Paused</span>}
+              </button>
+            );
+          })}
+          <button
+            onClick={() => setForm({ open: true, editing: null, weekday: day.weekday })}
+            className="flex items-center justify-center gap-2 rounded-2xl border border-dashed border-border py-3 text-[13.5px] font-semibold text-muted-foreground"
+          >
+            <Plus className="h-4 w-4" /> Add another special for {day.label === 'Today' || day.label === 'Tomorrow' ? day.label.toLowerCase() : WEEKDAYS[day.weekday]}
+          </button>
         </div>
       )}
 
@@ -155,6 +196,8 @@ export function SpecialMealsPage() {
         onOpenChange={(open) => setForm((f) => ({ ...f, open }))}
         initial={form.editing}
         mealStartFor={mealStartFor}
+        defaultWeekday={form.weekday}
+        hasSiblingAt={hasSiblingAt}
         onSubmit={save}
         onDelete={() => remove(form.editing)}
         isSaving={meals.isSaving}

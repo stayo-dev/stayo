@@ -1,5 +1,5 @@
 import { useSpecialMealCount } from '../hooks/useSpecialMeals';
-import { cookLine, occasionTitle, type SpecialOccasion } from '../specialMeals';
+import { cookLine, dishSummary, occasionTitle, type SpecialOccasion } from '../specialMeals';
 import { SpecialMealReadyPanel } from './SpecialMealReadyPanel';
 
 /**
@@ -14,7 +14,7 @@ export function SpecialMealKitchenLine({ hostelId, occasion }: { hostelId: strin
   return (
     <div className="flex flex-col gap-2 rounded-xl bg-muted px-4 py-3">
       <p className="text-[15px] font-bold">
-        {occasionTitle(occasion)} special: {nonVeg.value} non-veg · {veg.value} veg
+        {occasionTitle(occasion)} special{dishSummary(occasion) ? ` (${dishSummary(occasion)})` : ''}: {nonVeg.value} non-veg · {veg.value} veg
       </p>
       <SpecialMealReadyPanel data={data} onSend={sendReady} isSending={isSendingReady} large />
     </div>

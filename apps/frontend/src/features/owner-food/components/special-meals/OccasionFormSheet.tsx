@@ -35,6 +35,8 @@ export function OccasionFormSheet({
   onOpenChange,
   initial,
   mealStartFor,
+  defaultWeekday,
+  hasSiblingAt,
   onSubmit,
   onDelete,
   isSaving,
@@ -44,6 +46,10 @@ export function OccasionFormSheet({
   initial?: SpecialOccasion | null;
   /** "HH:mm" serving start for a meal type, from the hostel's Meal Plan. */
   mealStartFor: (mealType: SpecialOccasion['mealType']) => string;
+  /** Pre-selected day for a new special ("Add another for Sunday"). */
+  defaultWeekday?: number;
+  /** True when another special already sits at this day and meal (not counting the one being edited). */
+  hasSiblingAt: (weekday: number, mealType: SpecialOccasion['mealType']) => boolean;
   onSubmit: (values: OccasionFormValues) => Promise<void>;
   onDelete?: () => Promise<void>;
   isSaving: boolean;
@@ -58,14 +64,14 @@ export function OccasionFormSheet({
 
   useEffect(() => {
     if (!open) return;
-    setWeekday(initial?.weekday ?? 0);
+    setWeekday(initial?.weekday ?? defaultWeekday ?? 0);
     setMealType(initial?.mealType ?? 'LUNCH');
     setNonVegDish(initial?.nonVegDish ?? '');
     setVegDish(initial?.vegDish ?? '');
     setCutoff(initial?.cutoffMinutesBefore ?? 180);
     setPolicy(initial?.noAnswerPolicy ?? 'LAST_CHOICE');
     setConfirmDelete(false);
-  }, [open, initial]);
+  }, [open, initial, defaultWeekday]);
 
   const chip = (active: boolean) =>
     `rounded-full px-3.5 py-2 text-[13.5px] font-semibold transition-colors ${active ? 'bg-primary text-primary-foreground' : 'bg-muted text-foreground'}`;
@@ -73,6 +79,7 @@ export function OccasionFormSheet({
   const input = 'w-full rounded-xl border border-border bg-background px-3.5 py-3 text-[15px] outline-none focus:border-primary';
   const editing = Boolean(initial);
   const start = mealStartFor(mealType);
+  const needsDishes = hasSiblingAt(weekday, mealType) && !nonVegDish.trim() && !vegDish.trim();
 
   const submit = () =>
     onSubmit({
@@ -105,7 +112,7 @@ export function OccasionFormSheet({
                 <Trash2 className="h-5 w-5" />
               </button>
             )}
-            <button disabled={isSaving} onClick={submit} className="h-12 flex-1 rounded-xl bg-primary text-[15px] font-bold text-primary-foreground disabled:opacity-60">
+            <button disabled={isSaving || needsDishes} onClick={submit} className="h-12 flex-1 rounded-xl bg-primary text-[15px] font-bold text-primary-foreground disabled:opacity-60">
               {isSaving ? 'Saving…' : editing ? 'Save changes' : 'Create special meal'}
             </button>
           </div>
@@ -141,7 +148,13 @@ export function OccasionFormSheet({
             <span className="w-7 text-center text-lg" aria-hidden>🥗</span>
             <input className={input} maxLength={60} placeholder="Veg dish, e.g. Veg Biryani" value={vegDish} onChange={(e) => setVegDish(e.target.value)} />
           </label>
-          <p className="text-[12.5px] text-muted-foreground">Shown in the WhatsApp question and the "food's ready" alert. You can change them every week.</p>
+          {needsDishes ? (
+            <p className="rounded-xl bg-amber-50 px-3.5 py-2.5 text-[13px] font-medium text-amber-900 dark:bg-amber-950 dark:text-amber-200">
+              There's already a {occasionTitle({ weekday, mealType }).toLowerCase()} special. Add the dishes so residents can tell the two apart on WhatsApp.
+            </p>
+          ) : (
+            <p className="text-[12.5px] text-muted-foreground">Shown in the WhatsApp question and the "food's ready" alert. You can change them every week.</p>
+          )}
         </section>
 
         <section className="flex flex-col gap-2">

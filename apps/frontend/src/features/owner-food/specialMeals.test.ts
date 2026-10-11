@@ -149,3 +149,33 @@ describe('special meals screen — v2', () => {
     expect(closePreview('07:00', 720)).toBe('Answers close at 7:00 PM the evening before');
   });
 });
+
+import { groupByDay, specialLabel } from './specialMeals';
+
+describe('several specials per day', () => {
+  const occ = (id: string, weekday: number, mealType: string, nextServeDate: string, nonVegDish: string | null = null) =>
+    ({ id, weekday, mealType, nextServeDate, nonVegDish, vegDish: null, cutoffMinutesBefore: 180, noAnswerPolicy: 'LAST_CHOICE', isActive: true }) as any;
+
+  it('groups by serving day, soonest first, meals in serving order', () => {
+    const groups = groupByDay(
+      [occ('w', 3, 'DINNER', '2026-10-14'), occ('d', 0, 'DINNER', '2026-10-11'), occ('b', 0, 'BREAKFAST', '2026-10-11'), occ('l', 0, 'LUNCH', '2026-10-11')],
+      '2026-10-11',
+    );
+    expect(groups.map((g) => [g.label, g.occasions.map((o) => o.id)])).toEqual([
+      ['Today', ['b', 'l', 'd']],
+      ['Wed 14 Oct', ['w']],
+    ]);
+  });
+
+  it('labels tomorrow', () => {
+    expect(groupByDay([occ('x', 1, 'LUNCH', '2026-10-12')], '2026-10-11')[0].label).toBe('Tomorrow');
+  });
+
+  it('names a special by its meal, adding the dish only when the meal is shared', () => {
+    const a = occ('a', 0, 'LUNCH', '2026-10-11', 'Chicken Biryani');
+    const b = occ('b', 0, 'LUNCH', '2026-10-11', 'Mutton curry');
+    const c = occ('c', 0, 'DINNER', '2026-10-11', 'Fish fry');
+    expect(specialLabel(a, [a, b, c])).toBe('Lunch · Chicken Biryani');
+    expect(specialLabel(c, [a, b, c])).toBe('Dinner');
+  });
+});

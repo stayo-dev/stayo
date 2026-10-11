@@ -226,3 +226,45 @@ export function closePreview(mealStart: string, minutesBefore: number): string {
   const at = clock(`${String(Math.floor(mins / 60)).padStart(2, '0')}:${String(mins % 60).padStart(2, '0')}`);
   return t >= 0 ? `Answers close at ${at} on the day` : `Answers close at ${at} the evening before`;
 }
+
+const MEAL_ORDER = { BREAKFAST: 0, LUNCH: 1, SNACKS: 2, DINNER: 3 } as const;
+
+/** "Today", "Tomorrow", "Wed 14 Oct". */
+export function dayLabel(isoDate: string, today: string): string {
+  const word = dayWord(isoDate, today);
+  if (word === 'today') return 'Today';
+  if (word === 'tomorrow') return 'Tomorrow';
+  return new Date(`${isoDate}T00:00:00Z`)
+    .toLocaleDateString('en-GB', { weekday: 'short', day: 'numeric', month: 'short', timeZone: 'UTC' })
+    .replace(',', '');
+}
+
+/**
+ * The owner thinks in days ("what's special on Sunday?"), so specials are
+ * grouped by their next serving date, soonest first, and within a day in the
+ * order they're served.
+ */
+export function groupByDay(occasions: SpecialOccasion[], today: string) {
+  const byDate = new Map<string, SpecialOccasion[]>();
+  for (const o of occasions) {
+    const list = byDate.get(o.nextServeDate) ?? [];
+    list.push(o);
+    byDate.set(o.nextServeDate, list);
+  }
+  return Array.from(byDate.entries())
+    .sort(([a], [b]) => a.localeCompare(b))
+    .map(([date, list]) => ({
+      date,
+      weekday: list[0].weekday,
+      label: dayLabel(date, today),
+      occasions: list.map((o, i) => ({ o, i })).sort((x, y) => MEAL_ORDER[x.o.mealType] - MEAL_ORDER[y.o.mealType] || x.i - y.i).map((x) => x.o),
+    }));
+}
+
+/** "Lunch", or "Lunch · Chicken Biryani" when another special that day is also at lunch. */
+export function specialLabel(o: SpecialOccasion, sameDay: SpecialOccasion[]): string {
+  const meal = MEAL_LABEL[o.mealType];
+  const shared = sameDay.some((x) => x.id !== o.id && x.mealType === o.mealType);
+  const dish = dishSummary(o)?.split(' · ')[0];
+  return shared && dish ? `${meal} · ${dish}` : meal;
+}
