@@ -23,11 +23,11 @@ export const foodService = {
     const response = await api.get(`/hostels/${hostelId}/meals/special`);
     return (unwrap(response).occasions ?? []) as SpecialOccasion[];
   },
-  createSpecialMeal: async (hostelId: string, body: { weekday: number; mealType: string; vegDish?: string | null; nonVegDish?: string | null; cutoffMinutesBefore?: number }) => {
+  createSpecialMeal: async (hostelId: string, body: { weekday: number; mealType: string; vegDish?: string | null; nonVegDish?: string | null; cutoffMinutesBefore?: number; noAnswerPolicy?: string }) => {
     const response = await api.post(`/hostels/${hostelId}/meals/special`, body);
     return unwrap(response).occasion as SpecialOccasion;
   },
-  updateSpecialMeal: async (hostelId: string, occasionId: string, body: Partial<Pick<SpecialOccasion, 'vegDish' | 'nonVegDish' | 'cutoffMinutesBefore' | 'noAnswerPolicy' | 'isActive'>>) => {
+  updateSpecialMeal: async (hostelId: string, occasionId: string, body: Partial<Pick<SpecialOccasion, 'weekday' | 'mealType' | 'vegDish' | 'nonVegDish' | 'cutoffMinutesBefore' | 'noAnswerPolicy' | 'isActive'>>) => {
     const response = await api.patch(`/hostels/${hostelId}/meals/special/${occasionId}`, body);
     return unwrap(response).occasion as SpecialOccasion;
   },
@@ -38,6 +38,9 @@ export const foodService = {
   },
   setSpecialMealAnswer: async (hostelId: string, occasionId: string, body: { tenantId: string; serveDate: string; choice: MealChoice | null }) => {
     await api.put(`/hostels/${hostelId}/meals/special/${occasionId}/answers`, body);
+  },
+  deleteSpecialMeal: async (hostelId: string, occasionId: string) => {
+    await api.delete(`/hostels/${hostelId}/meals/special/${occasionId}`);
   },
   sendSpecialMealNow: async (hostelId: string, occasionId: string, kind: 'ASK' | 'REMIND') => {
     const response = await api.post(`/hostels/${hostelId}/meals/special/${occasionId}/send`, { kind });

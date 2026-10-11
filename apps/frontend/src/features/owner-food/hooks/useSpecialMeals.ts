@@ -21,7 +21,18 @@ export function useSpecialMeals(hostelId: string | null | undefined) {
       qc.invalidateQueries({ queryKey: ['hostel', hostelId, 'meals', 'special'] });
     },
   });
-  return { occasions: query.data ?? [], isLoading: query.isLoading, create: create.mutateAsync, update: update.mutateAsync };
+  const remove = useMutation({
+    mutationFn: (occasionId: string) => foodService.deleteSpecialMeal(hostelId as string, occasionId),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['hostel', hostelId, 'meals', 'special'] }),
+  });
+  return {
+    occasions: query.data ?? [],
+    isLoading: query.isLoading,
+    create: create.mutateAsync,
+    update: update.mutateAsync,
+    remove: remove.mutateAsync,
+    isSaving: create.isPending || update.isPending || remove.isPending,
+  };
 }
 
 export function useSpecialMealCount(hostelId: string | null | undefined, occasionId: string | null | undefined, date?: string) {

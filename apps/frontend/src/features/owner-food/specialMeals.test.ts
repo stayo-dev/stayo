@@ -106,3 +106,46 @@ describe('ask / remind now', () => {
     expect(outreachActions(undefined, true)).toBeNull();
   });
 });
+
+import { answeredProgress, closePreview, dishSummary, phaseOf, servingLine } from './specialMeals';
+
+describe('special meals screen — v2', () => {
+  const base = {
+    occasion: { id: 'o', weekday: 0, mealType: 'LUNCH', vegDish: null, nonVegDish: null, cutoffMinutesBefore: 180, noAnswerPolicy: 'LAST_CHOICE', isActive: true, nextServeDate: '2026-10-11' },
+    serveDate: '2026-10-11', mealStart: '12:30', cutoffAt: '2026-10-11T04:00:00.000Z', isOpen: true, isToday: true, count, readyAlerts: [],
+  } as any;
+
+  it('names the phase: collecting, closed, paused', () => {
+    expect(phaseOf(base, '2026-10-11')).toEqual({ tone: 'success', label: 'Collecting answers · closes 9:30 AM today' });
+    expect(phaseOf({ ...base, isToday: false, serveDate: '2026-10-12', cutoffAt: '2026-10-12T04:00:00.000Z' }, '2026-10-11'))
+      .toEqual({ tone: 'success', label: 'Collecting answers · closes 9:30 AM tomorrow' });
+    expect(phaseOf({ ...base, isOpen: false }, '2026-10-11')).toEqual({ tone: 'warning', label: 'Answers closed · serving today' });
+    expect(phaseOf({ ...base, isOpen: false, isToday: false }, '2026-10-10')).toEqual({ tone: 'neutral', label: 'Answers closed · final count' });
+    expect(phaseOf({ ...base, occasion: { ...base.occasion, isActive: false } }, '2026-10-11'))
+      .toEqual({ tone: 'neutral', label: "Paused · residents won't be asked" });
+  });
+
+  it('says when and what is served', () => {
+    expect(servingLine('2026-10-11', 'LUNCH', '12:30', '2026-10-11')).toBe('Today · Lunch at 12:30 PM');
+    expect(servingLine('2026-10-12', 'DINNER', '19:00', '2026-10-11')).toBe('Tomorrow · Dinner at 7:00 PM');
+    expect(servingLine('2026-10-14', 'DINNER', '19:00', '2026-10-11')).toBe('Wed 14 Oct · Dinner at 7:00 PM');
+  });
+
+  it('counts answers against everyone who is here', () => {
+    // 6 people, 1 on leave → 5 here; 3 confirmed answers.
+    expect(answeredProgress(count)).toEqual({ answered: 3, here: 5, pct: 60 });
+    expect(answeredProgress({ ...count, people: [], confirmed: 0, onLeave: 0 })).toEqual({ answered: 0, here: 0, pct: 0 });
+  });
+
+  it('shows the dishes, or nothing', () => {
+    expect(dishSummary({ nonVegDish: 'Chicken Biryani', vegDish: 'Veg Biryani' })).toBe('Chicken Biryani · Veg Biryani');
+    expect(dishSummary({ nonVegDish: null, vegDish: 'Paneer' })).toBe('Paneer');
+    expect(dishSummary({ nonVegDish: null, vegDish: null })).toBeNull();
+  });
+
+  it('previews when answers will close as the owner picks a cutoff', () => {
+    expect(closePreview('12:30', 180)).toBe('Answers close at 9:30 AM on the day');
+    expect(closePreview('12:30', 720)).toBe('Answers close at 12:30 AM on the day');
+    expect(closePreview('07:00', 720)).toBe('Answers close at 7:00 PM the evening before');
+  });
+});
