@@ -1,5 +1,5 @@
-import { useState } from 'react';
-import { Upload, ChevronDown, ChevronUp, X, AlertCircle } from 'lucide-react';
+import { useEffect, useMemo, useState, type ChangeEvent } from 'react';
+import { Camera, ImageIcon, ChevronDown, ChevronUp, X, AlertCircle } from 'lucide-react';
 import type { AddExpenseData } from '../../types';
 import { cn } from '@shared/lib/cn';
 
@@ -22,6 +22,22 @@ const labelStyle = 'text-[11px] font-bold uppercase tracking-wide text-muted-for
 export function ReviewStep({ data, setD }: ReviewStepProps) {
   const [advancedOpen, setAdvancedOpen] = useState(Boolean(data.notes || data.recurring));
   const amount = Number(data.amount) || 0;
+
+  // One object URL per chosen file, released when it changes or the step
+  // unmounts. Creating it inline in JSX leaked a new URL on every render.
+  const receiptPreview = useMemo(
+    () => (data.receiptFile ? URL.createObjectURL(data.receiptFile) : null),
+    [data.receiptFile],
+  );
+  useEffect(() => () => {
+    if (receiptPreview) URL.revokeObjectURL(receiptPreview);
+  }, [receiptPreview]);
+
+  const pickReceipt = (e: ChangeEvent<HTMLInputElement>) => {
+    setD({ receiptFile: e.target.files?.[0] ?? null });
+    // Clear it so picking the same photo again after removing it still fires.
+    e.target.value = '';
+  };
 
   return (
     <div className="flex flex-col gap-4">
@@ -58,7 +74,7 @@ export function ReviewStep({ data, setD }: ReviewStepProps) {
         <div className="flex items-center gap-3 rounded-xl border border-border bg-secondary/30 px-4 py-3">
           <div className="h-10 w-10 flex-none overflow-hidden rounded-lg bg-muted">
             <img
-              src={URL.createObjectURL(data.receiptFile)}
+              src={receiptPreview ?? undefined}
               alt="Receipt preview"
               className="h-full w-full object-cover"
             />
@@ -80,19 +96,35 @@ export function ReviewStep({ data, setD }: ReviewStepProps) {
           </button>
         </div>
       ) : (
-        <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-4 py-3.5 text-[12.5px] font-semibold text-muted-foreground transition-colors active:bg-muted">
-          <Upload className="h-3.5 w-3.5" strokeWidth={2} />
-          Attach receipt · Optional
-          <input
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            className="hidden"
-            onChange={(e) => {
-              const file = e.target.files?.[0] ?? null;
-              setD({ receiptFile: file });
-            }}
-          />
-        </label>
+        // Two explicit choices. A single file input left it to the phone:
+        // newer Android opens only the photo picker (no camera), and on
+        // iPhone the camera hides inside a menu.
+        <div className="flex flex-col gap-2">
+          <span className={labelStyle}>Attach receipt · Optional</span>
+          <div className="grid grid-cols-2 gap-2">
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-3.5 text-[12.5px] font-semibold text-muted-foreground transition-colors active:bg-muted">
+              <Camera className="h-3.5 w-3.5" strokeWidth={2} />
+              Take photo
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                capture="environment"
+                className="hidden"
+                onChange={pickReceipt}
+              />
+            </label>
+            <label className="flex cursor-pointer items-center justify-center gap-2 rounded-xl border border-dashed border-border px-3 py-3.5 text-[12.5px] font-semibold text-muted-foreground transition-colors active:bg-muted">
+              <ImageIcon className="h-3.5 w-3.5" strokeWidth={2} />
+              From gallery
+              <input
+                type="file"
+                accept="image/jpeg,image/png,image/webp"
+                className="hidden"
+                onChange={pickReceipt}
+              />
+            </label>
+          </div>
+        </div>
       )}
 
       {/* Advanced options — notes, recurring */}

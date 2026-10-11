@@ -3,6 +3,7 @@ import { AlertCircle, Download, ExternalLink, Maximize2, X } from 'lucide-react'
 import { StayoLoader } from '@shared/ui/brand';
 import { useDocumentBlob } from './useDocumentBlob';
 import { looksLikePdf } from './documentSource';
+import { PdfPages } from './PdfPages';
 
 /**
  * A document, shown inline with the owner's real session — the preview both
@@ -71,20 +72,24 @@ export function DocumentPreviewPane({ url, title, fileName, imageMaxHeight = 'ma
 
         {status === 'ready' && objectUrl && (
           isPdf ? (
-            <object data={objectUrl} type="application/pdf" className="h-[52dvh] w-full">
-              {/* Some mobile browsers refuse to embed PDFs at all — say so
-                  rather than showing an empty frame. */}
-              <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
-                <p className="text-[12.5px] text-muted-foreground">This browser can’t show PDFs inline.</p>
-                <button
-                  type="button"
-                  onClick={save}
-                  className="min-h-11 rounded-xl bg-primary px-4 py-2 font-display text-[12.5px] font-bold text-primary-foreground"
-                >
-                  {isDirect ? 'Open to view' : 'Download to view'}
-                </button>
-              </div>
-            </object>
+            // Drawn with pdf.js: `<object>` embedding shows nothing on most
+            // phones, which left a signed agreement readable only by download.
+            <PdfPages
+              src={objectUrl}
+              title={title}
+              fallback={
+                <div className="flex flex-col items-center gap-2 px-6 py-8 text-center">
+                  <p className="text-[12.5px] text-muted-foreground">This PDF couldn’t be shown here.</p>
+                  <button
+                    type="button"
+                    onClick={save}
+                    className="min-h-11 rounded-xl bg-primary px-4 py-2 font-display text-[12.5px] font-bold text-primary-foreground"
+                  >
+                    {isDirect ? 'Open to view' : 'Download to view'}
+                  </button>
+                </div>
+              }
+            />
           ) : (
             <button type="button" onClick={() => setZoomed(true)} className="block w-full" aria-label={`Enlarge ${title}`}>
               <img src={objectUrl} alt={title} className={`${imageMaxHeight} w-full object-contain`} />
