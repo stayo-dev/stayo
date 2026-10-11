@@ -4,9 +4,7 @@ import { useHomepageListings } from '@features/homepage/hooks/useHomepageListing
 import { ThemeProvider } from '@/app/providers/ThemeProvider';
 import { LoginModal, type LoginModalUser } from '@shared/ui-patterns/LoginModal';
 import {
-  HANDOFF_DELAY_MS,
   crossSurfaceHandoff,
-  type CrossSurfaceHandoff,
 } from '@shared/lib/crossSurfaceLogin';
 
 import { PublicHeader } from './components/PublicHeader';
@@ -53,24 +51,16 @@ export function HomePage() {
 
   // Sign-in opens over the homepage rather than sending anyone to `/login`,
   // which renders the owner marketing page. `mode="tenant"` is the only mode
-  // with a signup tab, and an owner or admin who signs in here is announced
-  // and handed to their own app by `crossSurfaceHandoff` — the same component
-  // and the same rule Discover uses.
+  // with a signup tab, and anyone with a dashboard who signs in here goes
+  // straight to it via `crossSurfaceHandoff` — the same rule Discover uses.
   const [signInOpen, setSignInOpen] = useState(false);
-  const [handoff, setHandoff] = useState<CrossSurfaceHandoff | null>(null);
-
-  useEffect(() => {
-    if (!handoff) return;
-    // A full page load: the owner and admin apps have their own providers and
-    // session bootstrap.
-    const timer = window.setTimeout(() => window.location.assign(handoff.path), HANDOFF_DELAY_MS);
-    return () => window.clearTimeout(timer);
-  }, [handoff]);
 
   const handleSignedIn = (user: LoginModalUser) => {
     setSignInOpen(false);
     const crossing = crossSurfaceHandoff({ role: user.role, tenantId: user.tenantId }, 'home');
-    if (crossing) setHandoff(crossing);
+    // A full page load: the owner, admin and tenant apps have their own
+    // providers and session bootstrap.
+    if (crossing) window.location.assign(crossing.path);
     // A seeker (no tenancy) stays on the homepage — they came to look at hostels.
   };
 
@@ -104,15 +94,6 @@ export function HomePage() {
           onSuccess={handleSignedIn}
         />
 
-        {handoff && (
-          <div className="fixed inset-0 z-[100] flex items-center justify-center bg-foreground/60 p-6" role="status" aria-live="polite">
-            <div className="w-full max-w-[20rem] rounded-[20px] bg-card p-5 text-center shadow-2xl">
-              <p className="font-display text-sm font-bold text-foreground">Signed in</p>
-              <p className="mt-1.5 text-[12.5px] leading-relaxed text-muted-foreground">{handoff.message}</p>
-              <p className="mt-3 text-[11.5px] font-semibold text-primary">Taking you there…</p>
-            </div>
-          </div>
-        )}
       </div>
     </ThemeProvider>
   );
