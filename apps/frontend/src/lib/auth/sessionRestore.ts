@@ -289,8 +289,8 @@ export function startSessionRestore<U>(deps: SessionRestoreDeps<U>): SessionRest
  * who need to sign in; anyone who already has a session is sent on.
  *
  * A tenant who has *just* signed in on `/login` is left alone: the login page
- * announces the cross-surface hand-off itself (`crossSurfaceLogin.ts`), and
- * jumping first would skip that explanation.
+ * sends them on itself (`crossSurfaceLogin.ts`), so redirecting here too would
+ * race it.
  */
 export function signedInLoginRedirect(input: {
   role: string | null | undefined;
@@ -314,7 +314,7 @@ export function signedInLoginRedirect(input: {
  *   reopening Stayo lands on. A restored owner, admin, manager or resident
  *   with a tenancy is taken to their app. A seeker (no tenancy) stays: the
  *   homepage is where they browse. Someone who *just* signed in here is left
- *   to the homepage's own announced hand-off (`crossSurfaceLogin.ts`).
+ *   to the homepage's own redirect (`crossSurfaceLogin.ts`).
  *
  * Any other path: no redirect.
  */
