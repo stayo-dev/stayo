@@ -4733,7 +4733,8 @@ model special_meal_occasions {
   created_at            DateTime @default(now()) @db.Timestamptz(6)
   updated_at            DateTime @default(now()) @updatedAt @db.Timestamptz(6)
 
-  @@unique([hostel_id, weekday, meal_type], map: "special_meal_occasions_hostel_day_meal_key")
+  /// Several specials may share a day and meal since migration 097.
+  @@index([hostel_id, weekday], map: "special_meal_occasions_hostel_day_idx")
 }
 
 /// One resident's answer for one dated serving. Latest answer wins (upsert).

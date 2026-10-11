@@ -185,6 +185,25 @@ export function createSpecialMealService(deps: {
     return value;
   }
 
+  /**
+   * Since migration 097 a hostel may run several specials at the same meal.
+   * Residents tell them apart only by their dishes (the question reads
+   * "Sunday lunch, 11 Oct is a special meal: Mutton curry or Paneer"), so a
+   * special that shares its day and meal with another must name its dishes.
+   */
+  async function requireDistinguishable(
+    hostelId: string,
+    slot: { weekday: number; mealType: string; vegDish: string | null; nonVegDish: string | null },
+    selfId?: string,
+  ) {
+    if (slot.vegDish || slot.nonVegDish) return;
+    const rows = await db.special_meal_occasions.findMany({ where: { hostel_id: hostelId, weekday: slot.weekday, meal_type: slot.mealType } });
+    const others = ((rows ?? []) as any[]).filter((r) => r.id !== selfId);
+    if (others.length > 0) {
+      throw invalidRequest("There's already a special at this meal. Add the dishes so residents can tell the two apart.");
+    }
+  }
+
   async function listOccasions(hostelId: string, now: Date = new Date()): Promise<OccasionView[]> {
     const rows = await db.special_meal_occasions.findMany({ where: { hostel_id: hostelId }, orderBy: [{ weekday: "asc" }, { meal_type: "asc" }] });
     const today = istDateOf(now);
@@ -197,6 +216,9 @@ export function createSpecialMealService(deps: {
     if (!isMealType(input?.mealType)) throw invalidRequest("mealType must be BREAKFAST, LUNCH, SNACKS or DINNER");
     const policy = input?.noAnswerPolicy ?? "LAST_CHOICE";
     if (!isNoAnswerPolicy(policy)) throw invalidRequest("noAnswerPolicy must be LAST_CHOICE or LEAVE_OUT");
+    const vegDish = cleanDish(input.vegDish, "vegDish");
+    const nonVegDish = cleanDish(input.nonVegDish, "nonVegDish");
+    await requireDistinguishable(hostelId, { weekday, mealType: input.mealType, vegDish, nonVegDish });
     try {
       const row = await db.special_meal_occasions.create({
         data: {
@@ -204,8 +226,8 @@ export function createSpecialMealService(deps: {
           owner_id: ownerId,
           weekday,
           meal_type: input.mealType,
-          veg_dish: cleanDish(input.vegDish, "vegDish"),
-          non_veg_dish: cleanDish(input.nonVegDish, "nonVegDish"),
+          veg_dish: vegDish,
+          non_veg_dish: nonVegDish,
           cutoff_minutes_before: cleanCutoff(input.cutoffMinutesBefore),
           no_answer_policy: policy,
         },
@@ -218,7 +240,7 @@ export function createSpecialMealService(deps: {
   }
 
   async function updateOccasion(hostelId: string, occasionId: string, input: any, now: Date = new Date()): Promise<OccasionView> {
-    await occasionOf(hostelId, occasionId);
+    const existing = await occasionOf(hostelId, occasionId);
     const data: Record<string, unknown> = { updated_at: new Date() };
     if ("weekday" in (input ?? {})) {
       const w = input.weekday;
@@ -240,6 +262,16 @@ export function createSpecialMealService(deps: {
       if (typeof input.isActive !== "boolean") throw invalidRequest("isActive must be true or false");
       data.is_active = input.isActive;
     }
+    await requireDistinguishable(
+      hostelId,
+      {
+        weekday: (data.weekday as number | undefined) ?? existing.weekday,
+        mealType: (data.meal_type as string | undefined) ?? existing.meal_type,
+        vegDish: "veg_dish" in data ? (data.veg_dish as string | null) : existing.veg_dish ?? null,
+        nonVegDish: "non_veg_dish" in data ? (data.non_veg_dish as string | null) : existing.non_veg_dish ?? null,
+      },
+      occasionId,
+    );
     try {
       const row = await db.special_meal_occasions.update({ where: { id: occasionId }, data });
       return viewOf(row, istDateOf(now));
@@ -481,6 +513,12 @@ export function createSpecialMealService(deps: {
     if (candidates.length === 0) return { handled: false };
 
     const open = candidates.filter((c) => now < c.cutoffAt).sort((a, b) => a.cutoffAt.getTime() - b.cutoffAt.getTime());
+    // Several specials open at once (two at lunch, or lunch and dinner): a bare
+    // "veg" could mean any of them, and guessing wrong cooks the wrong food.
+    if (open.length > 1) {
+      await sendText(phone, "You have more than one special meal open right now. Please tap a button in the meal message so we know which one you mean.");
+      return { handled: true, outcome: "AMBIGUOUS" };
+    }
     if (open.length === 0) {
       const latest = candidates.sort((a, b) => b.cutoffAt.getTime() - a.cutoffAt.getTime())[0];
       await sendText(phone, closedReply({ serveDate: latest.serveDate, mealType: latest.occasion.meal_type, cutoffAt: latest.cutoffAt }));

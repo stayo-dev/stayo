@@ -94,3 +94,13 @@ describe("handleWhatsAppReply — typed", () => {
     expect(await svc().handleWhatsAppReply("91900", "rent", identity([T1]), SAT_EVENING)).toEqual({ handled: false });
   });
 });
+
+describe("typed answers with several specials open", () => {
+  it("asks the resident to tap a button instead of guessing which special they meant", async () => {
+    db.special_meal_occasions.findMany.mockResolvedValue([OCC, { ...OCC, id: "55555555-5555-4555-8555-555555555555" }]);
+    const out = await svc().handleWhatsAppReply("91900", "veg", identity([T1]), SAT_EVENING);
+    expect(out.outcome).toBe("AMBIGUOUS");
+    expect(db.special_meal_answers.upsert).not.toHaveBeenCalled();
+    expect(sendText.mock.calls[0][1]).toMatch(/tap/i);
+  });
+});

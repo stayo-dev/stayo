@@ -136,3 +136,33 @@ describe("deleteOccasion", () => {
     expect(db.special_meal_occasions.delete).not.toHaveBeenCalled();
   });
 });
+
+describe("several specials at the same meal", () => {
+  it("allows a second Sunday lunch when it names its dishes", async () => {
+    db.special_meal_occasions.findMany.mockResolvedValue([{ ...OCC, id: "o1" }]);
+    db.special_meal_occasions.create.mockResolvedValue({ ...OCC, id: "o2", non_veg_dish: "Mutton curry", veg_dish: "Paneer" });
+    const out = await createSpecialMealService().createOccasion(HOSTEL, "own", { weekday: 0, mealType: "LUNCH", nonVegDish: "Mutton curry", vegDish: "Paneer" }, NOW);
+    expect(out.id).toBe("o2");
+  });
+
+  it("refuses a second Sunday lunch with no dishes, since residents couldn't tell them apart", async () => {
+    db.special_meal_occasions.findMany.mockResolvedValue([{ ...OCC, id: "o1" }]);
+    await expect(createSpecialMealService().createOccasion(HOSTEL, "own", { weekday: 0, mealType: "LUNCH" }, NOW))
+      .rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    expect(db.special_meal_occasions.create).not.toHaveBeenCalled();
+  });
+
+  it("applies the same rule when an edit moves a meal next to another one", async () => {
+    db.special_meal_occasions.findFirst.mockResolvedValue({ ...OCC, id: "o2", weekday: 3, non_veg_dish: null, veg_dish: null });
+    db.special_meal_occasions.findMany.mockResolvedValue([{ ...OCC, id: "o1" }, { ...OCC, id: "o2", weekday: 3 }]);
+    await expect(createSpecialMealService().updateOccasion(HOSTEL, "o2", { weekday: 0 }, NOW)).rejects.toMatchObject({ code: "INVALID_REQUEST" });
+    expect(db.special_meal_occasions.update).not.toHaveBeenCalled();
+  });
+
+  it("lets an edit keep its own slot without tripping over itself", async () => {
+    db.special_meal_occasions.findFirst.mockResolvedValue(OCC);
+    db.special_meal_occasions.findMany.mockResolvedValue([OCC]);
+    db.special_meal_occasions.update.mockResolvedValue({ ...OCC, cutoff_minutes_before: 60 });
+    await expect(createSpecialMealService().updateOccasion(HOSTEL, "o1", { cutoffMinutesBefore: 60 }, NOW)).resolves.toMatchObject({ cutoffMinutesBefore: 60 });
+  });
+});
