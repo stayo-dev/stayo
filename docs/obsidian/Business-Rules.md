@@ -1175,6 +1175,7 @@ A manual (no-gateway) payment's declared `amount_paise` is never authoritative f
 - **WhatsApp answers close at the cutoff** (meal start from `preferences_config.meal_timings`, defaults if unset, minus `cutoff_minutes_before`). Owner edits are allowed after it.
 - A button tap carries its own occasion, date and resident (`MEAL:<occasion>:<date>:<tenant>:<choice>`), so last week's message answers last week and a shared phone cannot answer for someone who isn't its own resident.
 - Dietary choice is sensitive: owner-only, and the tables are revoked from `anon` / `authenticated`.
+- **Several specials can share a day and even a meal** (migration 097). A special that shares its day and meal with another must name its dishes, because that's how residents tell them apart in WhatsApp. A **typed** answer ("veg") while more than one special is open is never guessed: the resident is asked to tap a button, since taps carry the exact special.
 - **"Food's ready" goes only to residents that dish was cooked for** (confirmed answer, or last choice under `LAST_CHOICE`) and who have a phone. Never to anyone away, skipping, unanswered or on leave. Only on the serving day, at most once per choice per serving.
 
 ## Manager permissions, hostel assignment and activity logging (2026-09-17, [[Decisions#ADR-214|ADR-214]])
